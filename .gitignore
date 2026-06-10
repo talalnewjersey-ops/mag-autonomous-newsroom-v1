@@ -1,0 +1,88 @@
+# ================================================================
+# NEXUS-14 MoneyAbroadGuide Autonomous Newsroom V1
+# .gitignore
+# ================================================================
+
+# Environment Variables (NEVER commit)
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+*.cover
+.hypothesis/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
+logs/*.log
+logs/agents/*.log
+logs/errors/*.log
+*.log
+
+# Output (generated content - not for version control)
+output/topics/
+output/articles/
+output/images/
+output/reports/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Secrets
+*.pem
+*.key
+*.cert
+secrets/
+
+# Redis dump
+dump.rdb
+
+# Docker
+.docker/
+
+# Byte-compiled
+*.pyc
