@@ -1,0 +1,211 @@
+# ================================================================
+# NEXUS-14 MoneyAbroadGuide Autonomous Newsroom V1
+# Main Configuration File
+# ================================================================
+
+# Application Settings
+app:
+  name: "NEXUS-14 Autonomous Newsroom"
+  version: "1.0.0"
+  environment: production
+  run_mode: scheduled  # scheduled | single | batch1 | batch2
+  debug: false
+  log_level: INFO
+
+# Production Schedule (UTC times)
+schedule:
+  morning_batch: "06:00"
+  audit_1: "09:30"
+  morning_report: "09:45"
+  batch_1_ready: "10:00"
+  evening_cycle_start: "10:00"
+  audit_2: "16:30"
+  batch_2_ready: "18:00"
+  executive_report: "18:30"
+
+# LLM Configuration
+llm:
+  default_provider: anthropic  # anthropic | openai | gemini
+  
+  anthropic:
+    model: claude-3-5-sonnet-20241022
+    max_tokens: 4096
+    temperature: 0.7
+  
+  openai:
+    model: gpt-4-turbo-preview
+    max_tokens: 4096
+    temperature: 0.7
+  
+  gemini:
+    model: gemini-1.5-pro
+    max_tokens: 4096
+    temperature: 0.7
+
+# Content Production Settings
+production:
+  articles_per_batch: 5
+  target_markets:
+    - USA
+    - Canada
+  
+  # Word count targets
+  content:
+    min_word_count: 5000
+    target_word_count: 7500
+    max_word_count: 10000
+  
+  # SEO settings
+  seo:
+    min_search_volume: 500
+    max_keyword_difficulty: 65
+    topics_per_batch: 10
+    min_keyword_density: 0.005
+    max_keyword_density: 0.015
+
+# Quality Rules (ALL must pass for READY_TO_PUBLISH)
+quality_rules:
+  min_word_count: 5000
+  min_images: 4
+  featured_image_required: true
+  faq_required: true
+  author_required: true
+  author_bio_required: true
+  min_seo_score: 95
+  min_eeat_score: 95
+  no_broken_links: true
+  min_faq_questions: 8
+
+# WordPress Configuration
+wordpress:
+  post_status: draft
+  default_category: expat-banking
+  categories:
+    usa:
+      - usa-banking
+      - expat-finance
+      - money-transfer
+      - investment
+      - tax-advice
+    canada:
+      - canada-banking
+      - newcomer-guide
+      - canadian-expat
+  
+  author:
+    name: "MoneyAbroadGuide Editorial Team"
+    bio: "Expert financial guidance for expatriates and international residents."
+    credentials:
+      - "Certified Financial Planner (CFP)"
+      - "International Finance Specialist"
+
+# Email Configuration
+email:
+  recipient: talalnewjersey@gmail.com
+  from: noreply@moneyabroadguide.com
+  from_name: "NEXUS-14 Newsroom"
+  subject_prefix: "[NEXUS-14]"
+  
+  reports:
+    morning:
+      subject: "Morning Production Report"
+      time: "09:45"
+    executive:
+      subject: "Executive Daily Report"
+      time: "18:30"
+
+# Affiliate Programs
+affiliate_programs:
+  - name: "Wise"
+    categories: [money_transfer, banking]
+    commission_type: per_signup
+    integration: link
+  
+  - name: "Revolut"
+    categories: [digital_banking]
+    commission_type: per_signup
+    integration: link
+  
+  - name: "OFX"
+    categories: [money_transfer]
+    commission_type: percentage
+    integration: link
+  
+  - name: "Remitly"
+    categories: [money_transfer]
+    commission_type: per_transfer
+    integration: link
+  
+  - name: "Interactive Brokers"
+    categories: [investment, brokerage]
+    commission_type: per_account
+    integration: link
+
+# Content Hubs
+content_hubs:
+  usa:
+    - name: usa_banking
+      keywords: [bank, account, savings, checking]
+    - name: usa_money_transfer
+      keywords: [transfer, wire, send money]
+    - name: usa_tax
+      keywords: [fatca, fbar, tax, irs]
+    - name: usa_investment
+      keywords: [invest, portfolio, etf, brokerage]
+  
+  canada:
+    - name: canada_banking
+      keywords: [bank, account, savings]
+    - name: canada_newcomers
+      keywords: [newcomer, immigrant, moving to canada]
+    - name: canada_tax
+      keywords: [cra, tax, tfsa, rrsp]
+    - name: canada_investment
+      keywords: [invest, tfsa, rrsp, etf]
+
+# Image Generation
+images:
+  providers:
+    - name: dalle
+      model: dall-e-3
+      size: 1792x1024
+      quality: hd
+    - name: gemini
+      model: imagen-3
+  
+  required_per_article:
+    - featured_image
+    - section_image_1
+    - comparison_table_image
+    - infographic
+    - cta_image
+  
+  style:
+    theme: "professional, clean, financial"
+    colors: ["#1a1a2e", "#16213e", "#0f3460", "#28a745"]
+    avoid: ["stock photo clichés", "generic money imagery"]
+
+# Monitoring
+monitoring:
+  health_check_interval: 300  # seconds
+  alert_on_failure: true
+  prometheus_port: 9090
+  
+  thresholds:
+    max_pipeline_duration_minutes: 240
+    min_articles_per_batch: 3
+    max_retry_attempts: 3
+
+# Storage
+storage:
+  type: s3  # s3 | local
+  local_path: output/
+  s3_prefix: nexus14/
+
+# Logging
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: logs/production.log
+  max_bytes: 10485760  # 10MB
+  backup_count: 5
