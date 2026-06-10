@@ -1,0 +1,120 @@
+# ================================================================
+# NEXUS-14: MoneyAbroadGuide Autonomous Newsroom V1
+# Docker Compose Configuration
+# ================================================================
+
+version: '3.9'
+
+services:
+  # ============================================================
+  # Main NEXUS-14 Application
+  # ============================================================
+  nexus14:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nexus14-newsroom
+    restart: unless-stopped
+    environment:
+      - ENVIRONMENT=production
+      - RUN_MODE=scheduled
+    env_file:
+      - .env
+    volumes:
+      - ./output:/app/output
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - nexus14-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================
+  # Redis (Caching & Task Queue)
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: nexus14-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-nexus14password}
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - nexus14-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # Prometheus (Metrics)
+  # ============================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: nexus14-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - nexus14-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=30d'
+
+  # ============================================================
+  # Grafana (Dashboard)
+  # ============================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: nexus14-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=nexus14admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - nexus14-network
+
+# ============================================================
+# Volumes
+# ============================================================
+volumes:
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+# ============================================================
+# Networks
+# ============================================================
+networks:
+  nexus14-network:
+    driver: bridge
+    name: nexus14-network
+
+# ================================================================
+# Usage:
+#   Start:   docker-compose up -d
+#   Stop:    docker-compose down
+#   Logs:    docker-compose logs -f nexus14
+#   Shell:   docker-compose exec nexus14 /bin/bash
+# ================================================================
