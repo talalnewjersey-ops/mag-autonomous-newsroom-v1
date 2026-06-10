@@ -1,0 +1,63 @@
+# NEXUS-14 MoneyAbroadGuide Autonomous Newsroom V1
+# Python Dependencies
+
+# Core async framework
+aiohttp==3.9.1
+httpx==0.25.2
+requests==2.31.0
+
+# LLM integrations
+openai==1.6.1
+anthropic==0.8.1
+google-generativeai==0.3.2
+
+# WordPress integration
+python-wordpress-xmlrpc==2.3
+
+# Email
+sendgrid==6.11.0
+
+# Search APIs
+serpapi==0.1.5
+google-search-results==2.4.2
+
+# Data processing
+pydantic==2.5.2
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+
+# Database / Storage
+redis==5.0.1
+boto3==1.34.0
+
+# Content processing
+markdown==3.5.1
+beautifulsoup4==4.12.2
+html2text==2020.1.16
+
+# SEO analysis
+pytrends==4.9.2
+textstat==0.7.3
+
+# Image processing
+Pillow==10.1.0
+aiofiles==23.2.1
+
+# Scheduling
+apscheduler==3.10.4
+
+# Monitoring & logging
+structlog==23.2.0
+rich==13.7.0
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.23.2
+pytest-mock==3.12.0
+
+# Utilities
+python-dateutil==2.8.2
+tenacity==8.2.3
+PyYAML==6.0.1
+jinja2==3.1.2
+click==8.1.7
