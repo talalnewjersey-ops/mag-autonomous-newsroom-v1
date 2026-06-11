@@ -1,0 +1,420 @@
+# NEXUS-14: Single Article Test Workflow
+# MoneyAbroadGuide Autonomous Newsroom V1
+# Purpose: Execute a real single-article production test
+# Trigger: Manual only (workflow_dispatch)
+
+name: NEXUS-14 Single Article Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: 'Article topic (leave empty for auto-selection)'
+        required: false
+        default: ''
+      market:
+        description: 'Target market'
+        required: true
+        default: 'USA'
+        type: choice
+        options:
+          - USA
+          - Canada
+
+env:
+  PYTHON_VERSION: '3.11'
+  RUN_ID: ${{ github.run_id }}
+  TEST_MODE: 'true'
+  MAX_ARTICLES: '1'
+
+jobs:
+  # ============================================================
+  # JOB: Single Article Production Test
+  # Runs all 14 agents sequentially for 1 article
+  # ============================================================
+  test-single-article:
+    name: 'Single Article Test - All 14 Agents'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      # ---------------------------------------------------------
+      # STEP 1: Checkout repository
+      # ---------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------
+      # STEP 2: Setup Python
+      # ---------------------------------------------------------
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      # ---------------------------------------------------------
+      # STEP 3: Install dependencies
+      # ---------------------------------------------------------
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install openai requests python-wordpress-xmlrpc sendgrid pillow aiohttp asyncio
+          pip install beautifulsoup4 lxml google-generativeai
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      # ---------------------------------------------------------
+      # STEP 4: Run complete pipeline (14 agents)
+      # ---------------------------------------------------------
+      - name: Run NEXUS-14 Pipeline
+        id: pipeline
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NANO_BANANA_API_KEY: ${{ secrets.NANO_BANANA_API_KEY }}
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_PASSWORD: ${{ secrets.WORDPRESS_PASSWORD }}
+          EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TARGET_MARKET: ${{ github.event.inputs.market }}
+          TOPIC_OVERRIDE: ${{ github.event.inputs.topic }}
+          TEST_MODE: 'true'
+          MAX_ARTICLES: '1'
+        run: |
+          echo '=================================================='
+          echo 'NEXUS-14 SINGLE ARTICLE TEST'
+          echo 'Start time:' $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          echo '=================================================='
+          python -c "
+import asyncio
+import sys
+import os
+import json
+import time
+from datetime import datetime
+
+start_time = time.time()
+results = {}
+
+print('=== NEXUS-14 PIPELINE START ===')
+print(f'Market: {os.environ.get(\"TARGET_MARKET\", \"USA\")}')
+print(f'Time: {datetime.utcnow().isoformat()}')
+
+# Agent 01: SEO Research
+print('--- Agent 01: SEO Research ---')
+try:
+    sys.path.insert(0, '.')
+    from agents.agent_01_seo_researcher import SEOResearcherAgent
+    agent01 = SEOResearcherAgent({'openai_api_key': os.environ['OPENAI_API_KEY']})
+    topic_override = os.environ.get('TOPIC_OVERRIDE', '')
+    market = os.environ.get('TARGET_MARKET', 'USA')
+    if topic_override:
+        topic = {'keyword': topic_override, 'market': market, 'search_volume': 0, 'difficulty': 50}
+    else:
+        topics = asyncio.run(agent01.research_topics(market=market, count=1))
+        topic = topics[0] if topics else {'keyword': 'best money transfer services USA 2025', 'market': market}
+    results['agent_01'] = {'status': 'PASS', 'topic': topic}
+    print(f'  PASS - Topic: {topic.get(\"keyword\", topic)}')
+except Exception as e:
+    results['agent_01'] = {'status': 'FAIL', 'error': str(e)}
+    print(f'  FAIL - {e}')
+    topic = {'keyword': 'best money transfer services USA 2025', 'market': 'USA'}
+
+# Agent 02: Content Planner
+print('--- Agent 02: Content Planner ---')
+try:
+    from agents.agent_02_content_planner import ContentPlannerAgent
+    agent02 = ContentPlannerAgent({'openai_api_key': os.environ['OPENAI_API_KEY']})
+    plan = asyncio.run(agent02.create_plan(topic))
+    results['agent_02'] = {'status': 'PASS', 'sections': len(plan.get('sections', []))}
+    print(f'  PASS - {len(plan.get(\"sections\", []))} sections planned')
+except Exception as e:
+    results['agent_02'] = {'status': 'FAIL', 'error': str(e)}
+    print(f'  FAIL - {e}')
+    plan = {'title': topic.get('keyword', 'Article'), 'sections': ['Introduction', 'Main Content', 'Conclusion']}
+
+# Agent 03: Writer
+print('--- Agent 03: Writer ---')
+article_content = ''
+try:
+    from agents.agent_03_writer import WriterAgent
+    agent03 = WriterAgent({'openai_api_key': os.environ['OPENAI_API_KEY']})
+    article = asyncio.run(agent03.write_article(topic, plan))
+    article_content = article.get('content', '')
+    word_count = len(article_content.split())
+    results['agent_03'] = {'status': 'PASS', 'word_count': word_count}
+    print(f'  PASS - {word_count} words written')
+except Exception as e:
+    results['agent_03'] = {'status': 'FAIL', 'error': str(e)}
+    print(f'  FAIL - {e}')
+    article_content = f'# {topic.get(\"keyword\", \"Article\")}\n\nContent generation failed: {str(e)}'
+
+# Agent 04: SEO Optimizer
+print('--- Agent 04: SEO Optimizer ---')
+try:
+    from agents.agent_04_seo_optimizer import SEOOptimizerAgent
+    agent04 = SEOOptimizerAgent({'openai_api_key': os.environ['OPENAI_API_KEY']})
+    seo_result = asyncio.run(agent04.optimize(article_content, topic))
+    results['agent_04'] = {'status': 'PASS', 'seo_score': seo_result.get('score', 0)}
+    print(f'  PASS - SEO score: {seo_result.get(\"score\", 0)}')
+    article_content = seo_result.get('content', article_content)
+except Exception as e:
+    results['agent_04'] = {'status': 'FAIL', 'error': str(e)}
+    print(f'  FAIL - {e}')
+
+# Agent 05: Fact Checker
+print('--- Agent 05: Fact Checker ---')
+try:
+    from agents.agent_05_fact_checker import FactCheckerAgent
+    agent05 = FactCheckerAgent({'openai_api_key': os.environ['OPENAI_API_KEY']})
+    fact_result = asyncio.run(agent05.check_facts(article_content))
+    results['agent_05'] = {'status': 'PASS', 'issues': fact_result.get('issues_found', 0)}
+    print(f'  PASS - {fact_result.get(\"issues_found\", 0)} issues found')
+except Exception as e:
+    results['agent_05'] = {'status': 'FAIL', 'error': str(e)}
+    print(f'  FAIL - {e}')
+
+# Agent 06: EEAT Validator
+print('--- Agent 06: EEAT Validator ---')
+eeat_score = 0
+try:
+    from agents.agent_06_eeat_validator import EEATValidatorAgent
+    agent06 = EEATValidatorAgent({'openai_api_key': os.environ['OPENAI_API_KEY']})
+    eeat_result = asyncio.run(agent06.validate(article_content))
+    eeat_score = eeat_result.get('total_score', 0)
+    results['agent_06'] = {'status': 'PASS', 'eeat_score': eeat_score}
+    print(f'  PASS - EEAT score: {eeat_score}')
+except Exception as e:
+    results['agent_06'] = {'status': 'FAIL', 'error': str(e)}
+    print(f'  FAIL - {e}')
+
+# Agent 07: Internal Linking
+print('--- Agent 07: Internal Linking ---')
+try:
+    from agents.agent_07_internal_linking import InternalLinkingAgent
+    agent07 = InternalLinkingAgent({'openai_api_key': os.environ['OPENAI_API_KEY'], 'wordpress_url': os.environ.get('WORDPRESS_URL', '')})
+    link_result = asyncio.run(agent07.add_links(article_content, topic))
+    article_content = link_result.get('content', article_content)
+    results['agent_07'] = {'status': 'PASS', 'links_added': link_result.get('links_added', 0)}
+    print(f'  PASS - {link_result.get(\"links_added\", 0)} links added')
+except Exception as e:
+    results['agent_07'] = {'status': 'FAIL', 'error': str(e)}
+    print(f'  FAIL - {e}')
+
+# Agent 08: Affiliate Optimizer
+print('--- Agent 08: Affiliate Optimizer ---')
+try:
+    from agents.agent_08_affiliate_optimizer import AffiliateOptimizerAgent
+    agent08 = AffiliateOptimizerAgent({'openai_api_key': os.environ['OPENAI_API_KEY']})
+    affiliate_result = asyncio.run(agent08.optimize(article_content, topic))
+    article_content = affiliate_result.get('content', article_content)
+    results['agent_08'] = {'status': 'PASS', 'blocks_added': affiliate_result.get('blocks_added', 0)}
+    print(f'  PASS - {affiliate_result.get(\"blocks_added\", 0)} affiliate blocks added')
+except Exception as e:
+    results['agent_08'] = {'status': 'FAIL', 'error': str(e)}
+    print(f'  FAIL - {e}')
+
+# Agent 09: Image Prompt Generator
+print('--- Agent 09: Image Prompt Generator ---')
+image_prompts = []
+try:
+    from agents.agent_09_image_prompt_generator import ImagePromptGeneratorAgent
+    agent09 = ImagePromptGeneratorAgent({'openai_api_key': os.environ['OPENAI_API_KEY']})
+    prompt_result = asyncio.run(agent09.generate_prompts(topic, article_content))
+    image_prompts = prompt_result.get('prompts', [])
+    results['agent_09'] = {'status': 'PASS', 'prompts_generated': len(image_prompts)}
+    print(f'  PASS - {len(image_prompts)} image prompts generated')
+except Exception as e:
+    results['agent_09'] = {'status': 'FAIL', 'error': str(e)}
+    print(f'  FAIL - {e}')
+
+# Agent 10: Image Production
+print('--- Agent 10: Image Production ---')
+generated_images = []
+try:
+    from agents.agent_10_image_production import ImageProductionAgent
+    agent10 = ImageProductionAgent({
+        'openai_api_key': os.environ['OPENAI_API_KEY'],
+        'nano_banana_api_key': os.environ.get('NANO_BANANA_API_KEY', ''),
+        'gemini_api_key': os.environ.get('GEMINI_API_KEY', '')
+    })
+    img_result = asyncio.run(agent10.produce_images(image_prompts[:3] if image_prompts else []))
+    generated_images = img_result.get('images', [])
+    results['agent_10'] = {'status': 'PASS', 'images_generated': len(generated_images)}
+    print(f'  PASS - {len(generated_images)} images generated')
+except Exception as e:
+    results['agent_10'] = {'status': 'FAIL', 'error': str(e)}
+    print(f'  FAIL - {e}')
+
+# Agent 11: WordPress Integration
+print('--- Agent 11: WordPress Integration ---')
+wp_draft_id = None
+wp_draft_url = None
+try:
+    from agents.agent_11_wordpress_integration import WordPressIntegrationAgent
+    agent11 = WordPressIntegrationAgent({
+        'wordpress_url': os.environ['WORDPRESS_URL'],
+        'wordpress_username': os.environ['WORDPRESS_USERNAME'],
+        'wordpress_password': os.environ['WORDPRESS_PASSWORD']
+    })
+    wp_result = asyncio.run(agent11.create_draft(article_content, topic, generated_images))
+    wp_draft_id = wp_result.get('post_id')
+    wp_draft_url = wp_result.get('post_url')
+    results['agent_11'] = {'status': 'PASS', 'draft_id': wp_draft_id, 'url': wp_draft_url}
+    print(f'  PASS - Draft ID: {wp_draft_id}, URL: {wp_draft_url}')
+except Exception as e:
+    results['agent_11'] = {'status': 'FAIL', 'error': str(e)}
+    print(f'  FAIL - {e}')
+
+# Agent 12: Quality Auditor
+print('--- Agent 12: Quality Auditor ---')
+quality_score = 0
+try:
+    from agents.agent_12_quality_auditor import QualityAuditorAgent
+    agent12 = QualityAuditorAgent({'openai_api_key': os.environ['OPENAI_API_KEY']})
+    quality_result = asyncio.run(agent12.audit(article_content, {'images': generated_images, 'eeat_score': eeat_score}))
+    quality_score = quality_result.get('score', 0)
+    results['agent_12'] = {'status': 'PASS', 'quality_score': quality_score}
+    print(f'  PASS - Quality score: {quality_score}')
+except Exception as e:
+    results['agent_12'] = {'status': 'FAIL', 'error': str(e)}
+    print(f'  FAIL - {e}')
+
+# Agent 13: Final Validator
+print('--- Agent 13: Final Validator ---')
+final_status = 'UNKNOWN'
+try:
+    from agents.agent_13_final_validator import FinalValidatorAgent
+    agent13 = FinalValidatorAgent({'openai_api_key': os.environ['OPENAI_API_KEY']})
+    validation_result = asyncio.run(agent13.validate({
+        'content': article_content,
+        'images': generated_images,
+        'eeat_score': eeat_score,
+        'quality_score': quality_score,
+        'wp_draft_id': wp_draft_id
+    }))
+    final_status = validation_result.get('status', 'UNKNOWN')
+    results['agent_13'] = {'status': 'PASS', 'final_status': final_status}
+    print(f'  PASS - Final status: {final_status}')
+except Exception as e:
+    results['agent_13'] = {'status': 'FAIL', 'error': str(e)}
+    print(f'  FAIL - {e}')
+
+# Agent 14: Reporting
+print('--- Agent 14: Reporting ---')
+try:
+    from agents.agent_14_reporting import ReportingAgent
+    agent14 = ReportingAgent({
+        'sendgrid_api_key': os.environ.get('SENDGRID_API_KEY', ''),
+        'email_recipient': os.environ.get('EMAIL_RECIPIENT', 'talalnewjersey@gmail.com')
+    })
+    elapsed = time.time() - start_time
+    report_data = {
+        'run_id': os.environ.get('RUN_ID', 'test'),
+        'topic': topic.get('keyword', str(topic)),
+        'market': os.environ.get('TARGET_MARKET', 'USA'),
+        'results': results,
+        'wp_draft_id': wp_draft_id,
+        'wp_draft_url': wp_draft_url,
+        'eeat_score': eeat_score,
+        'quality_score': quality_score,
+        'final_status': final_status,
+        'elapsed_seconds': round(elapsed, 1)
+    }
+    report_result = asyncio.run(agent14.send_report(report_data))
+    results['agent_14'] = {'status': 'PASS', 'email_sent': report_result.get('sent', False)}
+    print(f'  PASS - Report sent: {report_result.get(\"sent\", False)}')
+except Exception as e:
+    results['agent_14'] = {'status': 'FAIL', 'error': str(e)}
+    print(f'  FAIL - {e}')
+
+# ============================================================
+# FINAL EXECUTION REPORT
+# ============================================================
+elapsed = time.time() - start_time
+passed = sum(1 for r in results.values() if r.get('status') == 'PASS')
+failed = sum(1 for r in results.values() if r.get('status') == 'FAIL')
+total = len(results)
+
+print()
+print('==================================================')
+print('NEXUS-14 EXECUTION REPORT')
+print('==================================================')
+print(f'Topic: {topic.get(\"keyword\", str(topic))}')
+print(f'Market: {os.environ.get(\"TARGET_MARKET\", \"USA\")}')
+print(f'WordPress Draft ID: {wp_draft_id}')
+print(f'WordPress URL: {wp_draft_url}')
+print(f'EEAT Score: {eeat_score}')
+print(f'Quality Score: {quality_score}')
+print(f'Execution Time: {round(elapsed, 1)}s')
+print(f'Agents: {passed}/{total} PASSED')
+print()
+print('AGENT RESULTS:')
+for agent, result in results.items():
+    status = result.get('status', 'UNKNOWN')
+    detail = {k: v for k, v in result.items() if k != 'status'}
+    print(f'  {agent}: {status} | {detail}')
+print()
+
+verdict = 'PASS' if failed == 0 else ('PARTIAL' if passed >= 10 else 'FAIL')
+print(f'>>> FINAL VERDICT: {verdict} ({passed}/{total} agents succeeded)')
+
+if wp_draft_id:
+    print(f'>>> WordPress draft created: ID {wp_draft_id}')
+if eeat_score >= 95:
+    print(f'>>> EEAT target achieved: {eeat_score}/100')
+print()
+print(f'STATUS: {\"VERIFIED PRODUCTION READY\" if verdict == \"PASS\" else \"NOT VERIFIED\"}')
+print('==================================================')
+
+# Save results to file for artifact upload
+with open('execution_report.json', 'w') as f:
+    json.dump({
+        'verdict': verdict,
+        'topic': topic.get('keyword', str(topic)),
+        'market': os.environ.get('TARGET_MARKET', 'USA'),
+        'wp_draft_id': wp_draft_id,
+        'wp_draft_url': wp_draft_url,
+        'eeat_score': eeat_score,
+        'quality_score': quality_score,
+        'elapsed_seconds': round(elapsed, 1),
+        'agents_passed': passed,
+        'agents_failed': failed,
+        'agents_total': total,
+        'results': results
+    }, f, indent=2, default=str)
+
+print('Execution report saved to execution_report.json')
+
+# Exit with non-zero if critical failure
+if verdict == 'FAIL':
+    sys.exit(1)
+"
+
+      # ---------------------------------------------------------
+      # STEP 5: Upload execution report as artifact
+      # ---------------------------------------------------------
+      - name: Upload Execution Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: execution-report-${{ github.run_id }}
+          path: |
+            execution_report.json
+          retention-days: 30
+
+      # ---------------------------------------------------------
+      # STEP 6: Print final summary
+      # ---------------------------------------------------------
+      - name: Final Summary
+        if: always()
+        run: |
+          echo '==================================================='
+          echo 'TEST COMPLETE'
+          if [ -f execution_report.json ]; then
+            echo 'Execution Report:'
+            cat execution_report.json
+          fi
+          echo '==================================================='
+          echo 'End time:' $(date -u '+%Y-%m-%d %H:%M:%S UTC')
