@@ -77,15 +77,24 @@ class HealthChecker:
     
     async def check_environment(self) -> Dict:
         """Check required environment variables."""
-        required_vars = [
-            "ANTHROPIC_API_KEY",
+        # Critical vars required for basic operation
+        critical_vars = [
             "OPENAI_API_KEY",
             "WORDPRESS_URL",
             "SENDGRID_API_KEY",
-            "EMAIL_RECIPIENT"
+        ]
+        # Optional vars (warn but don't fail)
+        optional_vars = [
+            "ANTHROPIC_API_KEY",
+            "EMAIL_RECIPIENT",
         ]
         
-        missing = [var for var in required_vars if not os.environ.get(var)]
+        missing_critical = [var for var in critical_vars if not os.environ.get(var)]
+        missing_optional = [var for var in optional_vars if not os.environ.get(var)]
+        if missing_optional:
+            logger.warning(f"Optional env vars missing: {missing_optional}")
+        
+        missing = missing_critical
         
         return {
             "healthy": len(missing) == 0,
