@@ -22,7 +22,7 @@ AFFILIATE_PROGRAMS = {
     "wise": {
         "name": "Wise (TransferWise)",
         "category": "money_transfer",
-        "cta": "Send money abroad with Wise — up to 8x cheaper than banks",
+        "cta": "Send money abroad with Wise - up to 8x cheaper than banks",
         "url_template": "https://wise.com?ref=MAG",
         "keywords": ["wise", "transferwise", "international transfer", "send money abroad", "remittance", "currency exchange"],
         "commission": "cpa",
@@ -31,7 +31,7 @@ AFFILIATE_PROGRAMS = {
     "revolut": {
         "name": "Revolut",
         "category": "fintech",
-        "cta": "Get Revolut — the all-in-one financial app for expats",
+        "cta": "Get Revolut - the all-in-one financial app for expats",
         "url_template": "https://revolut.com?ref=MAG",
         "keywords": ["revolut", "neobank", "digital bank", "multi-currency", "fintech"],
         "commission": "cpa",
@@ -40,7 +40,7 @@ AFFILIATE_PROGRAMS = {
     "rbc_canada": {
         "name": "RBC Newcomers Package",
         "category": "banking_canada",
-        "cta": "Open an RBC bank account as a newcomer to Canada — no monthly fees for 1 year",
+        "cta": "Open an RBC bank account as a newcomer to Canada - no monthly fees for 1 year",
         "url_template": "https://www.rbcroyalbank.com/newcomers?ref=MAG",
         "keywords": ["rbc", "newcomer to canada", "newcomer bank account", "move to canada", "canadian bank"],
         "commission": "cpl",
@@ -49,7 +49,7 @@ AFFILIATE_PROGRAMS = {
     "td_canada": {
         "name": "TD Canada Trust",
         "category": "banking_canada",
-        "cta": "TD Bank for newcomers to Canada — special welcome offer",
+        "cta": "TD Bank for newcomers to Canada - special welcome offer",
         "url_template": "https://www.td.com/ca/en/personal-banking/newcomers?ref=MAG",
         "keywords": ["td bank", "td canada", "toronto dominion", "newcomer banking"],
         "commission": "cpl",
@@ -58,7 +58,7 @@ AFFILIATE_PROGRAMS = {
     "scotiabank": {
         "name": "Scotiabank StartRight",
         "category": "banking_canada",
-        "cta": "Scotiabank StartRight Program — designed for newcomers to Canada",
+        "cta": "Scotiabank StartRight Program - designed for newcomers to Canada",
         "url_template": "https://www.scotiabank.com/startright?ref=MAG",
         "keywords": ["scotiabank", "startright", "newcomer scotiabank", "canadian banking newcomer"],
         "commission": "cpl",
@@ -67,7 +67,7 @@ AFFILIATE_PROGRAMS = {
     "charles_schwab": {
         "name": "Charles Schwab International",
         "category": "banking_usa",
-        "cta": "Charles Schwab — no foreign transaction fees, global ATM rebates",
+        "cta": "Charles Schwab - no foreign transaction fees, global ATM rebates",
         "url_template": "https://www.schwab.com/international?ref=MAG",
         "keywords": ["charles schwab", "schwab international", "expat banking usa", "no atm fees abroad"],
         "commission": "cpa",
@@ -76,7 +76,7 @@ AFFILIATE_PROGRAMS = {
     "manulife_insurance": {
         "name": "Manulife Travel Insurance",
         "category": "insurance",
-        "cta": "Manulife travel insurance — comprehensive coverage for expats",
+        "cta": "Manulife travel insurance - comprehensive coverage for expats",
         "url_template": "https://www.manulife.com/insurance?ref=MAG",
         "keywords": ["manulife", "travel insurance", "expat insurance", "health insurance abroad"],
         "commission": "cps",
@@ -85,7 +85,7 @@ AFFILIATE_PROGRAMS = {
     "world_nomads": {
         "name": "World Nomads Insurance",
         "category": "insurance",
-        "cta": "World Nomads — travel insurance built for adventurous expats",
+        "cta": "World Nomads - travel insurance built for adventurous expats",
         "url_template": "https://www.worldnomads.com?ref=MAG",
         "keywords": ["world nomads", "nomad insurance", "digital nomad insurance", "travel insurance expat"],
         "commission": "cps",
@@ -98,7 +98,7 @@ BLOCK_TEMPLATES = {
     "inline": (
         '<div class="mag-affiliate-block mag-affiliate-inline">'
         '<span class="mag-affiliate-badge">Recommended</span>'
-        '<strong>{name}</strong> — {cta} '
+        '<strong>{name}</strong> - {cta} '
         '<a href="{url}" rel="sponsored nofollow" target="_blank" '
         'class="mag-affiliate-link mag-btn-primary">Get Started</a>'
         '</div>'
