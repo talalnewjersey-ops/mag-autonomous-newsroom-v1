@@ -1,0 +1,53 @@
+# NEXUS-14: Patch Images on Existing Draft Posts
+# .github/workflows/patch_images.yml
+#
+# Adds images to draft posts that have no featured image.
+# Image chain: gpt-image-1 -> NanaBanana (Gemini) -> Gemini Direct -> dall-e-3
+
+name: NEXUS-14 Patch Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_posts:
+        description: 'Max number of posts to patch (default: 50)'
+        required: false
+        default: '50'
+
+jobs:
+  patch-images:
+    name: Patch Images on Draft Posts
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install openai requests
+
+      - name: Run image patcher
+        env:
+          OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
+          NANO_BANANA_API_KEY:  ${{ secrets.NANO_BANANA_API_KEY }}
+          GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
+          WORDPRESS_URL:        ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME:   ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_PASSWORD:   ${{ secrets.WORDPRESS_PASSWORD }}
+          MAX_POSTS:            ${{ github.event.inputs.max_posts || '50' }}
+        run: python scripts/patch_images.py
+
+      - name: Upload patch report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: patch-images-report-${{ github.run_id }}
+          path: patch_images_report.json
+          retention-days: 30
+          if-no-files-found: warn
