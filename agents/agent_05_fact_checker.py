@@ -1,5 +1,5 @@
 """
-NEXUS-14 — Agent 05: Fact Checker Agent
+NEXUS-14 - Agent 05: Fact Checker Agent
 MoneyAbroadGuide Autonomous Newsroom
 Verifies facts, statistics, numbers, sources,
 government links, and financial data in articles.
@@ -45,7 +45,7 @@ CLAIM_PATTERNS = [
 
 
 class FactCheckerAgent(BaseAgent):
-    """Agent 05 — Automated fact checking for articles."""
+    """Agent 05 - Automated fact checking for articles."""
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(agent_id="agent_05", name="FactCheckerAgent", config=config)
@@ -56,7 +56,7 @@ class FactCheckerAgent(BaseAgent):
 
     async def run(self, article_draft_path: str, output_dir: str = "outputs") -> dict[str, Any]:
         """Read article draft, extract all checkable claims, verify them."""
-        self.logger.info("Agent 05 — Fact Checker starting...")
+        self.logger.info("Agent 05 - Fact Checker starting...")
         start_time = datetime.now()
 
         draft_path = Path(article_draft_path)
@@ -218,12 +218,12 @@ class FactCheckerAgent(BaseAgent):
             if p > 100:
                 issues.append(f"Percentage {p}% exceeds 100")
             elif p > 50 and claim["type"] == "financial":
-                notes.append(f"High percentage {p}% — review recommended")
+                notes.append(f"High percentage {p}% - review recommended")
         amounts = re.findall(r"\$(\d[\d,]*)", text)
         for a in amounts:
             val = int(a.replace(",", ""))
             if val > 1_000_000:
-                notes.append(f"Large amount ${val:,} — verify accuracy")
+                notes.append(f"Large amount ${val:,} - verify accuracy")
         status = "FLAGGED" if issues else "HEURISTIC_PASS"
         return {
             "status": status,
@@ -290,7 +290,7 @@ class FactCheckerAgent(BaseAgent):
         issues_count = disputed_count + unverified_count + flagged_count + broken_urls + stats_flagged
 
         if issues_count == 0:
-NEXUS-14 — Agent 05: Fact Checker Agent
+NEXUS-14 - Agent 05: Fact Checker Agent
 MoneyAbroadGuide Autonomous Newsroom
 Verifies facts, statistics, numbers, sources, government links, financial data.
 Output: fact_check_report.json
