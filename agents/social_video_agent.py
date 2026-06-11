@@ -513,10 +513,12 @@ Return this EXACT JSON:
         hf["insight_number"] = ins.get("insight_number", i + 1)
         hf["topic"]          = topic
         hf["market"]         = market.upper()
+        _hf_dir = PLATFORM_DIRS["higgsfield"]
+        _prompt_file = _hf_dir + "/higgsfield_prompt_" + ARTICLE_INDEX + "_v" + str(i+1) + ".txt"
         hf["cli_command"] = (
-            f"higgsfield generate create {model_id} "
-            f'--prompt "$(cat \"{PLATFORM_DIRS[\"higgsfield\"]}/higgsfield_prompt_{ARTICLE_INDEX}_v{i+1}.txt\")" '
-            f"--aspect_ratio 9:16 --duration 10 --mode pro --wait"
+            "higgsfield generate create " + model_id + " "
+            + '--prompt "$(cat \"' + _prompt_file + '\")" '
+            + "--aspect_ratio 9:16 --duration 10 --mode pro --wait"
         )
         prompts_out.append(hf)
         print(f"  Higgsfield #{i+1} done -- model: {model_id}, prompt: {len(hf['prompt'])} chars")
