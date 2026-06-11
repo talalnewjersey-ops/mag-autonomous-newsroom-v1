@@ -232,7 +232,7 @@ class FactCheckerAgent(BaseAgent):
         }
 
     def _extract_urls(self, text: str) -> list[str]:
-        pattern = r"https?://[^\s\)\]\>"'\|,;]+"
+        pattern = r"https?://[^\s\)\]>|,;]+"
         return list(set(re.findall(pattern, text)))[:50]
 
     async def _check_urls(self, urls: list[str]) -> dict:
