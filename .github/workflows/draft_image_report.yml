@@ -3,19 +3,19 @@ name: Draft Image Report
 on:
   workflow_dispatch:
 
-  jobs:
-    report:
-        runs-on: ubuntu-latest
-            steps:
-                  - name: Checkout
-                          uses: actions/checkout@v4
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-                                - name: Install dependencies
-                                        run: pip install requests -q
+      - name: Install dependencies
+        run: pip install requests -q
 
-                                              - name: Run image report
-                                                      env:
-                                                                WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
-                                                                          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
-                                                                                    WORDPRESS_PASSWORD: ${{ secrets.WORDPRESS_PASSWORD }}
-                                                                                            run: python3 scripts/draft_image_report.py
+      - name: Run image report
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_PASSWORD: ${{ secrets.WORDPRESS_PASSWORD }}
+        run: python3 scripts/draft_image_report.py
