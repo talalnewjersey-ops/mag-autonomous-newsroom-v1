@@ -1,6 +1,6 @@
 # NEXUS-14: Production 20 Articles
-# 10 USA + 10 Canada — matrix parallele
-# Email non-bloquant — ignore si erreur
+# 10 USA + 10 Canada
+# Email non-bloquant
 
 name: NEXUS-14 Produce 20 Articles
 
@@ -23,9 +23,8 @@ env:
 jobs:
 
   produce-usa:
-    name: USA Article ${{ matrix.index }}
+    name: USA ${{ matrix.index }}
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.batch == 'all' || github.event.inputs.batch == 'usa_only' }}
     continue-on-error: true
     timeout-minutes: 15
     strategy:
@@ -49,7 +48,7 @@ jobs:
             topic: Wise vs Remitly vs Western Union USA comparison 2026
             market: usa
           - index: USA-06
-            topic: how to transfer large amounts of money internationally from USA 2026
+            topic: how to transfer large amounts of money internationally USA 2026
             market: usa
           - index: USA-07
             topic: best apps to send money internationally from USA 2026
@@ -73,10 +72,10 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install dependencies
+      - name: Install
         run: pip install openai requests
 
-      - name: Produce Article ${{ matrix.index }}
+      - name: Run
         continue-on-error: true
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -91,7 +90,7 @@ jobs:
           TOPIC_OVERRIDE: ${{ matrix.topic }}
         run: python scripts/produce_article.py
 
-      - name: Upload Report ${{ matrix.index }}
+      - name: Upload
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -102,9 +101,8 @@ jobs:
 
 
   produce-canada:
-    name: Canada Article ${{ matrix.index }}
+    name: CANADA ${{ matrix.index }}
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.batch == 'all' || github.event.inputs.batch == 'canada_only' }}
     continue-on-error: true
     timeout-minutes: 15
     strategy:
@@ -152,10 +150,10 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install dependencies
+      - name: Install
         run: pip install openai requests
 
-      - name: Produce Article ${{ matrix.index }}
+      - name: Run
         continue-on-error: true
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -170,7 +168,7 @@ jobs:
           TOPIC_OVERRIDE: ${{ matrix.topic }}
         run: python scripts/produce_article.py
 
-      - name: Upload Report ${{ matrix.index }}
+      - name: Upload
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -178,40 +176,3 @@ jobs:
           path: execution_report_${{ matrix.index }}.json
           retention-days: 30
           if-no-files-found: warn
-
-
-  production-summary:
-    name: Production Summary
-    runs-on: ubuntu-latest
-    needs: [produce-usa, produce-canada]
-    if: always()
-
-    steps:
-      - name: Download all reports
-        uses: actions/download-artifact@v4
-        with:
-          pattern: report-*-${{ github.run_id }}
-          path: reports/
-          merge-multiple: true
-
-      - name: Production Summary
-        run: |
-          echo ===================================================
-          echo NEXUS-14 PRODUCTION COMPLETE 20 ARTICLES
-          echo ===================================================
-          echo Run ID ${{ github.run_id }}
-          echo Date $(date -u)
-          echo .
-          echo Reports found $(ls reports/ 2>/dev/null | wc -l)
-          for f in reports/*.json; do
-            if [ -f "$f" ]; then
-              cat $f | python3 -c "
-import json,sys
-d=json.load(sys.stdin)
-print(d.get('article_index','?'),'|',d.get('score','?'),'| WP#'+str(d.get('wp_post_id','N/A')),'| img:'+str(d.get('image_pipeline',{}).get('provider_used','none')),'|',d.get('topic','?')[:55])
-"
-            fi
-          done
-          echo ===================================================
-          echo PRODUCTION TERMINEE
-          echo ===================================================
