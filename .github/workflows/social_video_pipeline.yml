@@ -1,0 +1,103 @@
+# NEXUS-14: Social Video Pipeline
+# .github/workflows/social_video_pipeline.yml
+#
+# Generates social media video assets for every approved article
+
+name: NEXUS-14 Social Video Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      article_index:
+        description: 'Article index (e.g. USA-01)'
+        required: true
+        default: 'USA-01'
+      topic:
+        description: 'Topic override'
+        required: false
+        default: ''
+      market:
+        description: 'Target market'
+        required: true
+        default: 'usa'
+        type: choice
+        options:
+          - usa
+          - canada
+
+env:
+  PYTHON_VERSION: '3.11'
+  SOCIAL_OUTPUT_DIR: output/social
+
+jobs:
+
+  generate-single:
+    name: Social Assets -- ${{ github.event.inputs.article_index }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: pip install openai requests
+
+      - name: Generate social assets
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ARTICLE_INDEX: ${{ github.event.inputs.article_index }}
+          TOPIC_OVERRIDE: ${{ github.event.inputs.topic }}
+          TARGET_MARKET: ${{ github.event.inputs.market }}
+          SOCIAL_OUTPUT_DIR: ${{ env.SOCIAL_OUTPUT_DIR }}
+        run: python scripts/generate_social_assets.py
+
+      - name: Upload TikTok assets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiktok-${{ github.event.inputs.article_index }}-${{ github.run_id }}
+          path: output/social/tiktok/
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Upload YouTube Shorts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shorts-${{ github.event.inputs.article_index }}-${{ github.run_id }}
+          path: output/social/shorts/
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Upload Instagram Reels
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reels-${{ github.event.inputs.article_index }}-${{ github.run_id }}
+          path: output/social/reels/
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Upload Higgsfield prompts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: higgsfield-${{ github.event.inputs.article_index }}-${{ github.run_id }}
+          path: output/social/higgsfield/
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Upload social report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: social-report-${{ github.event.inputs.article_index }}-${{ github.run_id }}
+          path: social_report_${{ github.event.inputs.article_index }}.json
+          retention-days: 90
+          if-no-files-found: warn
