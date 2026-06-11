@@ -1,6 +1,5 @@
-# NEXUS-14: Single Article Test Workflow
-# Purpose: Execute a real single-article production test
-# Trigger: Manual only (workflow_dispatch)
+# NEXUS-14: Single Article Test v2
+# Uses produce_article.py v2 (fixed engine)
 
 name: NEXUS-14 Single Article Test
 
@@ -18,17 +17,17 @@ on:
         type: choice
         options:
           - USA
-          - Canada
-
-env:
-  PYTHON_VERSION: '3.11'
+          - CANADA
+      article_index:
+        description: 'Article index (e.g. TEST-01)'
+        required: false
+        default: 'TEST-01'
 
 jobs:
-  test-single-article:
-    name: Single Article Test - All 14 Agents
+  test-article:
+    name: Single Article Test v2
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,18 +35,12 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
+          python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install openai requests sendgrid pillow aiohttp
-          pip install beautifulsoup4 lxml
-          if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
+        run: pip install openai requests
 
-      - name: Run NEXUS-14 Pipeline
-        id: pipeline
+      - name: Run v2 produce_article.py
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           NANO_BANANA_API_KEY: ${{ secrets.NANO_BANANA_API_KEY }}
@@ -56,23 +49,16 @@ jobs:
           WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
           WORDPRESS_PASSWORD: ${{ secrets.WORDPRESS_PASSWORD }}
           EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          TARGET_MARKET: ${{ github.event.inputs.market }}
-          TOPIC_OVERRIDE: ${{ github.event.inputs.topic }}
-        run: python scripts/run_test.py
+          ARTICLE_INDEX: ${{ github.event.inputs.article_index || 'TEST-01' }}
+          TARGET_MARKET: ${{ github.event.inputs.market || 'USA' }}
+          TOPIC_OVERRIDE: ${{ github.event.inputs.topic || '' }}
+        run: python scripts/produce_article.py
 
       - name: Upload Execution Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: execution-report-${{ github.run_id }}
-          path: execution_report.json
+          name: test-v2-report-${{ github.event.inputs.article_index || 'TEST-01' }}-${{ github.run_id }}
+          path: execution_report_${{ github.event.inputs.article_index || 'TEST-01' }}.json
           retention-days: 30
-
-      - name: Final Summary
-        if: always()
-        run: |
-          echo '=== TEST COMPLETE ==='
-          if [ -f execution_report.json ]; then
-            cat execution_report.json
-          fi
+          if-no-files-found: warn
