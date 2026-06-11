@@ -1,0 +1,223 @@
+# NEXUS-14: Production 20 Articles
+# 10 USA + 10 Canada — matrix parallele
+# Email non-bloquant — ignoré si erreur
+
+name: NEXUS-14 Produce 20 Articles
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch:
+        description: 'Batch'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - usa_only
+          - canada_only
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+
+  produce-usa:
+    name: USA Article
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        include:
+          - index: USA-01
+            topic: best way to send money from USA to Canada 2026
+            market: usa
+          - index: USA-02
+            topic: cheapest international money transfer services USA 2026
+            market: usa
+          - index: USA-03
+            topic: how to send money abroad from USA fast and cheap 2026
+            market: usa
+          - index: USA-04
+            topic: best bank wire transfer alternatives USA expats 2026
+            market: usa
+          - index: USA-05
+            topic: Wise vs Remitly vs Western Union USA comparison 2026
+            market: usa
+          - index: USA-06
+            topic: how to transfer large amounts of money internationally from USA 2026
+            market: usa
+          - index: USA-07
+            topic: best apps to send money internationally from USA 2026
+            market: usa
+          - index: USA-08
+            topic: how to avoid high fees when sending money abroad USA 2026
+            market: usa
+          - index: USA-09
+            topic: sending money to Mexico from USA best services 2026
+            market: usa
+          - index: USA-10
+            topic: OFX vs Wise USA international money transfer review 2026
+            market: usa
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install openai requests
+
+      - name: Produce Article
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NANO_BANANA_API_KEY: ${{ secrets.NANO_BANANA_API_KEY }}
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_PASSWORD: ${{ secrets.WORDPRESS_PASSWORD }}
+          EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
+          ARTICLE_INDEX: ${{ matrix.index }}
+          TARGET_MARKET: ${{ matrix.market }}
+          TOPIC_OVERRIDE: ${{ matrix.topic }}
+        run: python scripts/produce_article.py
+
+      - name: Upload Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ matrix.index }}-${{ github.run_id }}
+          path: execution_report_${{ matrix.index }}.json
+          retention-days: 30
+          if-no-files-found: warn
+
+
+  produce-canada:
+    name: Canada Article
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        include:
+          - index: CAN-01
+            topic: best way to send money from Canada to USA 2026
+            market: canada
+          - index: CAN-02
+            topic: cheapest money transfer services Canada expats 2026
+            market: canada
+          - index: CAN-03
+            topic: how to send money abroad from Canada fast 2026
+            market: canada
+          - index: CAN-04
+            topic: best international wire transfer from Canada 2026
+            market: canada
+          - index: CAN-05
+            topic: Wise vs Remitly Canada money transfer comparison 2026
+            market: canada
+          - index: CAN-06
+            topic: how to transfer large sums internationally from Canada 2026
+            market: canada
+          - index: CAN-07
+            topic: best apps to send money internationally from Canada 2026
+            market: canada
+          - index: CAN-08
+            topic: how to avoid fees sending money abroad from Canada 2026
+            market: canada
+          - index: CAN-09
+            topic: sending money to Philippines from Canada best services 2026
+            market: canada
+          - index: CAN-10
+            topic: OFX vs Wise Canada international money transfer review 2026
+            market: canada
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install openai requests
+
+      - name: Produce Article
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NANO_BANANA_API_KEY: ${{ secrets.NANO_BANANA_API_KEY }}
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_PASSWORD: ${{ secrets.WORDPRESS_PASSWORD }}
+          EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
+          ARTICLE_INDEX: ${{ matrix.index }}
+          TARGET_MARKET: ${{ matrix.market }}
+          TOPIC_OVERRIDE: ${{ matrix.topic }}
+        run: python scripts/produce_article.py
+
+      - name: Upload Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ matrix.index }}-${{ github.run_id }}
+          path: execution_report_${{ matrix.index }}.json
+          retention-days: 30
+          if-no-files-found: warn
+
+
+  production-summary:
+    name: Production Summary
+    runs-on: ubuntu-latest
+    needs: [produce-usa, produce-canada]
+    if: always()
+
+    steps:
+      - name: Download all reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: report-*-${{ github.run_id }}
+          path: reports/
+          merge-multiple: true
+
+      - name: Production Summary
+        run: |
+          echo "====================================================="
+          echo "NEXUS-14 — PRODUCTION COMPLETE — 20 ARTICLES"
+          echo "====================================================="
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Date  : $(date -u)"
+          echo ""
+          echo "Reports found:"
+          ls reports/*.json 2>/dev/null | wc -l
+          echo ""
+          for f in reports/*.json; do
+            if [ -f "$f" ]; then
+              python3 -c "
+import json, sys
+d = json.load(open('$f'))
+idx = d.get('article_index','?')
+wp  = str(d.get('wp_post_id','N/A'))
+score = d.get('score','?')
+topic = d.get('topic','?')[:55]
+img = d.get('image_pipeline',{}).get('provider_used','none')
+print(idx + ' | ' + score + ' | WP#' + wp + ' | img:' + str(img) + ' | ' + topic)
+"
+            fi
+          done
+          echo ""
+          echo "====================================================="
