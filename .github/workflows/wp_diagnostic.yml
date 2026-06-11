@@ -1,0 +1,120 @@
+name: WordPress Diagnostic
+on:
+  workflow_dispatch:
+
+jobs:
+  wp-diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run WordPress Diagnostic
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_PASSWORD: ${{ secrets.WORDPRESS_PASSWORD }}
+        run: |
+          pip install requests -q
+          python3 - <<'PYEOF'
+import os, json, base64, requests, sys
+
+WP_URL = os.environ.get("WORDPRESS_URL", "https://moneyabroadguide.com").rstrip("/")
+WP_USER = os.environ.get("WORDPRESS_USERNAME", "")
+WP_PASS = os.environ.get("WORDPRESS_PASSWORD", "")
+
+print("=" * 60)
+print("WORDPRESS DIAGNOSTIC v1")
+print("=" * 60)
+print(f"WP_URL: {WP_URL}")
+print(f"WP_USER: {WP_USER}")
+print(f"WP_PASS length: {len(WP_PASS)} chars")
+print()
+
+creds = base64.b64encode(f"{WP_USER}:{WP_PASS}".encode()).decode()
+
+headers_variants = [
+  {"Authorization": f"Basic {creds}", "Content-Type": "application/json", "User-Agent": "WordPress/6.4", "Accept": "application/json"},
+  {"Authorization": f"Basic {creds}", "Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (X11; Linux x86_64)", "Accept": "application/json"},
+  {"Authorization": f"Basic {creds}", "Content-Type": "application/json", "Accept": "application/json"},
+]
+
+print("[TEST 1] GET /wp-json/ - API root")
+for i, h in enumerate(headers_variants):
+  try:
+    r = requests.get(f"{WP_URL}/wp-json/", headers=h, timeout=15)
+    ct = r.headers.get("Content-Type","")
+    print(f"  variant#{i}: {r.status_code} | {ct[:50]}")
+    if "json" in ct and r.status_code == 200:
+      d = r.json()
+      print(f"  -> OK! Site: {d.get('name','?')}")
+      break
+    else:
+      print(f"  -> Body: {r.text[:200]}")
+  except Exception as e:
+    print(f"  variant#{i}: ERROR {e}")
+
+print()
+print("[TEST 2] GET /wp-json/wp/v2/users/me - auth check")
+for i, h in enumerate(headers_variants):
+  try:
+    r = requests.get(f"{WP_URL}/wp-json/wp/v2/users/me", headers=h, timeout=15)
+    print(f"  variant#{i}: {r.status_code}")
+    if r.status_code == 200:
+      d = r.json()
+      print(f"  -> Auth OK! User: {d.get('name','?')} roles: {d.get('roles',[])}")
+      break
+    else:
+      print(f"  -> Body: {r.text[:300]}")
+  except Exception as e:
+    print(f"  variant#{i}: ERROR {e}")
+
+print()
+print("[TEST 3] POST /wp/v2/posts - create draft")
+post_data = {"title": "NEXUS-14 Diag Test - DELETE ME", "content": "<p>Test</p>", "status": "draft"}
+for i, h in enumerate(headers_variants):
+  try:
+    r = requests.post(f"{WP_URL}/wp-json/wp/v2/posts", headers=h, json=post_data, timeout=30)
+    print(f"  variant#{i}: {r.status_code}")
+    if r.status_code in (200, 201):
+      d = r.json()
+      pid = d.get("id","?")
+      print(f"  -> POST SUCCESS! ID={pid} link={d.get('link','?')}")
+      requests.delete(f"{WP_URL}/wp-json/wp/v2/posts/{pid}?force=true", headers=h, timeout=15)
+      print(f"  -> Test post deleted")
+      break
+    else:
+      print(f"  -> Body: {r.text[:400]}")
+  except Exception as e:
+    print(f"  variant#{i}: ERROR {e}")
+
+print()
+print("[TEST 4] GET /wp-json/ without auth - bot check")
+try:
+  r = requests.get(f"{WP_URL}/wp-json/", timeout=15)
+  print(f"  No-auth: {r.status_code}")
+  body = r.text
+  if "litespeed" in body.lower():
+    print("  -> LITESPEED BOT PROTECTION DETECTED!")
+  elif r.status_code == 200:
+    print("  -> No auth required for API root")
+  else:
+    print(f"  -> Body: {body[:300]}")
+  print("  Response headers:")
+  for k,v in list(r.headers.items())[:10]:
+    print(f"    {k}: {v}")
+except Exception as e:
+  print(f"  ERROR: {e}")
+
+print()
+print("[TEST 5] XMLRPC availability")
+try:
+  r = requests.get(f"{WP_URL}/xmlrpc.php", timeout=15)
+  print(f"  XMLRPC: {r.status_code}")
+  if "XML-RPC" in r.text:
+    print("  -> XMLRPC ENABLED")
+  else:
+    print(f"  -> Body: {r.text[:200]}")
+except Exception as e:
+  print(f"  ERROR: {e}")
+
+print()
+print("DIAGNOSTIC COMPLETE")
+PYEOF
