@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""NEXUS-14: Self-contained single article production test. v2"""
+"""NEXUS-14: Self-contained single article production test. v3"""
 import sys, os, json, time, requests, re
 from base64 import b64encode
 from datetime import datetime
@@ -10,7 +10,6 @@ except ImportError:
     import openai
 
 START = time.time()
-# Support both old and new env var names
 MARKET = (os.environ.get("INPUT_MARKET") or os.environ.get("TARGET_MARKET") or "canada").lower()
 TOPIC = (os.environ.get("INPUT_TOPIC") or os.environ.get("TOPIC_OVERRIDE") or "").strip()
 if not TOPIC: TOPIC = "best way to send money from USA to Canada 2026"
@@ -25,15 +24,17 @@ EMAIL = os.environ.get("EMAIL_RECIPIENT","talalnewjersey@gmail.com")
 RUN_ID = os.environ.get("RUN_ID","test")
 
 print("="*70)
-print("NEXUS-14 SINGLE ARTICLE TEST v2")
-print(f"Timestamp: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
+print("NEXUS-14 SINGLE ARTICLE TEST v3")
+print(f"Timestamp: {datetime.utcnow().strftime(chr(37)+chr(89)+chr(45)+chr(109)+chr(45)+chr(100)+chr(32)+chr(37)+chr(72)+chr(58)+chr(37)+chr(77)+chr(58)+chr(37)+chr(83))} UTC")
 print(f"Topic: {TOPIC}")
 print(f"Market: {MARKET.upper()}")
-print(f"OpenAI: {'configured' if OPENAI_KEY else 'MISSING'}")
-print(f"WordPress: {WP_URL} | user={WP_USER[:20] if WP_USER else 'MISSING'}")
-print(f"Gemini: {'configured' if GEMINI_KEY else 'not set'}")
-print(f"Nano Banana: {'configured' if NANO_KEY else 'not set'}")
-print(f"SendGrid: {'configured' if SG_KEY else 'not set'}")
+ok_str = "configured"
+miss_str = "MISSING"
+print(f"OpenAI: {ok_str if OPENAI_KEY else miss_str}")
+print(f"WordPress: {WP_URL} | user={WP_USER[:20] if WP_USER else miss_str}")
+print(f"Gemini: {ok_str if GEMINI_KEY else 'not set'}")
+print(f"Nano Banana: {ok_str if NANO_KEY else 'not set'}")
+print(f"SendGrid: {ok_str if SG_KEY else 'not set'}")
 print("="*70)
 
 agents = {}
@@ -54,10 +55,10 @@ openai_cost = 0.0
 try:
     if not OPENAI_KEY: raise ValueError("OPENAI_API_KEY not set")
     client = openai.OpenAI(api_key=OPENAI_KEY)
-    prompt = f"""Write a comprehensive, expert-level, SEO-optimized article of at least 2500 words for MoneyAbroadGuide.com.
+    prompt = """Write a comprehensive, expert-level, SEO-optimized article of at least 2500 words for MoneyAbroadGuide.com.
 
-Topic: {TOPIC}
-Market: {MARKET.upper()} (target: expats, immigrants, international money senders)
+Topic: """ + TOPIC + """
+Market: """ + MARKET.upper() + """ (target: expats, immigrants, international money senders)
 
 MANDATORY STRUCTURE:
 1. # Title (H1) - compelling, SEO-focused
@@ -65,7 +66,7 @@ MANDATORY STRUCTURE:
 3. ## What You Need to Know (key facts, regulations 2026)
 4. ## Best Methods / Services (detailed comparison with costs, speeds)
 5. ## Step-by-Step Guide (numbered steps)
-6. ## Costs & Fees Comparison (include real figures)
+6. ## Costs and Fees Comparison (include real figures)
 7. ## Tips to Save Money
 8. ## Common Mistakes to Avoid
 9. ## FAQ (minimum 6 questions with detailed answers)
@@ -74,7 +75,7 @@ MANDATORY STRUCTURE:
 REQUIREMENTS:
 - Minimum 2500 words - be thorough and detailed
 - Include real statistics, fees, exchange rates for 2026
-- Mention: Wise, Remitly, PayPal, bank wires, as options
+- Mention: Wise, Remitly, PayPal, bank wires as options
 - Format in clean Markdown
 - Author expertise: certified financial advisor perspective"""
     resp = client.chat.completions.create(
@@ -101,7 +102,7 @@ REQUIREMENTS:
 except Exception as e:
     agents["03_article_writer"] = {"status":"FAIL","error":str(e)}
     print(f"  FAIL: {e}")
-    article_content = f"# {TOPIC}\n\nError: {e}"
+    article_content = "# " + TOPIC + "\n\nError: " + str(e)
     with open("article_data.json","w") as f:
         json.dump({"title":TOPIC,"content":article_content,"topic":TOPIC,"market":MARKET,"word_count":0,"cost_usd":0},f)
 
@@ -118,9 +119,8 @@ try:
     seo += 15 if has_faq else 0
     seo += 15 if has_h2 else 8
     seo += 10 if has_h3 else 5
-    seo += 15; seo += 15
-    seo = min(seo, 100)
-    eeat = 75 + (5 if any(c.isdigit() for c in c) else 0) + (5 if has_faq else 0) + (5 if wc >= 2000 else 0) + (5 if has_h2 else 0)
+    seo = min(seo + 30, 100)
+    eeat = 75 + (5 if any(ch.isdigit() for ch in c) else 0) + (5 if has_faq else 0) + (5 if wc >= 2000 else 0) + (5 if has_h2 else 0)
     eeat = min(eeat, 100)
     links = [
         {"anchor":"international money transfer","url":"/international-money-transfer"},
@@ -149,60 +149,43 @@ except Exception as e:
     print(f"  FAIL: {e}")
     with open("quality_data.json","w") as f: json.dump({"seo_score":0,"eeat_score":0,"internal_links_count":0,"affiliate_blocks_count":0},f)
 
-# === AGENTS 09-10: Image Generation (DALL-E 3 via OpenAI) ===
+# === AGENTS 09-10: Image Generation ===
 print("\n[09-10] Image Generation...")
 t0 = time.time()
 img_generated = 0
 img_cost = 0.0
 img_results = []
 try:
-    prompts = [
-        {"type":"featured","prompt":f"Professional financial infographic: {TOPIC}. Modern design, blue/green colors, clean typography, business style."},
-        {"type":"secondary_1","prompt":"International money transfer concept: dollar to Canadian dollar, bank transfer arrows, fintech illustration"},
-        {"type":"secondary_2","prompt":"Person using smartphone for international bank transfer, modern mobile banking app interface, professional photo"}
+    img_prompts = [
+        {"type":"featured","prompt":"Professional financial infographic about " + TOPIC + ". Modern design, blue and green colors."},
+        {"type":"secondary_1","prompt":"International money transfer concept, dollar to Canadian dollar, bank transfer, fintech illustration"},
+        {"type":"secondary_2","prompt":"Person using smartphone for international bank transfer, modern mobile banking app interface"}
     ]
-    agents["09_image_prompts"] = {"status":"PASS","prompts_generated":len(prompts)}
-    # Try DALL-E 3 via OpenAI first (most reliable)
+    agents["09_image_prompts"] = {"status":"PASS","prompts_generated":len(img_prompts)}
     if OPENAI_KEY:
         client2 = openai.OpenAI(api_key=OPENAI_KEY)
-        for p in prompts:
+        for p in img_prompts:
             try:
-                print(f"  Generating {p['type']} with DALL-E 3...")
+                print("  Generating " + p["type"] + " with DALL-E 3...")
                 r = client2.images.generate(model="dall-e-3",prompt=p["prompt"],size="1024x1024",quality="standard",n=1)
                 url = r.data[0].url
                 img_results.append({"type":p["type"],"url":url,"status":"generated","provider":"dall-e-3"})
                 img_generated += 1
                 img_cost += 0.04
-                print(f"  {p['type']}: OK")
+                print("  " + p["type"] + ": OK")
             except Exception as ie:
-                print(f"  {p['type']}: FAILED - {ie}")
-                # Try Nano Banana as fallback
-                if NANO_KEY:
-                    try:
-                        rb = requests.post("https://api.studio.ai/v1/images/generations",
-                            headers={"Authorization":f"Bearer {NANO_KEY}","Content-Type":"application/json"},
-                            json={"prompt":p["prompt"],"n":1,"size":"1024x1024"},timeout=45)
-                        if rb.status_code == 200:
-                            url2 = rb.json().get("data",[{}])[0].get("url","")
-                            img_results.append({"type":p["type"],"url":url2,"status":"generated","provider":"nano-banana"})
-                            img_generated += 1; img_cost += 0.02
-                            print(f"  {p['type']}: OK (nano-banana)")
-                        else:
-                            img_results.append({"type":p["type"],"status":"failed","error":f"nano {rb.status_code}"})
-                    except Exception as ne:
-                        img_results.append({"type":p["type"],"status":"failed","error":str(ne)})
-                else:
-                    img_results.append({"type":p["type"],"status":"failed","error":str(ie)})
+                print("  " + p["type"] + " FAILED: " + str(ie))
+                img_results.append({"type":p["type"],"status":"failed","error":str(ie)})
     with open("image_data.json","w") as f:
-        json.dump({"total_requested":len(prompts),"total_generated":img_generated,
-            "total_failed":len(prompts)-img_generated,"images":img_results,"cost_usd":img_cost},f)
-    agents["10_image_production"] = {"status":"PASS" if img_generated>0 else "PARTIAL",
-        "images_generated":img_generated,"cost_usd":img_cost,"time":round(time.time()-t0,2)}
-    print(f"  Images: {img_generated}/{len(prompts)} generated | cost=${img_cost:.4f}")
+        json.dump({"total_requested":len(img_prompts),"total_generated":img_generated,
+            "total_failed":len(img_prompts)-img_generated,"images":img_results,"cost_usd":img_cost},f)
+    img_status = "PASS" if img_generated > 0 else "PARTIAL"
+    agents["10_image_production"] = {"status":img_status,"images_generated":img_generated,"cost_usd":img_cost,"time":round(time.time()-t0,2)}
+    print("  Images: " + str(img_generated) + "/" + str(len(img_prompts)) + " | cost=$" + str(round(img_cost,4)))
 except Exception as e:
     agents["09_image_prompts"] = {"status":"FAIL","error":str(e)}
     agents["10_image_production"] = {"status":"FAIL","error":str(e)}
-    print(f"  FAIL: {e}")
+    print("  FAIL: " + str(e))
     with open("image_data.json","w") as f: json.dump({"total_requested":3,"total_generated":0,"total_failed":3,"images":[],"cost_usd":0},f)
 
 # === AGENTS 11-12: WordPress Draft ===
@@ -211,50 +194,47 @@ t0 = time.time()
 wp_ok = False; post_id = None; post_url = ""; edit_url = ""
 try:
     if not all([WP_URL, WP_USER, WP_PASS]):
-        raise ValueError(f"WP credentials incomplete: url={bool(WP_URL)} user={bool(WP_USER)} pass={bool(WP_PASS)}")
-    api = f"{WP_URL}/wp-json/wp/v2/posts"
-    creds = b64encode(f"{WP_USER}:{WP_PASS}".encode()).decode()
-    hdrs = {"Authorization":f"Basic {creds}","Content-Type":"application/json"}
-    # Test auth first
-    test_r = requests.get(f"{WP_URL}/wp-json/wp/v2/users/me",headers=hdrs,timeout=15)
+        raise ValueError("WP credentials incomplete: url=" + str(bool(WP_URL)) + " user=" + str(bool(WP_USER)) + " pass=" + str(bool(WP_PASS)))
+    api = WP_URL + "/wp-json/wp/v2/posts"
+    creds = b64encode((WP_USER + ":" + WP_PASS).encode()).decode()
+    hdrs = {"Authorization": "Basic " + creds, "Content-Type": "application/json"}
+    test_r = requests.get(WP_URL + "/wp-json/wp/v2/users/me", headers=hdrs, timeout=15)
     if test_r.status_code == 401:
-        raise ValueError(f"WP Auth failed 401: check username and application password. Response: {test_r.text[:300]}")
+        raise ValueError("WP Auth failed 401: " + test_r.text[:300])
     elif test_r.status_code == 200:
         me = test_r.json()
-        print(f"  WP Auth OK - logged in as: {me.get('name','unknown')} (id={me.get('id')})")
+        print("  WP Auth OK - logged in as: " + me.get("name","unknown") + " (id=" + str(me.get("id")) + ")")
     else:
-        print(f"  WP Auth warning: {test_r.status_code}")
-    # Convert markdown to HTML
-    html = re.sub(r"^### (.+)$",r"<h3>\1</h3>",article_content,flags=re.MULTILINE)
-    html = re.sub(r"^## (.+)$",r"<h2>\1</h2>",html,flags=re.MULTILINE)
-    html = re.sub(r"^# (.+)$",r"",html,flags=re.MULTILINE)  # Remove H1 (title in post title field)
-    html = re.sub(r"\*\*(.+?)\*\*",r"<strong>\1</strong>",html)
-    html = re.sub(r"\*(.+?)\*",r"<em>\1</em>",html)
+        print("  WP Auth warning: " + str(test_r.status_code))
+    html = re.sub(r"^### (.+)$", r"<h3>\1</h3>", article_content, flags=re.MULTILINE)
+    html = re.sub(r"^## (.+)$", r"<h2>\1</h2>", html, flags=re.MULTILINE)
+    html = re.sub(r"^# .+$", "", html, flags=re.MULTILINE)
+    html = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", html)
+    html = re.sub(r"\*(.+?)\*", r"<em>\1</em>", html)
     paras = [p.strip() for p in html.split("\n\n") if p.strip()]
-    html = "\n\n".join(f"<p>{p}</p>" if not p.startswith("<") else p for p in paras)
-    r = requests.post(api,json={"title":article_title,"content":html,"status":"draft"},headers=hdrs,timeout=30)
+    html = "\n\n".join(("<p>" + p + "</p>" if not p.startswith("<") else p) for p in paras)
+    r = requests.post(api, json={"title":article_title,"content":html,"status":"draft"}, headers=hdrs, timeout=30)
     if r.status_code in [200,201]:
         d = r.json(); post_id = d.get("id"); post_url = d.get("link","")
-        edit_url = f"{WP_URL}/wp-admin/post.php?post={post_id}&action=edit"
+        edit_url = WP_URL + "/wp-admin/post.php?post=" + str(post_id) + "&action=edit"
         wp_ok = True
         with open("wordpress_result.json","w") as f:
             json.dump({"status":"success","post_id":post_id,"post_link":post_url,"edit_url":edit_url},f)
         agents["11_wordpress"] = {"status":"PASS","post_id":post_id,"edit_url":edit_url,"time":round(time.time()-t0,2)}
         agents["12_quality_auditor"] = {"status":"PASS"}
-        print(f"  PASS - Draft created! Post ID: {post_id}")
-        print(f"  Edit URL: {edit_url}")
-        print(f"  Public URL: {post_url}")
+        print("  PASS - Draft created! Post ID: " + str(post_id))
+        print("  Edit URL: " + edit_url)
     else:
         err = r.text[:600]
         with open("wordpress_result.json","w") as f: json.dump({"status":"failed","error":err,"http":r.status_code},f)
         agents["11_wordpress"] = {"status":"FAIL","http_status":r.status_code,"error":err[:200]}
         agents["12_quality_auditor"] = {"status":"FAIL"}
-        print(f"  FAIL - HTTP {r.status_code}: {err[:300]}")
+        print("  FAIL - HTTP " + str(r.status_code) + ": " + err[:300])
 except Exception as e:
     with open("wordpress_result.json","w") as f: json.dump({"status":"error","error":str(e)},f)
     agents["11_wordpress"] = {"status":"FAIL","error":str(e)}
     agents["12_quality_auditor"] = {"status":"FAIL"}
-    print(f"  FAIL: {e}")
+    print("  FAIL: " + str(e))
 
 # === AGENTS 13-14: Final Report & Email ===
 print("\n[13-14] Final Report & Email...")
@@ -276,36 +256,37 @@ try:
     critical = checks["article_written"] and checks["word_count_2000plus"] and checks["wordpress_draft_created"]
     verdict = "PASS" if critical and passed >= 6 else "PARTIAL_PASS" if passed >= 4 else "FAIL"
     status_label = "VERIFIED PRODUCTION READY" if verdict == "PASS" else "NOT VERIFIED"
-    total_cost = openai_cost + img_cost; elapsed = round(time.time()-START,1)
+    total_cost = openai_cost + img_cost
+    elapsed = round(time.time()-START,1)
     agents["13_reporter"] = {"status":"PASS"}
     agents["14_scheduler"] = {"status":"PASS"}
     report = {"NEXUS14_EXECUTION_REPORT":{
-        "timestamp":datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
-        "run_id":RUN_ID,"VERDICT":verdict,"STATUS":status_label,
-        "execution_time_sec":elapsed,
-        "article":{"title":article_title,"topic":TOPIC,"market":MARKET,
-            "word_count":word_count,"model":"gpt-4o-mini"},
-        "quality_scores":{"seo_score":seo,"eeat_score":eeat,"internal_links":il,"affiliate_blocks":af},
-        "wordpress":{"status":"success" if wp_ok else "failed",
-            "post_id":post_id or "N/A","edit_url":edit_url or "N/A","post_url":post_url or "N/A"},
-        "images":{"generated":img_generated,"failed":3-min(img_generated,3)},
-        "agents_status":agents,
-        "PRODUCTION_COST_REPORT":{
-            "openai_article_usd":round(openai_cost,6),
-            "images_usd":round(img_cost,4),
-            "total_per_article_usd":round(total_cost,6),
-            "estimated_20_per_day_usd":round(total_cost*20,4),
-            "estimated_600_per_month_usd":round(total_cost*600,2)
+        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "run_id": RUN_ID,
+        "VERDICT": verdict,
+        "STATUS": status_label,
+        "execution_time_sec": elapsed,
+        "article": {"title":article_title,"topic":TOPIC,"market":MARKET,"word_count":word_count,"model":"gpt-4o-mini"},
+        "quality_scores": {"seo_score":seo,"eeat_score":eeat,"internal_links":il,"affiliate_blocks":af},
+        "wordpress": {"status":"success" if wp_ok else "failed","post_id":post_id or "N/A","edit_url":edit_url or "N/A","post_url":post_url or "N/A"},
+        "images": {"generated":img_generated,"failed":3-min(img_generated,3),"results":img_results},
+        "agents_status": agents,
+        "PRODUCTION_COST_REPORT": {
+            "openai_article_usd": round(openai_cost,6),
+            "images_usd": round(img_cost,4),
+            "total_per_article_usd": round(total_cost,6),
+            "estimated_20_per_day_usd": round(total_cost*20,4),
+            "estimated_600_per_month_usd": round(total_cost*600,2)
         },
-        "PRODUCTION_CAPACITY_REPORT":{
-            "articles_per_day_target":20,
-            "time_per_article_sec":elapsed,
-            "parallel_execution":"Yes - GitHub Actions matrix",
-            "daily_cost_usd":round(total_cost*20,4),
-            "monthly_cost_usd":round(total_cost*600,2)
+        "PRODUCTION_CAPACITY_REPORT": {
+            "articles_per_day_target": 20,
+            "time_per_article_sec": elapsed,
+            "parallel_execution": "Yes - GitHub Actions matrix",
+            "daily_cost_usd": round(total_cost*20,4),
+            "monthly_cost_usd": round(total_cost*600,2)
         },
-        "quality_gate_checks":checks,
-        "checks_passed":f"{passed}/{total}"
+        "quality_gate_checks": checks,
+        "checks_passed": str(passed) + "/" + str(total)
     }}
     with open("execution_report.json","w") as f: json.dump(report,f,indent=2)
     r2 = report["NEXUS14_EXECUTION_REPORT"]
@@ -314,80 +295,85 @@ try:
     print("="*70)
     print(json.dumps(report,indent=2))
     print("="*70)
-    print(f"FINAL VERDICT: {verdict}")
-    print(f"STATUS: {status_label}")
-    print(f"Checks: {passed}/{total} | Time: {elapsed}s | Cost: ${total_cost:.6f}")
+    print("FINAL VERDICT: " + verdict)
+    print("STATUS: " + status_label)
+    print("Checks: " + str(passed) + "/" + str(total) + " | Time: " + str(elapsed) + "s | Cost: $" + str(round(total_cost,6)))
     print("="*70)
-    # Send email via SendGrid
     if SG_KEY:
         vc = "green" if verdict=="PASS" else "orange" if verdict=="PARTIAL_PASS" else "red"
-        subject = f"[NEXUS-14] {verdict} | {article_title[:50]}"
-        wp_link = f'<a href="{edit_url}">{edit_url}</a>' if edit_url and edit_url != "N/A" else "N/A"
-        img_list = "".join(f'<li><b>{x["type"]}:</b> <a href="{x.get("url","#")}">{x.get("url","failed")[:80]}</a></li>' for x in img_results) if img_results else "<li>No images generated</li>"
-        agent_list = "".join(f'<tr><td>{k}</td><td style="color:{\"green\" if v.get(\"status\")==\"PASS\" else \"red\"}">{v.get(\"status\",\"\")}</td><td>{str(v)[:100]}</td></tr>' for k,v in agents.items())
-        body = f"""<html><body style="font-family:Arial;max-width:800px;margin:0 auto">
-        <div style="background:#1a1a2e;color:white;padding:20px;border-radius:8px 8px 0 0">
-        <h1 style="margin:0;font-size:24px">&#128640; NEXUS-14 Execution Report</h1>
-        <p style="margin:5px 0;opacity:.8">MoneyAbroadGuide Autonomous Newsroom V1</p>
-        </div>
-        <div style="background:#f8f9fa;padding:20px">
-        <div style="background:white;border-left:6px solid {vc};padding:15px;margin-bottom:20px;border-radius:4px">
-        <h2 style="color:{vc};margin:0">VERDICT: {verdict}</h2>
-        <p style="font-size:18px;font-weight:bold;margin:8px 0">{status_label}</p>
-        <p style="color:#666">Checks: {passed}/{total} | Time: {elapsed}s | Run: {RUN_ID}</p>
-        </div>
-        <h3>Article</h3>
-        <table style="width:100%;border-collapse:collapse">
-        <tr><td style="padding:8px;background:#e9ecef;width:200px"><b>Title</b></td><td style="padding:8px">{article_title}</td></tr>
-        <tr><td style="padding:8px;background:#e9ecef"><b>Topic</b></td><td style="padding:8px">{TOPIC}</td></tr>
-        <tr><td style="padding:8px;background:#e9ecef"><b>Market</b></td><td style="padding:8px">{MARKET.upper()}</td></tr>
-        <tr><td style="padding:8px;background:#e9ecef"><b>Words</b></td><td style="padding:8px">{word_count}</td></tr>
-        <tr><td style="padding:8px;background:#e9ecef"><b>Model</b></td><td style="padding:8px">GPT-4o-mini</td></tr>
-        </table>
-        <h3>Quality Scores</h3>
-        <table style="width:100%;border-collapse:collapse">
-        <tr><td style="padding:8px;background:#e9ecef"><b>SEO Score</b></td><td style="padding:8px">{seo}/100</td></tr>
-        <tr><td style="padding:8px;background:#e9ecef"><b>EEAT Score</b></td><td style="padding:8px">{eeat}/100</td></tr>
-        <tr><td style="padding:8px;background:#e9ecef"><b>Internal Links</b></td><td style="padding:8px">{il}</td></tr>
-        <tr><td style="padding:8px;background:#e9ecef"><b>Affiliate Blocks</b></td><td style="padding:8px">{af}</td></tr>
-        </table>
-        <h3>WordPress</h3>
-        <p><b>Status:</b> {"&#9989; Draft created" if wp_ok else "&#10060; Failed"}</p>
-        <p><b>Post ID:</b> {post_id or "N/A"}</p>
-        <p><b>Edit URL:</b> {wp_link}</p>
-        <h3>Images ({img_generated}/3)</h3>
-        <ul>{img_list}</ul>
-        <h3>Cost Report</h3>
-        <table style="width:100%;border-collapse:collapse">
-        <tr><td style="padding:8px;background:#e9ecef"><b>OpenAI per article</b></td><td style="padding:8px">${openai_cost:.6f}</td></tr>
-        <tr><td style="padding:8px;background:#e9ecef"><b>Images per article</b></td><td style="padding:8px">${img_cost:.4f}</td></tr>
-        <tr style="font-weight:bold"><td style="padding:8px;background:#dee2e6"><b>Total per article</b></td><td style="padding:8px;background:#dee2e6">${total_cost:.6f}</td></tr>
-        <tr><td style="padding:8px;background:#e9ecef">20 articles/day</td><td style="padding:8px">${total_cost*20:.4f}/day</td></tr>
-        <tr><td style="padding:8px;background:#e9ecef">600 articles/month</td><td style="padding:8px">${total_cost*600:.2f}/month</td></tr>
-        </table>
-        <h3>All 14 Agents</h3>
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <tr style="background:#343a40;color:white"><th style="padding:8px;text-align:left">Agent</th><th>Status</th><th>Details</th></tr>
-        {agent_list}
-        </table>
-        <p style="color:#888;font-size:12px;margin-top:20px">
-        Generated by NEXUS-14 | {r2["timestamp"]} | Run {RUN_ID}
-        </p></div></body></html>"""
+        subject = "[NEXUS-14] " + verdict + " | " + article_title[:50]
+        wp_link = edit_url if (edit_url and edit_url != "N/A") else "N/A"
+        img_items = ""
+        for x in img_results:
+            xurl = x.get("url","")
+            xtype = x.get("type","")
+            xstat = x.get("status","")
+            img_items += "<li><b>" + xtype + ":</b> " + ("<a href='" + xurl + "'>" + xurl[:80] + "</a>" if xurl else "failed") + "</li>"
+        agent_rows = ""
+        for k, v in agents.items():
+            astat = v.get("status","")
+            acolor = "green" if astat == "PASS" else "red"
+            adetail = str(v)[:100]
+            agent_rows += "<tr><td style='padding:6px'>" + k + "</td><td style='color:" + acolor + ";padding:6px'>" + astat + "</td><td style='padding:6px;font-size:11px'>" + adetail + "</td></tr>"
+        body = """<html><body style='font-family:Arial;max-width:800px;margin:0 auto'>
+<div style='background:#1a1a2e;color:white;padding:20px;border-radius:8px 8px 0 0'>
+<h1 style='margin:0'>NEXUS-14 Execution Report</h1>
+<p style='margin:5px 0;opacity:.8'>MoneyAbroadGuide Autonomous Newsroom V1</p>
+</div>
+<div style='background:#f8f9fa;padding:20px'>
+<div style='background:white;border-left:6px solid """ + vc + """;padding:15px;margin-bottom:20px;border-radius:4px'>
+<h2 style='color:""" + vc + """;margin:0'>VERDICT: """ + verdict + """</h2>
+<p style='font-size:18px;font-weight:bold;margin:8px 0'>""" + status_label + """</p>
+<p style='color:#666'>Checks: """ + str(passed) + "/" + str(total) + """ | Time: """ + str(elapsed) + """s</p>
+</div>
+<h3>Article</h3>
+<table style='width:100%;border-collapse:collapse'>
+<tr><td style='padding:8px;background:#e9ecef;width:160px'><b>Title</b></td><td style='padding:8px'>""" + article_title + """</td></tr>
+<tr><td style='padding:8px;background:#e9ecef'><b>Words</b></td><td style='padding:8px'>""" + str(word_count) + """</td></tr>
+<tr><td style='padding:8px;background:#e9ecef'><b>Market</b></td><td style='padding:8px'>""" + MARKET.upper() + """</td></tr>
+</table>
+<h3>Quality Scores</h3>
+<table style='width:100%;border-collapse:collapse'>
+<tr><td style='padding:8px;background:#e9ecef'><b>SEO</b></td><td style='padding:8px'>""" + str(seo) + """/100</td></tr>
+<tr><td style='padding:8px;background:#e9ecef'><b>EEAT</b></td><td style='padding:8px'>""" + str(eeat) + """/100</td></tr>
+<tr><td style='padding:8px;background:#e9ecef'><b>Links</b></td><td style='padding:8px'>""" + str(il) + """</td></tr>
+</table>
+<h3>WordPress</h3>
+<p><b>Status:</b> """ + ("Draft created" if wp_ok else "Failed") + """</p>
+<p><b>Post ID:</b> """ + str(post_id or "N/A") + """</p>
+<p><b>Edit:</b> <a href='""" + wp_link + """'>""" + wp_link + """</a></p>
+<h3>Images (""" + str(img_generated) + """/3)</h3>
+<ul>""" + (img_items or "<li>No images</li>") + """</ul>
+<h3>Production Cost</h3>
+<table style='width:100%;border-collapse:collapse'>
+<tr><td style='padding:8px;background:#e9ecef'><b>OpenAI per article</b></td><td style='padding:8px'>$""" + str(round(openai_cost,6)) + """</td></tr>
+<tr><td style='padding:8px;background:#e9ecef'><b>Images per article</b></td><td style='padding:8px'>$""" + str(round(img_cost,4)) + """</td></tr>
+<tr><td style='padding:8px;background:#dee2e6'><b>Total per article</b></td><td style='padding:8px;font-weight:bold'>$""" + str(round(total_cost,6)) + """</td></tr>
+<tr><td style='padding:8px;background:#e9ecef'>20/day</td><td style='padding:8px'>$""" + str(round(total_cost*20,4)) + """/day</td></tr>
+<tr><td style='padding:8px;background:#e9ecef'>600/month</td><td style='padding:8px'>$""" + str(round(total_cost*600,2)) + """/month</td></tr>
+</table>
+<h3>All 14 Agents</h3>
+<table style='width:100%;border-collapse:collapse;font-size:12px'>
+<tr style='background:#343a40;color:white'><th style='padding:8px;text-align:left'>Agent</th><th>Status</th><th>Details</th></tr>""" + agent_rows + """
+</table>
+<p style='color:#888;font-size:11px;margin-top:20px'>NEXUS-14 | """ + r2["timestamp"] + """</p>
+</div></body></html>"""
         try:
             sg_resp = requests.post("https://api.sendgrid.com/v3/mail/send",
-                headers={"Authorization":f"Bearer {SG_KEY}","Content-Type":"application/json"},
+                headers={"Authorization": "Bearer " + SG_KEY, "Content-Type": "application/json"},
                 json={"personalizations":[{"to":[{"email":EMAIL}]}],
                     "from":{"email":"nexus14@moneyabroadguide.com","name":"NEXUS-14"},
                     "subject":subject,"content":[{"type":"text/html","value":body}]},
                 timeout=30)
-            print(f"  Email: {sg_resp.status_code} to {EMAIL}")
+            print("  Email: " + str(sg_resp.status_code) + " to " + EMAIL)
             if sg_resp.status_code != 202:
-                print(f"  Email error: {sg_resp.text[:300]}")
-        except Exception as e: print(f"  Email error: {e}")
+                print("  Email error: " + sg_resp.text[:300])
+        except Exception as e:
+            print("  Email error: " + str(e))
     else:
         print("  Email: SendGrid key not configured")
     if verdict == "FAIL": sys.exit(1)
 except Exception as e:
-    print(f"Report error: {e}")
+    print("Report error: " + str(e))
     import traceback; traceback.print_exc()
     sys.exit(1)
