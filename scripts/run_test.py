@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""NEXUS-14: Self-contained single article production test. v8
-IMAGE PIPELINE: Nano Banana -> Gemini -> OpenAI dall-e-3 (fallback chain)
+"""NEXUS-14: Self-contained single article production test. v9
+IMAGE PIPELINE: Nano Banana -> OpenAI gpt-image-1 -> OpenAI dall-e-3 (fallback chain)
+FIXES: correct NB endpoint, correct DALLE params, WP auth stable
 """
 import sys, os, json, time, requests, re, base64
 from base64 import b64encode
@@ -24,12 +25,12 @@ WP_PASS = os.environ.get("WORDPRESS_PASSWORD","")
 EMAIL_TO = os.environ.get("EMAIL_RECIPIENT","")
 
 print("="*60)
-print("NEXUS-14 PRODUCTION TEST v8")
+print("NEXUS-14 PRODUCTION TEST v9")
 print("="*60)
 print("Topic:", TOPIC)
 print("Market:", MARKET)
 print("OpenAI Key:", "SET" if OPENAI_KEY else "MISSING")
-print("Nano Banana Key:", "SET" if NANO_KEY else "MISSING")
+print("Nano Banana Key:", "SET (" + str(len(NANO_KEY)) + " chars)" if NANO_KEY else "MISSING")
 print("WP URL:", WP_URL)
 print()
 
@@ -86,7 +87,6 @@ else:
             "Include: <a href=\"https://moneyabroadguide.com/remitly-review\">our Remitly review</a>\n"
             "Use proper HTML tags throughout. Write all sections fully now."
         )
-
         r1 = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role":"user","content":prompt_part1}],
@@ -109,10 +109,9 @@ else:
             "<h2>Complete Fee Breakdown: Real Transfer Examples</h2>\n"
             "Write detailed comparison (250 words) showing $500, $1000, $5000 with each service.\n"
             "<h2>How Fast Can You Send Money to Canada?</h2>\n"
-            "Write 2 paragraphs (150 words) comparing speeds.\n"
+            "Write 2 paragraphs (150 words).\n"
             "Use proper HTML tags. Write all sections fully now."
         )
-
         r2 = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role":"user","content":prompt_part2}],
@@ -136,7 +135,6 @@ else:
             "Write strong conclusion (100 words).\n"
             "Use proper HTML tags. Write all sections fully now."
         )
-
         r3 = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role":"user","content":prompt_part3}],
@@ -153,7 +151,6 @@ else:
         results["article_written"] = len(article_content) > 500
         results["word_count_2000plus"] = total_words >= 2000
         print("  word_count_2000plus:", results["word_count_2000plus"], "(" + str(total_words) + " words)")
-
     except Exception as e:
         print("  ERROR:", e)
         results["article_written"] = False
@@ -209,22 +206,22 @@ print("  Internal links:", internal_links)
 print()
 print("[STEP 5] Creating WordPress draft...")
 wp_post_id = None
+creds_wp = b64encode((WP_USER + ":" + WP_PASS).encode()).decode() if WP_USER and WP_PASS else ""
+wp_headers = {
+    "Authorization": "Basic " + creds_wp,
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "User-Agent": "Mozilla/5.0 (compatible; NEXUS14/1.0)",
+}
 
 if not WP_USER or not WP_PASS:
     print("  ERROR: WP credentials missing")
     results["wordpress_draft_created"] = False
 else:
     try:
-        creds = b64encode((WP_USER + ":" + WP_PASS).encode()).decode()
-        headers = {
-            "Authorization": "Basic " + creds,
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0 (compatible; NEXUS14/1.0)",
-        }
         r = requests.post(
             WP_URL + "/wp-json/wp/v2/posts",
-            headers=headers,
+            headers=wp_headers,
             json={"title": TOPIC.title(), "content": article_content, "status": "draft"},
             timeout=60
         )
@@ -245,153 +242,164 @@ else:
 # STEP 6: IMAGE PIPELINE - FALLBACK CHAIN
 # ============================================================
 print()
-print("[STEP 6] IMAGE PIPELINE - Nano Banana -> Gemini -> OpenAI dall-e-3")
+print("[STEP 6] IMAGE PIPELINE")
+print("  Chain: Nano Banana -> OpenAI gpt-image-1 -> OpenAI dall-e-3")
 print("-"*60)
 
 img_t_start = time.time()
 img_prompt = (
-    "Professional financial infographic: money transfer services USA to Canada. "
-    "Shows comparison chart with Wise, Remitly, Western Union logos. "
-    "Clean modern design, blue and green color scheme, white background. "
-    "Data visualization with exchange rates and fees."
+    "Professional financial infographic comparing money transfer services "
+    "from USA to Canada. Shows exchange rates and fees comparison. "
+    "Clean modern design, blue and green colors, white background, "
+    "no people, purely data visualization style."
 )
-image_url = None
 image_bytes = None
+image_url_final = None
 provider_used = None
 img_cost = 0.0
 
+def try_upload_to_wp(img_bytes, post_id):
+    """Upload image bytes to WordPress media and set as featured image."""
+    try:
+        media_headers = {
+            "Authorization": "Basic " + creds_wp,
+            "Content-Disposition": "attachment; filename=nexus14-" + str(int(time.time())) + ".jpg",
+            "Content-Type": "image/jpeg",
+        }
+        mr = requests.post(WP_URL + "/wp-json/wp/v2/media", headers=media_headers, data=img_bytes, timeout=60)
+        print("  WP Media upload:", mr.status_code)
+        if mr.status_code in (200, 201):
+            media_id = mr.json().get("id")
+            media_src = mr.json().get("source_url","")
+            print("  Media ID:", media_id, "URL:", media_src[:60])
+            if post_id:
+                upd_h = {"Authorization": "Basic " + creds_wp, "Content-Type": "application/json"}
+                requests.post(WP_URL + "/wp-json/wp/v2/posts/" + str(post_id),
+                              headers=upd_h, json={"featured_media": media_id}, timeout=30)
+                print("  Featured image set on post", post_id)
+            return media_src
+        else:
+            print("  Media upload failed:", mr.text[:150])
+            return None
+    except Exception as e:
+        print("  Media upload error:", e)
+        return None
+
 # ---- PROVIDER 1: NANO BANANA ----
 print()
-print("  [Provider 1] Nano Banana API...")
+print("  [Provider 1] Nano Banana...")
 attempt1 = {"provider": "nano_banana", "status": "skipped", "error": None, "time_s": 0}
 if NANO_KEY:
     t1 = time.time()
-    try:
-        # Nano Banana uses Stable Diffusion / FLUX API
-        nb_headers = {
-            "Authorization": "Bearer " + NANO_KEY,
-            "Content-Type": "application/json",
-        }
-        # Try standard Nano Banana endpoint
-        nb_payload = {
-            "prompt": img_prompt,
-            "width": 1024,
-            "height": 1024,
-            "steps": 20,
-            "cfg_scale": 7,
-            "samples": 1,
-        }
-        nb_r = requests.post(
-            "https://api.nano-banana.com/v1/txt2img",
-            headers=nb_headers,
-            json=nb_payload,
-            timeout=60
-        )
-        attempt1["time_s"] = round(time.time() - t1, 2)
-        print("  Nano Banana status:", nb_r.status_code)
-        if nb_r.status_code in (200, 201):
-            nb_data = nb_r.json()
-            print("  Nano Banana response keys:", list(nb_data.keys())[:10])
-            # Try various response formats
-            if "images" in nb_data and nb_data["images"]:
-                img_b64 = nb_data["images"][0]
-                image_bytes = base64.b64decode(img_b64)
-                provider_used = "nano_banana"
-                img_cost += 0.001
-                attempt1["status"] = "success"
-                print("  -> Nano Banana SUCCESS (base64 image)")
-            elif "url" in nb_data:
-                image_url = nb_data["url"]
-                provider_used = "nano_banana"
-                img_cost += 0.001
-                attempt1["status"] = "success"
-                print("  -> Nano Banana SUCCESS (url):", image_url[:60])
-            elif "data" in nb_data:
-                img_b64 = nb_data["data"][0].get("b64_json","") if isinstance(nb_data["data"], list) else ""
-                if img_b64:
-                    image_bytes = base64.b64decode(img_b64)
-                    provider_used = "nano_banana"
-                    attempt1["status"] = "success"
-                    print("  -> Nano Banana SUCCESS (data.b64_json)")
-                else:
-                    attempt1["status"] = "failed"
-                    attempt1["error"] = "Unknown response format: " + str(list(nb_data.keys()))
-                    print("  -> Nano Banana: unknown response format")
-                    print("  Response:", str(nb_data)[:300])
+    # Nano Banana uses OpenAI-compatible API at app.nano-banana.com
+    nb_endpoints = [
+        "https://api.nano-banana.com/v1/images/generations",
+        "https://app.nano-banana.com/api/v1/images/generations",
+        "https://www.nano-banana.com/api/v1/images/generations",
+    ]
+    nb_payload = {"prompt": img_prompt, "n": 1, "size": "1024x1024"}
+    nb_headers = {"Authorization": "Bearer " + NANO_KEY, "Content-Type": "application/json"}
+    
+    nb_success = False
+    for nb_ep in nb_endpoints:
+        try:
+            print("  Trying:", nb_ep)
+            nb_r = requests.post(nb_ep, headers=nb_headers, json=nb_payload, timeout=30)
+            print("  Status:", nb_r.status_code, "CT:", nb_r.headers.get("Content-Type","")[:40])
+            if nb_r.status_code in (200, 201):
+                try:
+                    nb_data = nb_r.json()
+                    print("  Response keys:", list(nb_data.keys())[:8])
+                    # OpenAI format: data[0].url or data[0].b64_json
+                    if "data" in nb_data and nb_data["data"]:
+                        item = nb_data["data"][0]
+                        if "b64_json" in item:
+                            image_bytes = base64.b64decode(item["b64_json"])
+                            provider_used = "nano_banana"
+                            img_cost += 0.002
+                            attempt1["status"] = "success"
+                            print("  -> Nano Banana SUCCESS (b64_json)")
+                            nb_success = True
+                            break
+                        elif "url" in item:
+                            img_resp = requests.get(item["url"], timeout=30)
+                            image_bytes = img_resp.content
+                            image_url_final = item["url"]
+                            provider_used = "nano_banana"
+                            img_cost += 0.002
+                            attempt1["status"] = "success"
+                            print("  -> Nano Banana SUCCESS (url)")
+                            nb_success = True
+                            break
+                    # Other formats
+                    elif "images" in nb_data and nb_data["images"]:
+                        image_bytes = base64.b64decode(nb_data["images"][0])
+                        provider_used = "nano_banana"
+                        img_cost += 0.002
+                        attempt1["status"] = "success"
+                        print("  -> Nano Banana SUCCESS (images[])")
+                        nb_success = True
+                        break
+                    else:
+                        print("  Unknown format:", str(nb_data)[:200])
+                except Exception as parse_e:
+                    print("  Parse error:", parse_e)
+                    print("  Raw:", nb_r.text[:200])
             else:
-                attempt1["status"] = "failed"
-                attempt1["error"] = "Unknown format: " + str(list(nb_data.keys()))
-                print("  -> Nano Banana: unknown response:", str(nb_data)[:300])
-        else:
-            attempt1["status"] = "failed"
-            attempt1["error"] = "HTTP " + str(nb_r.status_code) + ": " + nb_r.text[:200]
-            print("  -> Nano Banana FAILED:", nb_r.text[:300])
-    except Exception as e:
-        attempt1["time_s"] = round(time.time() - t1, 2)
-        attempt1["status"] = "error"
-        attempt1["error"] = str(e)
-        print("  -> Nano Banana ERROR:", e)
+                print("  Response:", nb_r.text[:200])
+        except Exception as ep_e:
+            print("  Endpoint error:", str(ep_e)[:100])
+    
+    attempt1["time_s"] = round(time.time() - t1, 2)
+    if not nb_success and attempt1["status"] == "skipped":
+        attempt1["status"] = "failed"
+        attempt1["error"] = "All NB endpoints failed"
 else:
     attempt1["status"] = "skipped"
     attempt1["error"] = "NANO_BANANA_API_KEY not set"
     print("  -> Skipped (no NANO_BANANA_API_KEY)")
 image_pipeline_report["attempts"].append(attempt1)
 
-# ---- PROVIDER 2: GEMINI (if Nano Banana failed) ----
+# ---- PROVIDER 2: OPENAI gpt-image-1 (if Nano Banana failed) ----
 if not provider_used:
     print()
-    print("  [Provider 2] Google Gemini Imagen API...")
-    attempt2 = {"provider": "gemini", "status": "skipped", "error": None, "time_s": 0}
-    # Gemini uses the OPENAI_KEY context - actually needs GEMINI_API_KEY
-    # We'll try with the Gemini REST API using imagen-3
-    GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
-    if not GEMINI_KEY:
-        # Try to use Nano Banana key as potential Gemini key placeholder
-        attempt2["status"] = "skipped"
-        attempt2["error"] = "GEMINI_API_KEY not set"
-        print("  -> Skipped (no GEMINI_API_KEY)")
-    else:
+    print("  [Provider 2] OpenAI gpt-image-1...")
+    attempt2 = {"provider": "openai_gpt_image_1", "status": "skipped", "error": None, "time_s": 0}
+    if OPENAI_KEY:
         t2 = time.time()
         try:
-            gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict"
-            gemini_payload = {
-                "instances": [{"prompt": img_prompt}],
-                "parameters": {
-                    "sampleCount": 1,
-                    "aspectRatio": "1:1",
-                    "personGeneration": "dont_allow"
-                }
-            }
-            gemini_r = requests.post(
-                gemini_url + "?key=" + GEMINI_KEY,
-                json=gemini_payload,
-                timeout=60
+            client_img = openai.OpenAI(api_key=OPENAI_KEY)
+            # gpt-image-1 is the newest model, returns b64_json by default
+            img_resp2 = client_img.images.generate(
+                model="gpt-image-1",
+                prompt=img_prompt,
+                size="1024x1024",
+                n=1
             )
             attempt2["time_s"] = round(time.time() - t2, 2)
-            print("  Gemini status:", gemini_r.status_code)
-            if gemini_r.status_code == 200:
-                gemini_data = gemini_r.json()
-                predictions = gemini_data.get("predictions", [])
-                if predictions and "bytesBase64Encoded" in predictions[0]:
-                    img_b64 = predictions[0]["bytesBase64Encoded"]
-                    image_bytes = base64.b64decode(img_b64)
-                    provider_used = "gemini_imagen3"
-                    img_cost += 0.002
-                    attempt2["status"] = "success"
-                    print("  -> Gemini SUCCESS (imagen-3)")
-                else:
-                    attempt2["status"] = "failed"
-                    attempt2["error"] = "No image in response: " + str(list(gemini_data.keys()))
-                    print("  -> Gemini: no image in response:", str(gemini_data)[:200])
-            else:
-                attempt2["status"] = "failed"
-                attempt2["error"] = "HTTP " + str(gemini_r.status_code) + ": " + gemini_r.text[:200]
-                print("  -> Gemini FAILED:", gemini_r.text[:300])
+            if img_resp2.data[0].b64_json:
+                image_bytes = base64.b64decode(img_resp2.data[0].b64_json)
+                provider_used = "openai_gpt_image_1"
+                img_cost += 0.04
+                attempt2["status"] = "success"
+                print("  -> gpt-image-1 SUCCESS (b64_json)")
+            elif img_resp2.data[0].url:
+                img_resp_dl = requests.get(img_resp2.data[0].url, timeout=30)
+                image_bytes = img_resp_dl.content
+                image_url_final = img_resp2.data[0].url
+                provider_used = "openai_gpt_image_1"
+                img_cost += 0.04
+                attempt2["status"] = "success"
+                print("  -> gpt-image-1 SUCCESS (url)")
         except Exception as e:
             attempt2["time_s"] = round(time.time() - t2, 2)
             attempt2["status"] = "error"
             attempt2["error"] = str(e)
-            print("  -> Gemini ERROR:", e)
+            print("  -> gpt-image-1 ERROR:", e)
+    else:
+        attempt2["status"] = "skipped"
+        attempt2["error"] = "OPENAI_API_KEY not set"
+        print("  -> Skipped (no OPENAI_API_KEY)")
     image_pipeline_report["attempts"].append(attempt2)
 
 # ---- PROVIDER 3: OPENAI dall-e-3 (final fallback) ----
@@ -399,115 +407,63 @@ if not provider_used:
     print()
     print("  [Provider 3] OpenAI dall-e-3 (final fallback)...")
     attempt3 = {"provider": "openai_dalle3", "status": "skipped", "error": None, "time_s": 0}
-    if not OPENAI_KEY:
-        attempt3["status"] = "skipped"
-        attempt3["error"] = "OPENAI_API_KEY not set"
-        print("  -> Skipped (no OPENAI_API_KEY)")
-    else:
+    if OPENAI_KEY:
         t3 = time.time()
         try:
-            client_img = openai.OpenAI(api_key=OPENAI_KEY)
+            client_img3 = openai.OpenAI(api_key=OPENAI_KEY)
             dalle_prompt = (
-                "Professional infographic for a finance website showing money transfer "
-                "comparison between USA and Canada. Clean modern design with blue and "
-                "green colors. Shows logos of Wise, Remitly, Western Union. "
-                "No text, no words, purely visual chart design."
+                "A clean professional infographic for a financial website. "
+                "Shows a comparison chart of money transfer services. "
+                "Blue and green color scheme. Modern flat design. No text or words."
             )
-            img_resp = client_img.images.generate(
+            # dall-e-3: do NOT pass response_format - returns URL by default
+            img_resp3 = client_img3.images.generate(
                 model="dall-e-3",
                 prompt=dalle_prompt,
                 size="1024x1024",
                 quality="standard",
-                n=1,
-                response_format="url"
+                n=1
             )
             attempt3["time_s"] = round(time.time() - t3, 2)
-            image_url = img_resp.data[0].url
-            provider_used = "openai_dalle3"
-            img_cost += 0.04
-            attempt3["status"] = "success"
-            print("  -> OpenAI dall-e-3 SUCCESS")
-            print("  URL:", image_url[:80] + "...")
+            url3 = img_resp3.data[0].url
+            if url3:
+                img_dl = requests.get(url3, timeout=30)
+                image_bytes = img_dl.content
+                image_url_final = url3
+                provider_used = "openai_dalle3"
+                img_cost += 0.04
+                attempt3["status"] = "success"
+                print("  -> dall-e-3 SUCCESS, URL:", url3[:80])
         except Exception as e:
             attempt3["time_s"] = round(time.time() - t3, 2)
             attempt3["status"] = "error"
             attempt3["error"] = str(e)
-            print("  -> OpenAI dall-e-3 ERROR:", e)
+            print("  -> dall-e-3 ERROR:", e)
+    else:
+        attempt3["status"] = "skipped"
+        attempt3["error"] = "OPENAI_API_KEY not set"
     image_pipeline_report["attempts"].append(attempt3)
 
 img_total_time = round(time.time() - img_t_start, 2)
 
-# ---- UPLOAD IMAGE TO WORDPRESS ----
-if provider_used and (image_url or image_bytes):
+# ---- UPLOAD TO WORDPRESS ----
+if provider_used and image_bytes:
     print()
     print("  Uploading image to WordPress...")
-    try:
-        # Get image bytes if we only have URL
-        if image_url and not image_bytes:
-            img_resp2 = requests.get(image_url, timeout=30)
-            image_bytes = img_resp2.content
-
-        if image_bytes:
-            creds_img = b64encode((WP_USER + ":" + WP_PASS).encode()).decode()
-            media_headers = {
-                "Authorization": "Basic " + creds_img,
-                "Content-Disposition": "attachment; filename=nexus14-featured-" + str(int(time.time())) + ".jpg",
-                "Content-Type": "image/jpeg",
-            }
-            media_r = requests.post(
-                WP_URL + "/wp-json/wp/v2/media",
-                headers=media_headers,
-                data=image_bytes,
-                timeout=60
-            )
-            print("  WP Media upload status:", media_r.status_code)
-            if media_r.status_code in (200, 201):
-                media_data = media_r.json()
-                media_id = media_data.get("id")
-                media_link = media_data.get("source_url", "")
-                print("  Media ID:", media_id, "URL:", media_link[:60])
-                image_pipeline_report["image_urls"].append(media_link)
-
-                # Set as featured image on post
-                if wp_post_id:
-                    creds_upd = b64encode((WP_USER + ":" + WP_PASS).encode()).decode()
-                    upd_headers = {
-                        "Authorization": "Basic " + creds_upd,
-                        "Content-Type": "application/json",
-                    }
-                    upd_r = requests.post(
-                        WP_URL + "/wp-json/wp/v2/posts/" + str(wp_post_id),
-                        headers=upd_headers,
-                        json={"featured_media": media_id},
-                        timeout=30
-                    )
-                    print("  Featured image set:", upd_r.status_code)
-
-                image_pipeline_report["images_generated"] = True
-                image_pipeline_report["provider_used"] = provider_used
-                image_pipeline_report["generation_time_s"] = img_total_time
-                image_pipeline_report["cost_usd"] = img_cost
-            else:
-                print("  WP Media FAILED:", media_r.text[:200])
-                # Still mark as generated even if WP upload failed
-                image_pipeline_report["images_generated"] = True
-                image_pipeline_report["provider_used"] = provider_used
-                image_pipeline_report["generation_time_s"] = img_total_time
-                if image_url:
-                    image_pipeline_report["image_urls"].append(image_url)
-        else:
-            print("  No image bytes to upload")
-    except Exception as e:
-        print("  Upload error:", e)
-        # Still mark as generated
-        image_pipeline_report["images_generated"] = True
-        image_pipeline_report["provider_used"] = provider_used
-        if image_url:
-            image_pipeline_report["image_urls"].append(image_url)
+    wp_media_url = try_upload_to_wp(image_bytes, wp_post_id)
+    if wp_media_url:
+        image_pipeline_report["image_urls"].append(wp_media_url)
+    elif image_url_final:
+        image_pipeline_report["image_urls"].append(image_url_final)
+    image_pipeline_report["images_generated"] = True
+    image_pipeline_report["provider_used"] = provider_used
+    image_pipeline_report["generation_time_s"] = img_total_time
+    image_pipeline_report["cost_usd"] = img_cost
 else:
     print()
     print("  ALL IMAGE PROVIDERS FAILED")
-    image_pipeline_report["error"] = "All providers failed: " + str([a.get("error") for a in image_pipeline_report["attempts"]])
+    err_list = [a.get("provider","?") + ":" + str(a.get("error",""))[:60] for a in image_pipeline_report["attempts"]]
+    image_pipeline_report["error"] = "All failed: " + " | ".join(err_list)
 
 results["images_generated"] = image_pipeline_report["images_generated"]
 
@@ -520,8 +476,8 @@ if SENDGRID_KEY and EMAIL_TO:
     try:
         elapsed_now = round(time.time() - START, 1)
         passed_count = sum(1 for v in results.values() if v)
-        subject = "NEXUS-14 v8 - " + str(passed_count) + "/7 - " + str(elapsed_now) + "s"
-        body = "NEXUS-14 v8 Results:\n\n"
+        subject = "NEXUS-14 v9 - " + str(passed_count) + "/7 - img:" + str(image_pipeline_report.get("provider_used","none"))
+        body = "NEXUS-14 v9 Results:\n\n"
         for k, v in results.items():
             body += ("PASS" if v else "FAIL") + " " + k + "\n"
         body += "\nIMAGE PIPELINE:\n"
@@ -529,7 +485,7 @@ if SENDGRID_KEY and EMAIL_TO:
         body += "Time: " + str(image_pipeline_report.get("generation_time_s")) + "s\n"
         body += "Cost: $" + str(image_pipeline_report.get("cost_usd")) + "\n"
         body += "URLs: " + str(image_pipeline_report.get("image_urls")) + "\n"
-        body += "\nPost ID: " + str(wp_post_id)
+        body += "\nPost ID: " + str(wp_post_id) + "\nTotal: " + str(elapsed_now) + "s"
         sg_data = {
             "personalizations": [{"to": [{"email": EMAIL_TO}]}],
             "from": {"email": "noreply@moneyabroadguide.com"},
@@ -583,12 +539,12 @@ print("cost_usd: $" + str(image_pipeline_report["cost_usd"]))
 print("image_urls:", image_pipeline_report["image_urls"])
 print("attempts:")
 for a in image_pipeline_report["attempts"]:
-    print("  -", a["provider"], "->", a["status"],
-          ("(" + str(a["error"])[:80] + ")" if a.get("error") else ""))
+    err = ("(" + str(a.get("error",""))[:80] + ")") if a.get("error") else ""
+    print("  - " + a["provider"] + " -> " + a["status"] + " " + str(a.get("time_s",0)) + "s " + err)
 print("="*60)
 print()
 print("Score:", str(passed) + "/" + str(total))
-print("Critical checks (article+words+WP):", "ALL PASS" if critical_passed else "SOME FAIL")
+print("Critical (article+words+WP):", "ALL PASS" if critical_passed else "SOME FAIL")
 print("OpenAI cost: $" + str(round(openai_cost, 5)))
 print("Total time:", str(elapsed) + "s")
 print("WP Post ID:", wp_post_id)
@@ -596,13 +552,13 @@ print()
 if passed >= 6 and critical_passed:
     print("VERDICT: PASS - VERIFIED PRODUCTION READY")
 elif passed >= 5 and critical_passed:
-    print("VERDICT: PARTIAL_PASS - Almost ready, minor fixes needed")
+    print("VERDICT: PARTIAL_PASS - Almost ready")
 else:
     print("VERDICT: FAIL - NOT VERIFIED")
 print("="*60)
 
 report = {
-    "version": "v8",
+    "version": "v9",
     "topic": TOPIC,
     "market": MARKET,
     "checks": {n: v for n, v in checks_final},
