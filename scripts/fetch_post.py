@@ -5,6 +5,7 @@ Writes drafts/wp_post_<id>_content.html and drafts/wp_post_<id>_meta.json
 """
 import os
 import json
+import time
 import base64
 import requests
 
@@ -25,8 +26,20 @@ headers = {
 
 url = f"{WP_URL}/wp-json/wp/v2/posts/{POST_ID}?context=edit"
 print("GET", url)
-r = requests.get(url, headers=headers, timeout=60)
-print("Status:", r.status_code)
+
+r = None
+for attempt in range(1, 6):
+    r = requests.get(url, headers=headers, timeout=60)
+    print(f"Status: {r.status_code} (attempt {attempt})")
+    if r.status_code in (200, 201):
+        break
+    if r.status_code in (403, 429) or r.status_code >= 500:
+        wait = 2 ** attempt
+        print(f"  retrying in {wait}s...")
+        time.sleep(wait)
+        continue
+    break
+
 r.raise_for_status()
 post = r.json()
 

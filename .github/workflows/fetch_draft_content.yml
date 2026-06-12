@@ -6,6 +6,7 @@ on:
       - claude/usa-canada-transfer-article-zp65tm
     paths:
       - '.github/workflows/fetch_draft_content.yml'
+      - 'scripts/fetch_post.py'
   workflow_dispatch:
     inputs:
       post_id:
