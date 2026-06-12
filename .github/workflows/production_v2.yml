@@ -379,13 +379,14 @@ jobs:
             --qa-report output/agent_12/qa_report.json \
             --editor-report output/agent_13/editor_report.json \
             --image-validation output/agent_10/image_validation_report.json \
+            --image-quality output/agent_10/image_quality_report.json \
             --wordpress-validation output/agent_11/wordpress_validation_report.json \
             --affiliate-compliance output/agent_15/affiliate_compliance.json \
             --publishing-optimizer output/agent_16/publishing_optimizer.json \
-            --content-validation output/content_validation_report.json \\
-            --cannibalization-report output/agent_17/cannibalization_report.json \\
-            --revenue-score output/agent_18/revenue_score.json \\
-            --article-type ${ARTICLE_TYPE:-STANDARD} \\
+            --content-validation output/content_validation_report.json \
+            --cannibalization-report output/agent_17/cannibalization_report.json \
+            --revenue-score output/agent_18/revenue_score.json \
+            --article-type ${ARTICLE_TYPE:-STANDARD} \
             --output output/quality_gate_result.json
 
       - name: "Generate Content Validation Report"
