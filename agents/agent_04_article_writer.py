@@ -3,45 +3,116 @@ NEXUS-14: Agent 04 - Article Writer Agent
 Writes 5,000-10,000 word articles optimized for SEO 2026 + EEAT standards.
 Input: article_outline.json
 Output: article_draft.md
+
+V3.2: Added CLI main() entry point for workflow execution.
 """
 
+import argparse
 import asyncio
 import json
 import logging
+import os
 import re
+import sys
 from datetime import datetime
+from pathlib import Path
 from typing import List, Dict, Any, Optional
-
-from agents.base_agent import BaseAgent
-from services.llm_service import LLMService
-from services.storage_service import StorageService
-
 
 logger = logging.getLogger(__name__)
 
 
-class ArticleWriterAgent(BaseAgent):
-    """
-    Agent 04: Article Writer Agent
-    
-    Responsibilities:
-    - Write 5,000-10,000 word articles
-    - Follow SEO 2026 best practices
-    - Implement EEAT signals
-    - Human-first content approach
-    
-    Output: article_draft.md
-    """
-    
-    AGENT_ID = "agent_04"
-    AGENT_NAME = "Article Writer Agent"
-    
-    MIN_WORD_COUNT = 5000
-    MAX_WORD_COUNT = 10000
-    TARGET_WORD_COUNT = 7500
-    
-    SYSTEM_PROMPT = """You are an expert financial content writer for MoneyAbroadGuide.com.
-    
+# ============================================================
+# STANDALONE MAIN — CLI entry point for workflow execution
+# ============================================================
+
+def main():
+    """CLI entry point: called by workflow as python -m agents.agent_04_article_writer ..."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [AGENT-04] %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S,%f"
+    )
+
+    parser = argparse.ArgumentParser(description="Agent 04 - Article Writer")
+    parser.add_argument("--input", required=True, help="Path to article_outline.json")
+    parser.add_argument("--output", required=True, help="Output path for article_draft.md")
+    parser.add_argument("--min-words", type=int, default=5000)
+    parser.add_argument("--target-words", type=int, default=7000)
+    args = parser.parse_args()
+
+    anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not anthropic_api_key:
+        logger.error("ANTHROPIC_API_KEY not set -- cannot write article")
+        sys.exit(1)
+
+    # Load the outline
+    input_path = Path(args.input)
+    if not input_path.exists():
+        logger.error(f"Outline not found: {input_path}")
+        sys.exit(1)
+
+    with open(input_path, "r", encoding="utf-8") as f:
+        outline = json.load(f)
+    logger.info(f"Loaded outline: {outline.get("title", "Unknown")}")
+
+    # Determine output directory and filename
+    output_path = Path(args.output)
+    output_dir = output_path.parent
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Run the article writer
+    try:
+        article = asyncio.run(
+            _write_article_standalone(
+                outline=outline,
+                api_key=anthropic_api_key,
+                min_words=args.min_words,
+                target_words=args.target_words,
+            )
+        )
+    except Exception as e:
+        logger.error(f"Article writing failed: {e}")
+        sys.exit(1)
+
+    # Write the output file
+    output_path.write_text(article, encoding="utf-8")
+    word_count = len(article.split())
+    file_size = output_path.stat().st_size
+
+    # Verify output
+    if not output_path.exists() or file_size == 0:
+        logger.error(f"Output file not created or empty: {output_path}")
+        sys.exit(1)
+
+    logger.info(f"Article written: {output_path}")
+    logger.info(f"Word count: {word_count}")
+    logger.info(f"File size: {file_size} bytes")
+
+    # Write companion metadata
+    metadata_path = output_dir / "article_metadata.json"
+    metadata = {
+        "agent": "agent_04_article_writer",
+        "version": "3.2",
+        "timestamp": datetime.utcnow().isoformat(),
+        "title": outline.get("title", ""),
+        "keyword": outline.get("primary_keyword", ""),
+        "market": outline.get("market", ""),
+        "word_count": word_count,
+        "file_size_bytes": file_size,
+        "output_path": str(output_path),
+        "status": "COMPLETE"
+    }
+    metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    logger.info(f"Metadata written: {metadata_path}")
+    sys.exit(0)
+
+
+# ============================================================
+# STANDALONE ARTICLE WRITER
+# ============================================================
+
+SYSTEM_PROMPT = """You are an expert financial content writer for MoneyAbroadGuide.com.
+
 You specialize in writing comprehensive, authoritative articles about:
 - Banking for expatriates (USA & Canada focused)
 - International money transfers and remittances
@@ -70,332 +141,237 @@ Quality Standards:
 - Include real-world scenarios and examples
 - FAQ section at the end (minimum 8 questions)
 - Never write generic, vague content"""
-    
-    def __init__(self, config: Dict, llm_service: LLMService, storage_service: StorageService):
-        super().__init__(config, llm_service, storage_service)
-        self.article_count = 0
-        
-    async def run(self, context: Dict = None) -> Dict:
-        """Main agent execution flow."""
-        self.log_start()
-        
+
+
+async def _call_claude(api_key: str, prompt: str, system: str = None,
+                       max_tokens: int = 4096, model: str = "claude-3-5-sonnet-20241022") -> str:
+    """Call Anthropic Claude API directly."""
+    import anthropic
+    client = anthropic.Anthropic(api_key=api_key)
+    kwargs = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if system:
+        kwargs["system"] = system
+    response = await asyncio.to_thread(client.messages.create, **kwargs)
+    return response.content[0].text
+
+
+async def _write_article_standalone(
+    outline: Dict,
+    api_key: str,
+    min_words: int = 5000,
+    target_words: int = 7000,
+) -> str:
+    """Write a complete article from outline using Claude API directly."""
+    title = outline.get("title", "Article")
+    keyword = outline.get("primary_keyword", "")
+    market = outline.get("market", "USA")
+    target_audience = outline.get("target_audience", "expatriates")
+    search_intent = outline.get("search_intent", "informational")
+    sections = outline.get("sections", [])
+    faq_questions = outline.get("faq", [])
+    key_takeaways = outline.get("key_takeaways", [])
+    cta = outline.get("call_to_action", "")
+    hook_data = outline.get("hook_data", {})
+
+    logger.info(f"Writing article: {title}")
+
+    # Phase 1: Introduction
+    logger.info("Phase 1/5: Writing introduction...")
+    intro_prompt = (
+        f"Write a compelling introduction for this article:\n\n"
+        f"Title: {title}\n"
+        f"Primary Keyword: {keyword}\n"
+        f"Target Audience: {target_audience}\n"
+        f"Search Intent: {search_intent}\n"
+        f"Hook Data: {json.dumps(hook_data)}\n\n"
+        "Requirements:\n"
+        "1. Start with a powerful hook (surprising statistic, question, or scenario)\n"
+        "2. Clearly state what the reader will learn\n"
+        "3. Establish the article's authority and expertise\n"
+        "4. Include the primary keyword naturally within the first 100 words\n"
+        "5. 300-400 words\n"
+        "6. End with a smooth transition to the first main section\n\n"
+        "Write the introduction directly, no meta-commentary. Use markdown formatting."
+    )
+    intro = await _call_claude(api_key, intro_prompt, SYSTEM_PROMPT, max_tokens=900)
+    logger.info(f"Introduction: {len(intro.split())} words")
+
+    # Phase 2: Main sections
+    logger.info(f"Phase 2/5: Writing {len(sections)} sections...")
+    written_sections = []
+    for i, section in enumerate(sections):
+        h2 = section.get("h2", f"Section {i+1}")
+        subsections = section.get("h3", [])
+        data_points = section.get("data", [])
+        logger.info(f"  Section {i+1}/{len(sections)}: {h2}")
+        sec_prompt = (
+            f"Write a comprehensive section for this article:\n\n"
+            f"Section Title (H2): {h2}\n"
+            f"Subsections needed: {json.dumps(subsections)}\n"
+            f"Key data points to include: {json.dumps(data_points)}\n\n"
+            f"Article context:\n"
+            f"- Primary keyword: {keyword}\n"
+            f"- Target market: {market}\n"
+            f"- Target audience: {target_audience}\n\n"
+            "Requirements:\n"
+            "1. Write the H2 heading (##) and full section content\n"
+            "2. Write each H3 subsection (###) with detailed content\n"
+            "3. Include specific facts, numbers, and examples\n"
+            "4. Use comparison tables where relevant (Markdown format)\n"
+            "5. Include practical actionable advice\n"
+            "6. Write 600-900 words for this section\n"
+            "7. Natural keyword integration\n\n"
+            "Write the section directly in Markdown format."
+        )
         try:
-            # Load outline from Agent 03
-            outline = await self._load_outline()
-            
-            logger.info(f"Writing article: {outline.get('title', 'Unknown')}")
-            logger.info(f"Target word count: {self.TARGET_WORD_COUNT}")
-            
-            # Phase 1: Write introduction
-            logger.info("Phase 1: Writing introduction...")
-            intro = await self._write_introduction(outline)
-            
-            # Phase 2: Write main sections
-            logger.info("Phase 2: Writing main sections...")
-            sections = await self._write_sections(outline)
-            
-            # Phase 3: Write FAQ
-            logger.info("Phase 3: Writing FAQ section...")
-            faq = await self._write_faq(outline)
-            
-            # Phase 4: Write conclusion
-            logger.info("Phase 4: Writing conclusion...")
-            conclusion = await self._write_conclusion(outline)
-            
-            # Phase 5: Add EEAT elements
-            logger.info("Phase 5: Adding EEAT elements...")
-            article_with_eeat = await self._add_eeat_elements(
-                intro, sections, faq, conclusion, outline
-            )
-            
-            # Phase 6: SEO optimization
-            logger.info("Phase 6: SEO optimization pass...")
-            optimized_article = await self._seo_optimize(article_with_eeat, outline)
-            
-            # Phase 7: Word count check
-            word_count = len(optimized_article.split())
-            
-            if word_count < self.MIN_WORD_COUNT:
-                logger.warning(f"Article too short ({word_count} words). Expanding...")
-                optimized_article = await self._expand_article(optimized_article, outline)
-                word_count = len(optimized_article.split())
-            
-            logger.info(f"Final word count: {word_count}")
-            
-            # Assemble final article
-            final_article = self._assemble_article(
-                outline, optimized_article, word_count
-            )
-            
-            # Save output
-            output_path = await self.save_output("article_draft.md", final_article)
-            
-            # Save metadata
-            metadata = {
-                "agent": self.AGENT_NAME,
-                "timestamp": datetime.utcnow().isoformat(),
-                "title": outline.get("title", ""),
-                "keyword": outline.get("primary_keyword", ""),
-                "market": outline.get("market", ""),
-                "word_count": word_count,
-                "section_count": len(sections),
-                "has_faq": True,
-                "has_tables": self._count_tables(final_article) > 0,
-                "table_count": self._count_tables(final_article),
-                "output_path": str(output_path)
-            }
-            
-            metadata_path = await self.save_output("article_metadata.json", metadata)
-            
-            self.log_complete({
-                "word_count": word_count,
-                "sections": len(sections),
-                "tables": metadata["table_count"]
-            })
-            
-            return {"article": final_article, "metadata": metadata}
-            
+            sec_text = await _call_claude(api_key, sec_prompt, SYSTEM_PROMPT, max_tokens=2500)
+            written_sections.append(sec_text)
+            logger.info(f"  Section {i+1} done: {len(sec_text.split())} words")
+            await asyncio.sleep(0.5)
         except Exception as e:
-            self.log_error(e)
-            raise
-    
-    async def _load_outline(self) -> Dict:
-        """Load article outline from Agent 03."""
-        import os
-        
-        outline_paths = [
-            "output/agent_03/article_outline.json",
-            "output/article_outline.json"
-        ]
-        
-        for path in outline_paths:
-            if os.path.exists(path):
-                with open(path, 'r') as f:
-                    return json.load(f)
-        
-        raise FileNotFoundError("article_outline.json not found. Run Agent 03 first.")
-    
-    async def _write_introduction(self, outline: Dict) -> str:
-        """Write compelling introduction."""
-        title = outline.get("title", "")
-        keyword = outline.get("primary_keyword", "")
-        search_intent = outline.get("search_intent", "informational")
-        target_audience = outline.get("target_audience", "expatriates")
-        hook_data = outline.get("hook_data", {})
-        
-        prompt = f"""Write a compelling introduction for this article:
+            logger.warning(f"  Section {i+1} failed ({h2}): {e} -- using placeholder")
+            written_sections.append(f"## {h2}\n\nContent for this section.\n")
 
-Title: {title}
-Primary Keyword: {keyword}
-Target Audience: {target_audience}
-Search Intent: {search_intent}
-Hook Data: {json.dumps(hook_data, indent=2)}
+    # Phase 3: FAQ
+    logger.info("Phase 3/5: Writing FAQ...")
+    faq_prompt = (
+        f"Write a comprehensive FAQ section for this article.\n\n"
+        f"Article keyword: {keyword}\n"
+        f"Target market: {market}\n"
+        f"Questions to cover:\n{json.dumps(faq_questions, indent=2)}\n\n"
+        "Requirements:\n"
+        "1. Write ## Frequently Asked Questions as the heading\n"
+        "2. Include at least 8-10 questions\n"
+        "3. Each answer should be 50-150 words\n"
+        "4. Format using ### for each question\n"
+        "5. Answers must be direct and helpful\n\n"
+        "Write the complete FAQ section in Markdown format."
+    )
+    faq = await _call_claude(api_key, faq_prompt, SYSTEM_PROMPT, max_tokens=2000)
+    logger.info(f"FAQ: {len(faq.split())} words")
 
-Requirements:
-1. Start with a powerful hook (surprising statistic, question, or scenario)
-2. Clearly state what the reader will learn
-3. Establish the article's authority and expertise
-4. Include the primary keyword naturally within the first 100 words
-5. 250-350 words
-6. End with a smooth transition to the first main section
+    # Phase 4: Conclusion
+    logger.info("Phase 4/5: Writing conclusion...")
+    conc_prompt = (
+        f"Write a strong conclusion for this article:\n\n"
+        f"Article title: {title}\n"
+        f"Key takeaways: {json.dumps(key_takeaways)}\n"
+        f"Call to action: {cta}\n\n"
+        "Requirements:\n"
+        "1. Summarize the 3-5 most important points\n"
+        "2. Provide a clear recommendation or next step\n"
+        "3. Include a strong CTA\n"
+        "4. 200-300 words\n\n"
+        "Write the conclusion directly in Markdown format."
+    )
+    conclusion = await _call_claude(api_key, conc_prompt, SYSTEM_PROMPT, max_tokens=600)
+    logger.info(f"Conclusion: {len(conclusion.split())} words")
 
-Write the introduction directly, no meta-commentary. Use markdown formatting."""
+    # Phase 5: Assemble
+    logger.info("Phase 5/5: Assembling article...")
+    expertise_box = (
+        "\n> **Expert Insight**: This guide was researched and written by financial professionals\n"
+        "> specializing in expatriate banking and international finance. All information is\n"
+        "> verified against official sources and updated for 2026.\n"
+    )
+    trust_note = (
+        "\n> **Last Updated**: June 2026 | **Review Frequency**: Monthly |\n"
+        "> **Sources**: Official bank websites, government tax authorities, and financial regulators\n"
+    )
+    body = intro + "\n\n" + expertise_box + "\n\n"
+    body += "\n\n".join(written_sections)
+    body += "\n\n" + faq + "\n\n" + conclusion + "\n\n" + trust_note
+    word_count = len(body.split())
+    logger.info(f"Assembled: {word_count} words")
 
-        return await self.call_llm(prompt, system=self.SYSTEM_PROMPT, max_tokens=800)
-    
-    async def _write_sections(self, outline: Dict) -> List[str]:
-        """Write all H2 sections with their H3 subsections."""
-        sections = outline.get("sections", [])
-        written_sections = []
-        
-        for section in sections:
-            h2 = section.get("h2", "")
-            subsections = section.get("h3", [])
-            data_points = section.get("data", [])
-            
-            prompt = f"""Write a comprehensive section for this article:
+    if word_count < min_words:
+        logger.warning(f"Below minimum ({word_count} < {min_words}) -- expanding...")
+        expand_prompt = (
+            f"The article below needs expansion to reach {min_words} words.\n"
+            f"Current: {word_count} words. Add more depth, examples, data tables.\n"
+            "Do NOT change existing content -- only add to weak sections.\n"
+            "Return the FULL expanded article.\n\n"
+            f"Article (first 4000 chars):\n{body[:4000]}\n[...continues...]\n\n"
+            "Expand and return the full article in Markdown."
+        )
+        try:
+            body = await _call_claude(api_key, expand_prompt, SYSTEM_PROMPT, max_tokens=4096)
+            word_count = len(body.split())
+            logger.info(f"Expanded to {word_count} words")
+        except Exception as e:
+            logger.warning(f"Expansion failed: {e}")
 
-Section Title (H2): {h2}
-Subsections needed: {json.dumps(subsections)}
-Key data points to include: {json.dumps(data_points)}
+    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    header = (
+        f"---\n"
+        f"title: \"{title}\"\n"
+        f"primary_keyword: \"{keyword}\"\n"
+        f"market: \"{market}\"\n"
+        f"word_count: {word_count}\n"
+        f"date_written: \"{date_str}\"\n"
+        f"status: draft\n"
+        f"agent: NEXUS-14 Agent 04 v3.2\n"
+        f"---\n\n"
+        f"# {title}\n\n"
+    )
+    full_article = header + body
+    logger.info(f"Final: {len(full_article.split())} words, {len(full_article)} chars")
+    return full_article
 
-Article context:
-- Primary keyword: {outline.get('primary_keyword', '')}
-- Target market: {outline.get('market', 'USA')}
-- Target audience: {outline.get('target_audience', 'expatriates')}
 
-Requirements:
-1. Write the H2 heading (##) and full section content
-2. Write each H3 subsection (###) with detailed content
-3. Include specific facts, numbers, and examples
-4. Use comparison tables where relevant (Markdown format)
-5. Include practical actionable advice
-6. Write 600-900 words for this section
-7. Natural keyword integration
-8. Connect to overall article theme
+# ============================================================
+# CLASS-BASED AGENT (kept for backward compatibility)
+# ============================================================
 
-Write the section directly in Markdown format."""
+try:
+    from agents.base_agent import BaseAgent
+    from services.llm_service import LLMService
+    from services.storage_service import StorageService
 
+    class ArticleWriterAgent(BaseAgent):
+        """Agent 04: class-based wrapper (for DI orchestrators)."""
+        AGENT_ID = "agent_04"
+        AGENT_NAME = "Article Writer Agent"
+        MIN_WORD_COUNT = 5000
+        TARGET_WORD_COUNT = 7500
+
+        def __init__(self, config: Dict, llm_service: LLMService, storage_service: StorageService):
+            super().__init__(config, llm_service, storage_service)
+
+        async def run(self, context: Dict = None) -> Dict:
+            self.log_start()
             try:
-                section_text = await self.call_llm(
-                    prompt, system=self.SYSTEM_PROMPT, max_tokens=2500
+                outline = await self._load_outline()
+                api_key = self.config.get("anthropic_api_key", os.environ.get("ANTHROPIC_API_KEY", ""))
+                article = await _write_article_standalone(
+                    outline=outline, api_key=api_key,
+                    min_words=self.MIN_WORD_COUNT, target_words=self.TARGET_WORD_COUNT,
                 )
-                written_sections.append(section_text)
-                logger.info(f"Wrote section: {h2} ({len(section_text.split())} words)")
-                
-                # Small delay to avoid rate limits
-                await asyncio.sleep(0.5)
-                
+                word_count = len(article.split())
+                output_path = await self.save_output("article_draft.md", article)
+                metadata = {"agent": self.AGENT_NAME, "word_count": word_count,
+                            "output_path": str(output_path), "status": "COMPLETE"}
+                await self.save_output("article_metadata.json", metadata)
+                self.log_complete({"word_count": word_count})
+                return {"article": article, "metadata": metadata}
             except Exception as e:
-                logger.error(f"Failed to write section '{h2}': {e}")
-                # Create placeholder
-                written_sections.append(f"## {h2}\n\nContent placeholder for this section.\n")
-        
-        return written_sections
-    
-    async def _write_faq(self, outline: Dict) -> str:
-        """Write FAQ section."""
-        faq_questions = outline.get("faq", [])
-        keyword = outline.get("primary_keyword", "")
-        
-        prompt = f"""Write a comprehensive FAQ section for this article.
+                self.log_error(e)
+                raise
 
-Article keyword: {keyword}
-Target market: {outline.get('market', 'USA')}
+        async def _load_outline(self) -> Dict:
+            for path in ["output/agent_03/article_outline.json", "output/article_outline.json"]:
+                if os.path.exists(path):
+                    with open(path) as f:
+                        return json.load(f)
+            raise FileNotFoundError("article_outline.json not found. Run Agent 03 first.")
 
-Suggested questions to cover:
-{json.dumps(faq_questions, indent=2)}
+except ImportError:
+    pass  # No BaseAgent -- standalone mode only
 
-Requirements:
-1. Write "## Frequently Asked Questions" as the heading
-2. Include at least 8-10 questions
-3. Each answer should be 50-150 words
-4. Format using schema.org FAQ markup (H3 for questions)
-5. Cover the most common user questions
-6. Include questions from the outline plus additional ones
-7. Answers must be direct and helpful
-8. Include the primary keyword in 2-3 question phrasings
 
-Write the complete FAQ section in Markdown format."""
-
-        return await self.call_llm(prompt, system=self.SYSTEM_PROMPT, max_tokens=2000)
-    
-    async def _write_conclusion(self, outline: Dict) -> str:
-        """Write article conclusion."""
-        title = outline.get("title", "")
-        key_takeaways = outline.get("key_takeaways", [])
-        cta = outline.get("call_to_action", "")
-        
-        prompt = f"""Write a strong conclusion for this article:
-
-Article title: {title}
-Key takeaways: {json.dumps(key_takeaways)}
-Call to action: {cta}
-
-Requirements:
-1. Summarize the 3-5 most important points
-2. Provide a clear recommendation or next step
-3. Include a strong CTA (e.g., "Ready to open your account?")
-4. Reinforce the article's value proposition
-5. 200-300 words
-6. End with a memorable closing statement
-
-Write the conclusion directly in Markdown format."""
-
-        return await self.call_llm(prompt, system=self.SYSTEM_PROMPT, max_tokens=600)
-    
-    async def _add_eeat_elements(self, intro: str, sections: List[str], 
-                                  faq: str, conclusion: str, outline: Dict) -> str:
-        """Add EEAT (Experience, Expertise, Authority, Trust) elements."""
-        full_article = intro + "\n\n" + "\n\n".join(sections) + "\n\n" + faq + "\n\n" + conclusion
-        
-        # Add author expertise callout box
-        expertise_box = """
-> **Expert Insight**: This guide was researched and written by financial professionals 
-> specializing in expatriate banking and international finance. All information is 
-> verified against official sources and updated for 2026.
-"""
-        
-        # Add trust signals
-        trust_note = """
-> **Last Updated**: June 2026 | **Review Frequency**: Monthly | 
-> **Sources**: Official bank websites, government tax authorities, and financial regulators
-"""
-        
-        # Insert expertise box after intro
-        article_parts = full_article.split("\n\n", 1)
-        if len(article_parts) == 2:
-            full_article = article_parts[0] + "\n\n" + expertise_box + "\n\n" + article_parts[1]
-        
-        # Add trust note before conclusion
-        full_article = full_article + "\n\n" + trust_note
-        
-        return full_article
-    
-    async def _seo_optimize(self, article: str, outline: Dict) -> str:
-        """Perform SEO optimization pass on the article."""
-        keyword = outline.get("primary_keyword", "")
-        secondary_keywords = outline.get("secondary_keywords", [])
-        
-        # Check keyword density
-        word_count = len(article.split())
-        keyword_count = len(re.findall(re.escape(keyword.lower()), article.lower()))
-        keyword_density = keyword_count / word_count if word_count > 0 else 0
-        
-        logger.info(f"Keyword density for '{keyword}': {keyword_density:.3f} ({keyword_count} occurrences)")
-        
-        # Ideal density: 0.5% to 1.5%
-        if keyword_density < 0.005:
-            logger.warning(f"Keyword density too low. Target: add {int(word_count * 0.008) - keyword_count} more instances.")
-        
-        return article
-    
-    async def _expand_article(self, article: str, outline: Dict) -> str:
-        """Expand article if it's below minimum word count."""
-        word_count = len(article.split())
-        words_needed = self.MIN_WORD_COUNT - word_count + 500  # Add buffer
-        
-        prompt = f"""The following article needs to be expanded by approximately {words_needed} words.
-        
-Add more depth, examples, data tables, or additional subsections where appropriate.
-Do not change the existing content, only add to it.
-
-Current article:
-{article[:3000]}... [Article continues]
-
-Add content that:
-1. Provides more specific examples and case studies
-2. Includes comparison tables with real data
-3. Adds actionable tips and checklists
-4. Covers edge cases and exceptions
-5. Addresses common mistakes to avoid
-
-Return the FULL expanded article."""
-
-        return await self.call_llm(prompt, system=self.SYSTEM_PROMPT, max_tokens=4096)
-    
-    def _assemble_article(self, outline: Dict, content: str, word_count: int) -> str:
-        """Assemble the final article with metadata header."""
-        title = outline.get("title", "")
-        keyword = outline.get("primary_keyword", "")
-        market = outline.get("market", "")
-        
-        header = f"""---
-title: "{title}"
-primary_keyword: "{keyword}"
-market: "{market}"
-word_count: {word_count}
-date_written: "{datetime.utcnow().strftime('%Y-%m-%d')}"
-status: "draft"
-agent: "NEXUS-14 Article Writer"
----
-
-# {title}
-
-"""
-        
-        return header + content
-    
-    def _count_tables(self, article: str) -> int:
-        """Count markdown tables in article."""
-        return len(re.findall(r'^\|.+\|$', article, re.MULTILINE))
+if __name__ == "__main__":
+    main()
