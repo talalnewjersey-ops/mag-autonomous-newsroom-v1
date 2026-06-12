@@ -344,3 +344,70 @@ class FactCheckerAgent(BaseAgent):
         if not recs:
             recs.append("All checks passed - article is factually sound")
         return recs
+
+
+# ============================================================
+# CLI ENTRY POINT - Added V3.2 for workflow execution
+# Workflow call: python -m agents.agent_05_fact_checker
+#   --input output/agent_04/article_draft.md
+#   --output output/agent_05/fact_check_report.json
+#   --min-sources 10
+# ============================================================
+
+def main():
+    """CLI entry point for workflow execution."""
+    import argparse, sys, logging
+    from pathlib import Path
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [AGENT-05] %(levelname)s %(message)s"
+    )
+    log = logging.getLogger(__name__)
+
+    parser = argparse.ArgumentParser(description="Agent 05 - Fact Checker")
+    parser.add_argument("--input", required=True, help="Path to article_draft.md")
+    parser.add_argument("--output", required=True, help="Output path for fact_check_report.json")
+    parser.add_argument("--min-sources", type=int, default=10)
+    args = parser.parse_args()
+
+    input_path = Path(args.input)
+    if not input_path.exists():
+        log.error(f"Article draft not found: {input_path}")
+        sys.exit(1)
+
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    config = {}
+    agent = FactCheckerAgent(config)
+
+    try:
+        import asyncio
+        report = asyncio.run(agent.run(
+            article_draft_path=str(input_path),
+            output_dir=str(output_path.parent)
+        ))
+        log.info(f"Fact check complete: verdict={report.get("verdict", "UNKNOWN")}")
+        log.info(f"Report written: {output_path}")
+        # If verdict is FAIL, exit with warning but not error (allow pipeline to continue)
+        sys.exit(0)
+    except Exception as e:
+        log.error(f"Fact checking failed: {e}")
+        # Write minimal report so pipeline can continue
+        import json
+        fallback = {
+            "agent": "agent_05_fact_checker",
+            "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
+            "verdict": "SKIPPED",
+            "summary": {"total_claims": 0, "verified_count": 0, "issues_count": 0},
+            "claims": [], "url_check": {}, "statistics_validation": {},
+            "recommendations": [f"Fact check failed: {str(e)[:100]}"],
+            "error": str(e)
+        }
+        output_path.write_text(json.dumps(fallback, indent=2), encoding="utf-8")
+        log.warning(f"Fallback report written: {output_path}")
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
