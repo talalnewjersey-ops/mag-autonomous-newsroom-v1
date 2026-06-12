@@ -185,7 +185,7 @@ jobs:
           mkdir -p output/agent_17
           python -m agents.agent_17_cannibalization \
             --topic "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("title",t.get("keyword","expat banking guide")) if isinstance(t,dict) else str(t))')" \
-            --keywords "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; kws=t.get("keywords",t.get("opportunity_types",[])) if isinstance(t,dict) else []; print(",".join(str(k) for k in kws[:5]))')" \
+            --keywords "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; kw=t.get("keyword","") if isinstance(t,dict) else ""; opps=t.get("opportunity_types",[]) if isinstance(t,dict) else []; parts=[kw]+opps; print(",".join(str(p) for p in parts[:6] if p))')" \
             --output output/agent_17/cannibalization_report.json
           echo "Cannibalization check complete"
           # Check if blocking
@@ -205,7 +205,7 @@ jobs:
           mkdir -p output/agent_18
           python -m agents.agent_18_revenue_intelligence \
             --topic "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("title",t.get("keyword","expat banking guide")) if isinstance(t,dict) else str(t))')" \
-            --keywords "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; kws=t.get("keywords",t.get("opportunity_types",[])) if isinstance(t,dict) else []; print(",".join(str(k) for k in kws[:5]))')" \
+            --keywords "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; kw=t.get("keyword","") if isinstance(t,dict) else ""; opps=t.get("opportunity_types",[]) if isinstance(t,dict) else []; parts=[kw]+opps; print(",".join(str(p) for p in parts[:6] if p))')" \
             --output output/agent_18/revenue_score.json
           echo "Revenue intelligence complete"
           # Check revenue score
