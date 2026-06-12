@@ -1,6 +1,10 @@
 # ============================================================
-# NEXUS-14 V2 — Quality-First Production Workflow
-# MoneyAbroadGuide.com Autonomous Newsroom
+# NEXUS-14 V3 — Quality-First Production Workflow
+# MoneyAbroadGuide.com Quality-First Newsroom
+# Version: 3.0.0 | Upgraded: 2026-06-12
+#
+# NEW IN V3: Agent 17 (Cannibalization) + Agent 18 (Revenue)
+#            18 Quality Gates | STANDARD/PILLAR types
 #
 # STRATEGY: Maximum 6 articles/day | Quality over Volume
 #
@@ -14,7 +18,7 @@
 #   Executive Report: 18:30 UTC
 # ============================================================
 
-name: "NEXUS-14 V2 — Quality-First Production"
+name: "NEXUS-14 V3 — Quality-First Production"
 
 on:
   schedule:
