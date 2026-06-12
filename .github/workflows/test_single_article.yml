@@ -38,11 +38,12 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install openai requests
+        run: pip install openai anthropic requests
 
       - name: Run v2 produce_article.py
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           NANO_BANANA_API_KEY: ${{ secrets.NANO_BANANA_API_KEY }}
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}

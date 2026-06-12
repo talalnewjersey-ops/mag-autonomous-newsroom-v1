@@ -23,6 +23,12 @@ except ImportError:
     os.system("pip install openai -q")
     import openai
 
+try:
+    import anthropic
+except ImportError:
+    os.system("pip install anthropic -q")
+    import anthropic
+
 START = time.time()
 ARTICLE_INDEX = os.environ.get("ARTICLE_INDEX", "0")
 MARKET = (os.environ.get("TARGET_MARKET") or "usa").lower()
@@ -30,7 +36,8 @@ TOPIC = (os.environ.get("TOPIC_OVERRIDE") or "").strip()
 if not TOPIC:
     TOPIC = "best way to send money internationally 2026"
 
-OPENAI_KEY   = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_KEY    = os.environ.get("OPENAI_API_KEY", "")
+ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 NANO_KEY     = os.environ.get("NANO_BANANA_API_KEY", "")
 SENDGRID_KEY = os.environ.get("SENDGRID_API_KEY", "")
 WP_URL       = os.environ.get("WORDPRESS_URL", "https://moneyabroadguide.com").rstrip("/")
@@ -47,7 +54,8 @@ print("NEXUS-14 PRODUCTION v2 -- Article #" + ARTICLE_INDEX)
 print("=" * 60)
 print("Topic  :", TOPIC)
 print("Market :", MARKET.upper())
-print("OpenAI :", "SET" if OPENAI_KEY else "MISSING")
+print("Claude :", "SET" if ANTHROPIC_KEY else "MISSING")
+print("OpenAI :", "SET" if OPENAI_KEY else "MISSING (image gen only)")
 print("WP URL :", WP_URL)
 print()
 
@@ -108,26 +116,50 @@ def wp_request(method, path, headers, json_data=None, data=None, timeout=60, max
 
 print("[STEP 1] Generating article (6-pass for 5000+ words)...")
 article_content = ""
-openai_cost = 0.0
+text_gen_cost = 0.0
 total_tokens = 0
+text_provider = None
 
-def gpt(client, prompt, max_tokens=3000):
-    global total_tokens, openai_cost
+def gpt(client, prompt, max_tokens=4096):
+    """Generate one article section. Primary: Claude (Anthropic). Fallback: OpenAI gpt-4o-mini."""
+    global total_tokens, text_gen_cost
+    if isinstance(client, anthropic.Anthropic):
+        try:
+            r = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=max_tokens,
+                temperature=0.7,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            usage = r.usage
+            total_tokens += usage.input_tokens + usage.output_tokens
+            text_gen_cost += (usage.input_tokens/1000000)*3.0 + (usage.output_tokens/1000000)*15.0
+            return r.content[0].text
+        except Exception as e:
+            print("    Claude error, falling back to OpenAI:", str(e)[:120])
+            if not OPENAI_KEY:
+                raise
+            client = openai.OpenAI(api_key=OPENAI_KEY)
     r = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": prompt}],
         max_tokens=max_tokens, temperature=0.7
     )
     total_tokens += r.usage.total_tokens
-    openai_cost += (r.usage.prompt_tokens/1000000)*0.15 + (r.usage.completion_tokens/1000000)*0.60
+    text_gen_cost += (r.usage.prompt_tokens/1000000)*0.15 + (r.usage.completion_tokens/1000000)*0.60
     return r.choices[0].message.content
 
-if not OPENAI_KEY:
-    print("  ERROR: OPENAI_API_KEY not set")
+if not ANTHROPIC_KEY and not OPENAI_KEY:
+    print("  ERROR: no text-generation API key set (ANTHROPIC_API_KEY or OPENAI_API_KEY)")
     results["article_written"] = False
 else:
     try:
-        client = openai.OpenAI(api_key=OPENAI_KEY)
+        if ANTHROPIC_KEY:
+            client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+            text_provider = "claude-sonnet-4-6"
+        else:
+            client = openai.OpenAI(api_key=OPENAI_KEY)
+            text_provider = "gpt-4o-mini"
         mkt = MARKET.upper()
 
         part1 = gpt(client,
@@ -512,7 +544,7 @@ print("Post ID:", wp_post_id)
 print("Img IDs:", media_ids)
 print("Featured:", image_report.get("featured_media_id", "none"))
 print("Provider:", image_report.get("provider_used", "none"))
-print("Cost   : $" + str(round(openai_cost + img_cost, 4)))
+print("Cost   : $" + str(round(text_gen_cost + img_cost, 4)))
 print("Time   :", str(elapsed) + "s")
 
 if passed >= 7 and critical_ok and results.get("word_count_5000plus") and results.get("images_in_content_4plus"):
@@ -543,8 +575,9 @@ report = {
     "featured_media_id": image_report.get("featured_media_id"),
     "image_provider": image_report.get("provider_used"),
     "yoast_configured": True if wp_post_id else False,
-    "openai_cost_usd": round(openai_cost, 5),
-    "total_cost_usd": round(openai_cost + img_cost, 5),
+    "text_provider": text_provider,
+    "text_gen_cost_usd": round(text_gen_cost, 5),
+    "total_cost_usd": round(text_gen_cost + img_cost, 5),
     "total_tokens": total_tokens,
     "elapsed_seconds": elapsed,
     "timestamp": datetime.utcnow().isoformat()
