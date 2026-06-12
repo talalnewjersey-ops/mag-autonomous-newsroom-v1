@@ -197,3 +197,67 @@ class InternalLinkingAgent(BaseAgent):
             "suggested_links": all_links,
             "html_insertions": insertions,
         }
+
+
+# ============================================================
+# CLI ENTRY POINT - Added V3.2 for workflow execution
+# Workflow call: python -m agents.agent_07_internal_linking
+#   --input output/agent_04/article_draft.md
+#   --output output/agent_07/internal_links.json
+#   --min-links 5
+# ============================================================
+
+def main():
+    """CLI entry point for workflow execution."""
+    import argparse, sys, json, logging
+    from pathlib import Path
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [AGENT-07] %(levelname)s %(message)s"
+    )
+    log = logging.getLogger(__name__)
+
+    parser = argparse.ArgumentParser(description="Agent 07 - Internal Linking")
+    parser.add_argument("--input", required=True, help="Path to article_draft.md")
+    parser.add_argument("--output", required=True, help="Output path for internal_links.json")
+    parser.add_argument("--min-links", type=int, default=5)
+    args = parser.parse_args()
+
+    input_path = Path(args.input)
+    if not input_path.exists():
+        log.error(f"Article draft not found: {input_path}")
+        sys.exit(1)
+
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    config = {}
+    agent = InternalLinkingAgent(config)
+
+    try:
+        import asyncio
+        report = asyncio.run(agent.run(
+            article_draft_path=str(input_path),
+            output_dir=str(output_path.parent)
+        ))
+        link_count = report.get("summary", {}).get("new_links_suggested", 0)
+        log.info(f"Internal linking complete: {link_count} links suggested")
+        log.info(f"Report written: {output_path}")
+        sys.exit(0)
+    except Exception as e:
+        log.error(f"Internal linking failed: {e}")
+        fallback = {
+            "agent": "agent_07_internal_linking",
+            "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
+            "verdict": "SKIPPED",
+            "summary": {"existing_links": 0, "new_links_suggested": 0, "insertions_ready": 0},
+            "suggested_links": [], "html_insertions": [],
+            "error": str(e)
+        }
+        output_path.write_text(json.dumps(fallback, indent=2), encoding="utf-8")
+        log.warning(f"Fallback report written: {output_path}")
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
