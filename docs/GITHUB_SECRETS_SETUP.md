@@ -1,7 +1,14 @@
 # NEXUS-14 V3 — GitHub Secrets Setup Guide
 # MoneyAbroadGuide.com Autonomous Newsroom
-# Generated: 2026-06-12 | Version: 3.0.0
+# Updated: 2026-06-12 | Version: 3.1.0 (SERPAPI/SEMRUSH/S3 made optional)
 # ============================================================
+#
+# KEY CHANGES IN V3.1:
+#   - SERPAPI_KEY:     NOW OPTIONAL (Claude + built-in DB fallback)
+#   - SEMRUSH_API_KEY: NOW OPTIONAL (built-in difficulty scores fallback)
+#   - AWS_ACCESS_KEY_ID:     REMOVED (WordPress Media Library replaces S3)
+#   - AWS_SECRET_ACCESS_KEY: REMOVED (WordPress Media Library replaces S3)
+#   - S3_BUCKET:             REMOVED (WordPress Media Library replaces S3)
 #
 # HOW TO ADD SECRETS:
 # 1. Go to: https://github.com/talalnewjersey-ops/mag-autonomous-newsroom-v1/settings/secrets/actions
@@ -10,11 +17,16 @@
 # 4. Click "Add secret"
 # ============================================================
 
-# COMPLETE SECRETS INVENTORY — NEXUS-14 V3
-# Total required: 14 secrets
-# Currently configured: 8 (some with wrong names)
-# Missing: 6
-# Name mismatches: 2
+# MINIMUM VIABLE PRODUCTION SET
+# These 5 secrets are sufficient to run full production:
+#
+#   ANTHROPIC_API_KEY        (article writing, research, all AI tasks)
+#   GEMINI_API_KEY           (image generation)
+#   WORDPRESS_URL            (post creation)
+#   WORDPRESS_USERNAME       (authentication)
+#   WORDPRESS_APP_PASSWORD   (authentication + image upload)
+#
+# Everything else is optional or enhances quality.
 
 ---
 
@@ -22,177 +34,169 @@
 
 | Symbol | Meaning |
 |--------|---------|
-| OK | Secret exists with correct name |
-| FIX | Secret exists but with WRONG name — must add with correct name |
-| MISSING | Secret does not exist — must be added before production |
-| OPTIONAL | Not required for core production |
+| REQUIRED | Must have for production to run |
+| OPTIONAL | Enhances quality; production runs without it |
+| FIX | Wrong name configured — add with correct name |
+| REMOVED | No longer needed in V3.1 |
 
 ---
 
-## SECTION 1: CORE AI APIS (Required)
+## SECTION 1: REQUIRED SECRETS (Production Cannot Run Without These)
 
 ### 1. ANTHROPIC_API_KEY
-- **Status:** OK (already configured)
-- **Required:** YES — CRITICAL
-- **Used in:** Agents 01, 02, 03, 04, 05, 06, 07, 08, 12, 13, 14, 15, 16, 17, 18
+- **Status:** REQUIRED — Already configured OK
+- **Used by:** ALL agents (01 through 18)
+- **Purpose:** Claude API for article writing, research, quality analysis
 - **Get from:** https://console.anthropic.com/settings/keys
 - **Format:** sk-ant-api03-...
-- **Notes:** Core article writing engine. Without this, NOTHING works.
+- **Impact if missing:** NOTHING works. This is the core engine.
 
-### 2. GEMINI_API_KEY
-- **Status:** MISSING — MUST ADD
-- **Required:** YES — CRITICAL (Image Generation)
-- **Used in:** Agent 10 (Phase 10 — Image Production)
-- **Get from:** https://aistudio.google.com/apikey
-- **Format:** AIza...
-- **Secret name to use:** GEMINI_API_KEY
-- **Notes:** Primary image generation API. If missing, Agent 10 falls back to OpenAI DALL-E.
+### 2. WORDPRESS_URL
+- **Status:** REQUIRED — Already configured OK
+- **Used by:** Agents 07, 10, 11, 16, 17
+- **Purpose:** WordPress REST API base URL
+- **Format:** https://moneyabroadguide.com (no trailing slash)
+- **Impact if missing:** No posts created, no images uploaded
 
----
-
-## SECTION 2: SEO & KEYWORD TOOLS (Required)
-
-### 3. SERPAPI_KEY
-- **Status:** MISSING — MUST ADD
-- **Required:** YES — CRITICAL (Topic Research)
-- **Used in:** Agent 01 (SEO Research), Agent 02 (Keyword Validation)
-- **Get from:** https://serpapi.com/dashboard
-- **Format:** long alphanumeric string
-- **Secret name to use:** SERPAPI_KEY
-- **Notes:** Required for real keyword research and SERP analysis.
-
-### 4. SEMRUSH_API_KEY
-- **Status:** MISSING — MUST ADD
-- **Required:** YES — CRITICAL (Keyword Difficulty)
-- **Used in:** Agent 01 (SEO Research)
-- **Get from:** https://www.semrush.com/api-documentation/
-- **Format:** long alphanumeric string
-- **Secret name to use:** SEMRUSH_API_KEY
-- **Notes:** Required for keyword difficulty scoring used in STANDARD vs PILLAR classification.
-
----
-
-## SECTION 3: WORDPRESS INTEGRATION (Required)
-
-### 5. WORDPRESS_URL
-- **Status:** OK (already configured)
-- **Required:** YES — CRITICAL
-- **Used in:** Agents 11, 07, 16 (WordPress Integration, Internal Linking, Publishing)
-- **Format:** https://moneyabroadguide.com
-- **Notes:** Must be the root domain, no trailing slash.
-
-### 6. WORDPRESS_USERNAME
-- **Status:** OK (already configured)
-- **Required:** YES — CRITICAL
-- **Used in:** Agent 11 (WordPress REST API authentication)
+### 3. WORDPRESS_USERNAME
+- **Status:** REQUIRED — Already configured OK
+- **Used by:** Agents 10, 11, 17 (REST API authentication)
 - **Format:** WordPress username (not email)
-- **Notes:** Must be an admin or editor user with REST API access.
+- **Impact if missing:** All WordPress API calls fail
 
-### 7. WORDPRESS_APP_PASSWORD
+### 4. WORDPRESS_APP_PASSWORD
 - **Status:** FIX REQUIRED
 - **Current name in GitHub:** WORDPRESS_PASSWORD (WRONG)
-- **Required name in workflow:** WORDPRESS_APP_PASSWORD
-- **Required:** YES — CRITICAL
-- **Used in:** Agents 11 (Phase 11 — WordPress draft creation), Agent 17 (Cannibalization scan)
-- **Get from:** WordPress Admin > Users > Your Profile > Application Passwords > Add New
+- **Required name:** WORDPRESS_APP_PASSWORD
+- **Used by:** Agents 10 (image upload), 11 (post creation), 17 (cannibalization scan)
+- **Get from:** WordPress Admin > Users > Profile > Application Passwords > Add New
 - **Format:** xxxx xxxx xxxx xxxx xxxx xxxx (spaces included)
-- **Action required:**
-  1. Go to Settings > Secrets > Actions
-  2. Add NEW secret named: WORDPRESS_APP_PASSWORD
-  3. Copy the value from WORDPRESS_PASSWORD
-  4. Optionally delete WORDPRESS_PASSWORD (old name)
-- **Notes:** WordPress Application Password (NOT your login password). Must be generated in WP Admin.
+- **Action:**
+  1. Settings > Secrets > Actions > New repository secret
+  2. Name: WORDPRESS_APP_PASSWORD
+  3. Value: copy from WORDPRESS_PASSWORD secret
+- **Impact if missing:** No posts created, no images uploaded to WordPress
 
 ---
 
-## SECTION 4: IMAGE GENERATION (Required)
+## SECTION 2: RECOMMENDED SECRETS (Image Generation)
 
-### 8. NANO_BANANA_KEY
-- **Status:** FIX REQUIRED
+### 5. GEMINI_API_KEY
+- **Status:** RECOMMENDED (not strictly required)
+- **Used by:** Agent 10 (primary image generation)
+- **Purpose:** Generate article images via Google Imagen 3
+- **Get from:** https://aistudio.google.com/apikey
+- **Format:** AIza...
+- **Impact if missing:** Falls back to NANO_BANANA_KEY or OPENAI_API_KEY. If none present, images fail (Gate 2 fails).
+- **Note:** At least ONE image generation key (Gemini, Nano Banana, or OpenAI) is needed for full pipeline.
+
+### 6. NANO_BANANA_KEY
+- **Status:** FIX REQUIRED (if you want Nano Banana fallback)
 - **Current name in GitHub:** NANO_BANANA_API_KEY (WRONG)
-- **Required name in workflow:** NANO_BANANA_KEY
-- **Required:** YES (Fallback image generation)
-- **Used in:** Agent 10 (Phase 10 — Image Production, fallback API)
-- **Action required:**
-  1. Go to Settings > Secrets > Actions
-  2. Add NEW secret named: NANO_BANANA_KEY
-  3. Copy the value from NANO_BANANA_API_KEY
-  4. Optionally delete NANO_BANANA_API_KEY (old name)
-- **Notes:** Nano Banana is the fallback image API when Gemini is unavailable.
+- **Required name:** NANO_BANANA_KEY
+- **Used by:** Agent 10 (fallback image generation)
+- **Action:** Add secret named NANO_BANANA_KEY with value from NANO_BANANA_API_KEY
+- **Impact if missing:** Agent 10 skips Nano Banana, tries next API
 
-### 9. OPENAI_API_KEY
-- **Status:** OK (already configured)
-- **Required:** Optional (second fallback for image generation)
-- **Used in:** Agent 10 (DALL-E 3 fallback)
-- **Notes:** Used only if both Gemini and Nano Banana fail.
+### 7. OPENAI_API_KEY
+- **Status:** Already configured OK (second fallback for images)
+- **Used by:** Agent 10 (DALL-E 3 as second fallback)
+- **Impact if missing:** Falls through to no image generation
 
 ---
 
-## SECTION 5: AWS S3 STORAGE (Required for image hosting)
+## SECTION 3: OPTIONAL SECRETS (Enhanced SEO Research)
 
-### 10. AWS_ACCESS_KEY_ID
-- **Status:** MISSING — MUST ADD
-- **Required:** YES — CRITICAL (Image Upload & Hosting)
-- **Used in:** Agent 10 (image upload to S3 for WordPress)
-- **Get from:** AWS Console > IAM > Users > Security Credentials
-- **Format:** AKIA...
-- **Secret name to use:** AWS_ACCESS_KEY_ID
-- **Notes:** IAM user must have S3 PutObject, GetObject, PutObjectAcl permissions.
+### 8. SERPAPI_KEY
+- **Status:** OPTIONAL — Production continues without it
+- **Used by:** Agent 01 (live SERP data enhancement)
+- **Fallback behavior when missing:**
+  - Agent 01 uses Claude AI to generate topic ideas
+  - Agent 01 uses built-in curated topic database (20 pre-qualified topics)
+  - Production continues normally — no failure, no degradation of quality gate
+- **Impact if present:** Higher quality, more current topic research
+- **Impact if absent:** Production runs with built-in topic database. No failure.
+- **Get from:** https://serpapi.com/dashboard
 
-### 11. AWS_SECRET_ACCESS_KEY
-- **Status:** MISSING — MUST ADD
-- **Required:** YES — CRITICAL (Image Upload & Hosting)
-- **Used in:** Agent 10 (paired with AWS_ACCESS_KEY_ID)
-- **Get from:** AWS Console > IAM > Users > Security Credentials (shown only once)
-- **Format:** 40-character string
-- **Secret name to use:** AWS_SECRET_ACCESS_KEY
-- **Notes:** Store securely — cannot be retrieved after initial creation.
-
-### 12. S3_BUCKET
-- **Status:** MISSING — MUST ADD
-- **Required:** YES — CRITICAL (Image Hosting)
-- **Used in:** Agent 10 (target bucket for image upload)
-- **Format:** bucket-name (no s3:// prefix, no trailing slash)
-- **Example:** moneyabroadguide-images
-- **Secret name to use:** S3_BUCKET
-- **Notes:** Bucket must be in us-east-1 or configure AWS_REGION accordingly. Must have public read ACL enabled or use CloudFront.
+### 9. SEMRUSH_API_KEY
+- **Status:** OPTIONAL — Production continues without it
+- **Used by:** Agent 01 (keyword difficulty scoring from SEMrush data)
+- **Fallback behavior when missing:**
+  - Agent 01 uses built-in difficulty scores from curated database
+  - STANDARD vs PILLAR classification still works
+  - Production continues normally
+- **Impact if present:** More accurate keyword difficulty data from SEMrush
+- **Impact if absent:** Built-in difficulty scores used. No failure.
+- **Get from:** https://www.semrush.com/api-documentation/
 
 ---
 
-## SECTION 6: EMAIL NOTIFICATIONS (Required for reports)
+## SECTION 4: OPTIONAL SECRETS (Reporting)
 
-### 13. SENDGRID_API_KEY
-- **Status:** OK (already configured)
-- **Required:** YES (Production Reports)
-- **Used in:** Agent 14 (Production Director — daily reports)
-- **Get from:** https://app.sendgrid.com/settings/api_keys
-- **Format:** SG.xxx...
-- **Notes:** Required for executive reports and alerts.
+### 10. SENDGRID_API_KEY
+- **Status:** Already configured OK
+- **Used by:** Agent 14 (executive reports by email)
+- **Impact if missing:** No email reports sent. Production pipeline unaffected.
 
-### 14. EMAIL_RECIPIENT
-- **Status:** OK (already configured)
-- **Required:** YES (Production Reports)
-- **Used in:** Agent 14 (sends daily production report to this address)
-- **Format:** email@domain.com
-- **Notes:** Must be a verified sender address in SendGrid.
+### 11. EMAIL_RECIPIENT
+- **Status:** Already configured OK
+- **Used by:** Agent 14 (destination for email reports)
 
 ---
 
-## COMPLETE CHECKLIST BEFORE FIRST PRODUCTION RUN
+## SECTION 5: REMOVED SECRETS (No Longer Needed in V3.1)
 
-### Immediate Actions Required (Blockers):
+The following secrets are NO LONGER USED. You may keep them (they are ignored) or delete them.
 
-- [ ] **ADD** GEMINI_API_KEY (new secret — image generation)
-- [ ] **ADD** SERPAPI_KEY (new secret — SEO research)
-- [ ] **ADD** SEMRUSH_API_KEY (new secret — keyword difficulty)
-- [ ] **ADD** WORDPRESS_APP_PASSWORD (rename from WORDPRESS_PASSWORD)
-- [ ] **ADD** NANO_BANANA_KEY (rename from NANO_BANANA_API_KEY)
-- [ ] **ADD** AWS_ACCESS_KEY_ID (new secret — image hosting)
-- [ ] **ADD** AWS_SECRET_ACCESS_KEY (new secret — image hosting)
-- [ ] **ADD** S3_BUCKET (new secret — image hosting bucket name)
+### AWS_ACCESS_KEY_ID — REMOVED
+- **Why removed:** Images now upload to WordPress Media Library instead of S3
+- **Replaced by:** WORDPRESS_APP_PASSWORD (already handles image upload via REST API)
 
-### Already Configured (No Action Needed):
+### AWS_SECRET_ACCESS_KEY — REMOVED
+- **Why removed:** Same as above
 
+### S3_BUCKET — REMOVED
+- **Why removed:** Same as above
+
+---
+
+## MINIMUM VIABLE PRODUCTION — VERIFICATION TABLE
+
+Can production run with only these 5 secrets?
+
+| Secret | Status | If Missing |
+|--------|--------|-----------|
+| ANTHROPIC_API_KEY | Already set | ALL agents fail |
+| GEMINI_API_KEY | Need to add | Images fail (Gate 2 fails) |
+| WORDPRESS_URL | Already set | Posts/images fail |
+| WORDPRESS_USERNAME | Already set | Posts/images fail |
+| WORDPRESS_APP_PASSWORD | Need to add (rename) | Posts/images fail |
+
+**Answer: YES** — with these 5 secrets, full production runs successfully:
+- Topics: Built-in curated database (20 pre-qualified expat finance topics)
+- Research: Claude AI (ANTHROPIC_API_KEY)
+- Images: Gemini Imagen 3 (GEMINI_API_KEY) → uploaded to WordPress Media Library
+- Posts: WordPress REST API (WORDPRESS credentials)
+- Quality gates: All 18 gates evaluated
+
+No SERPAPI, no SEMRUSH, no AWS S3 required.
+
+---
+
+## COMPLETE ACTIONS CHECKLIST
+
+### Must Do — Blockers:
+- [ ] Add **WORDPRESS_APP_PASSWORD** (rename from WORDPRESS_PASSWORD)
+- [ ] Add **GEMINI_API_KEY** (for image generation)
+
+### Recommended:
+- [ ] Add **NANO_BANANA_KEY** (rename from NANO_BANANA_API_KEY — image fallback)
+
+### Optional Enhancements:
+- [ ] Add **SERPAPI_KEY** (better topic research — not required)
+- [ ] Add **SEMRUSH_API_KEY** (better keyword difficulty — not required)
+
+### No Action Needed — Already Correct:
 - [x] ANTHROPIC_API_KEY
 - [x] OPENAI_API_KEY
 - [x] SENDGRID_API_KEY
@@ -200,31 +204,14 @@
 - [x] WORDPRESS_URL
 - [x] WORDPRESS_USERNAME
 
----
-
-## VALIDATION — After Adding All Secrets
-
-After adding all required secrets, trigger a test run:
-
-1. Go to: Actions > NEXUS-14 V3 — Quality-First Production
-2. Click "Run workflow"
-3. Set mode: end_to_end_test
-4. Set topic: "How to Open a Bank Account as an Immigrant in the USA"
-5. Set max_articles: 1
-6. Click "Run workflow"
-
-Expected result: Workflow completes all 18 quality gates and creates a WordPress draft.
+### Deprecated — Can Keep or Delete:
+- [ ] WORDPRESS_PASSWORD (superseded by WORDPRESS_APP_PASSWORD)
+- [ ] NANO_BANANA_API_KEY (superseded by NANO_BANANA_KEY)
+- [ ] AWS_ACCESS_KEY_ID (removed in V3.1)
+- [ ] AWS_SECRET_ACCESS_KEY (removed in V3.1)
+- [ ] S3_BUCKET (removed in V3.1)
 
 ---
 
-## SECURITY NOTES
-
-- Never commit secrets to the repository — always use GitHub Secrets
-- Rotate ANTHROPIC_API_KEY and GEMINI_API_KEY monthly
-- Use separate AWS IAM user for S3 with minimal permissions (S3 only)
-- WordPress Application Password can be revoked anytime in WP Admin without changing your login password
-- SerpAPI key has rate limits — monitor usage at serpapi.com/dashboard
-
----
-
-*Generated by NEXUS-14 V3 — Production Blockers Resolution | 2026-06-12*
+*NEXUS-14 V3.1 — GitHub Secrets Setup Guide | MoneyAbroadGuide.com | Updated 2026-06-12*
+*SERPAPI + SEMRUSH now OPTIONAL | AWS S3 REMOVED | WordPress Media Library for images*
