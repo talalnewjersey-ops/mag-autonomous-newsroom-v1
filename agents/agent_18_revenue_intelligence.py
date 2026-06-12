@@ -116,6 +116,14 @@ EBOOK_TOPICS = [
     "comparison guide", "explained", "tips", "mistakes to avoid",
     "newcomers guide", "immigrants guide", "expats guide", "newcomer's guide",
     "guide for newcomers", "guide for immigrants", "guide for expats",
+    # V3.3: Added missing patterns for students, non-residents, tax topics
+    "international students", "for international students", "students guide",
+    "no ssn", "without ssn", "non-resident", "non resident",
+    "fatca", "fbar", "tax treaty", "filing guide",
+    "send money abroad", "best rates", "cheapest way",
+    "credit card guide", "credit card comparison",
+    "expat banking", "expat finance", "expat guide",
+    "transfer money", "money transfer guide", "remittance guide",
 ]
 
 HIGH_INTENT_PHRASES = [
@@ -286,7 +294,10 @@ def analyze_search_intent(topic, keywords):
     all_text = topic.lower() + " " + " ".join(k.lower() for k in keywords)
 
     transactional = ["best", "open", "apply", "get", "find", "compare", "top", "cheapest",
-                     "free", "vs", "comparison", "review", "rates", "cost", "fee", "cheap"]
+                     "free", "vs", "comparison", "review", "rates", "cost", "fee", "cheap",
+                     # V3.3: Added banking/finance intent signals
+                     "bank account", "open account", "send money", "transfer money",
+                     "credit card", "wire transfer", "no ssn", "without ssn"]
     informational = ["what is", "how does", "why", "when", "where", "definition"]
     navigational = ["login", "contact", "sign in", "website", "official"]
 
