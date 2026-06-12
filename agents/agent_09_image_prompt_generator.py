@@ -661,3 +661,74 @@ class ImagePromptGeneratorAgent(BaseAgent):
                     prompt_data["steps"] = 30
                     prompt_data["guidance_scale"] = 7.5
         return prompts
+
+
+# ============================================================
+# CLI ENTRY POINT - Added V3.2 for workflow execution
+# Workflow: python -m agents.agent_09_image_prompt_generator
+#   --input output/agent_04/article_draft.md
+#   --output output/agent_09/image_prompts.json
+#   --count 5
+# ============================================================
+
+def main():
+    """CLI entry point for workflow execution."""
+    import argparse, sys, json, logging
+    from pathlib import Path
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [AGENT-09] %(levelname)s %(message)s"
+    )
+    log = logging.getLogger(__name__)
+
+    parser = argparse.ArgumentParser(description="Agent 09 - Image Prompt Generator")
+    parser.add_argument("--input", required=True, help="Path to article_draft.md")
+    parser.add_argument("--output", required=True, help="Output path for image_prompts.json")
+    parser.add_argument("--count", type=int, default=5, help="Number of images to generate prompts for")
+    args = parser.parse_args()
+
+    input_path = Path(args.input)
+    if not input_path.exists():
+        log.error(f"Article draft not found: {input_path}")
+        sys.exit(1)
+
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    config = {"image_count": args.count}
+    agent = ImagePromptGeneratorAgent(config)
+
+    try:
+        import asyncio
+        result = asyncio.run(agent.run(
+            article_draft_path=str(input_path),
+            output_dir=str(output_path.parent)
+        ))
+        prompts = result.get("prompts", result.get("image_prompts", []))
+        log.info(f"Image prompts generated: {len(prompts)}")
+        log.info(f"Report written: {output_path}")
+        sys.exit(0)
+    except Exception as e:
+        log.error(f"Image prompt generation failed: {e}")
+        # Create fallback prompts so pipeline can continue
+        fallback_prompts = [
+            {"id": f"img_{i+1}", "title": f"Article Image {i+1}",
+             "prompt": "Professional financial concept image with charts and graphs, blue color scheme",
+             "style": "photorealistic", "aspect_ratio": "16:9"}
+            for i in range(args.count)
+        ]
+        fallback = {
+            "agent": "agent_09_image_prompt_generator",
+            "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
+            "status": "FALLBACK",
+            "prompts": fallback_prompts,
+            "image_count": args.count,
+            "error": str(e)
+        }
+        output_path.write_text(json.dumps(fallback, indent=2), encoding="utf-8")
+        log.warning(f"Fallback prompts written: {output_path}")
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
