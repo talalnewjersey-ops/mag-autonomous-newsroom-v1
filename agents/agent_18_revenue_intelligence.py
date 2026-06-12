@@ -124,6 +124,13 @@ EBOOK_TOPICS = [
     "credit card guide", "credit card comparison",
     "expat banking", "expat finance", "expat guide",
     "transfer money", "money transfer guide", "remittance guide",
+    # V3.4: Additional patterns to cover tax, credit, filing topics
+    "expat tax", "tax filing", "tax guide for", "living abroad",
+    "foreign income", "non-resident tax", "filing abroad",
+    "credit card", "credit guide", "credit score",
+    "send money", "wire transfer guide", "international transfer",
+    "bank account", "open account", "banking guide",
+    "best rates", "compare rates", "comparison",
 ]
 
 HIGH_INTENT_PHRASES = [
