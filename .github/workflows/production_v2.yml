@@ -205,7 +205,9 @@ jobs:
           mkdir -p output/agent_18
           python -m agents.agent_18_revenue_intelligence \
             --topic "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("title",t.get("keyword","expat banking guide")) if isinstance(t,dict) else str(t))')" \
-            --keywords "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; kw=t.get("keyword","") if isinstance(t,dict) else ""; opps=t.get("opportunity_types",[]) if isinstance(t,dict) else []; parts=[kw]+opps; print(",".join(str(p) for p in parts[:6] if p))')" \
+            --keywords "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; kw=t.get("keyword","") if isinstance(t,dict) else ""; opps=t.get("opportunity_types",[]) if isinstance(t,dict) else []; aff=t.get("affiliate_programs",[]) if isinstance(t,dict) else []; parts=[kw]+opps+aff; print(",".join(str(p) for p in parts[:10] if p))')" \
+            --search-volume "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("search_volume",0) if isinstance(t,dict) else 0)')" \
+            --cpc "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("cpc",0.0) if isinstance(t,dict) else 0.0)')" \
             --output output/agent_18/revenue_score.json
           echo "Revenue intelligence complete"
           # Check revenue score
