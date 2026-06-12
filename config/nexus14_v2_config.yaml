@@ -1,13 +1,16 @@
 # ============================================================
-# NEXUS-14 V2 — Master Configuration
-# MoneyAbroadGuide.com Autonomous Newsroom
-# Version: 2.0.0
+# NEXUS-14 V3 — Master Configuration
+# MoneyAbroadGuide.com Quality-First Autonomous Newsroom
+# Version: 3.0.0
+# Upgraded: 2026-06-12
 # Philosophy: Quality over Volume — Every article must earn its place.
+# Platform: Financial education for immigrants, newcomers, international students (USA/Canada)
 # ============================================================
 
 system:
-  name: "NEXUS-14 V2"
-  version: "2.0.0"
+  name: "NEXUS-14 V3"
+  version: "3.0.0"
+  previous_version: "2.0.0"
   site: "MoneyAbroadGuide.com"
   code_name: "Quality-First Autonomous Newsroom"
   primary_ai: "Anthropic Claude API"
@@ -16,11 +19,9 @@ system:
     - "Nano Banana"
 
 # ============================================================
-# PRODUCTION STRATEGY
+# PRODUCTION STRATEGY (V3 — unchanged from V2)
 # ============================================================
 production:
-  # REMOVED: 20+ articles/day target
-  # REPLACED: Maximum 6 quality articles/day
   max_articles_per_day: 6
   max_articles_per_batch: 3
   quality_over_volume: true
@@ -29,39 +30,57 @@ production:
     batch_1:
       start_time: "06:00 UTC"
       max_articles: 3
-    audit_1:
-      time: "09:30 UTC"
-      type: "Global Quality Audit"
-    report_1:
-      time: "09:45 UTC"
-      type: "Morning Production Report"
+      audit_1:
+        time: "09:30 UTC"
+        type: "Global Quality Audit"
+      report_1:
+        time: "09:45 UTC"
+        type: "Morning Production Report"
     batch_2:
       start_time: "13:00 UTC"
       max_articles: 3
-    audit_2:
-      time: "16:30 UTC"
-      type: "Global Quality Audit"
-    report_2:
-      time: "18:00 UTC"
-      type: "Evening Production Report"
+      audit_2:
+        time: "16:30 UTC"
+        type: "Global Quality Audit"
+      report_2:
+        time: "18:00 UTC"
+        type: "Evening Production Report"
     executive_report:
       time: "18:30 UTC"
       type: "Executive Daily Report"
 
 # ============================================================
-# CONTENT REQUIREMENTS (V2)
+# CONTENT REQUIREMENTS (V3 — UPDATED)
+# Two-tier system: STANDARD and PILLAR
 # ============================================================
 content:
-  word_count:
-    minimum: 5000
-    target: 7000
-    maximum: 9000
+  # STANDARD ARTICLE
+  standard:
+    word_count:
+      minimum: 3500
+      target: 5500
+      maximum: 7000
+    faq_min: 8
+    faq_max: 12
+    sources_min: 5
+    images_min: 5
 
+  # PILLAR ARTICLE
+  pillar:
+    word_count:
+      minimum: 7000
+      target: 9000
+      maximum: 12000
+    faq_min: 15
+    faq_max: 20
+    sources_min: 10
+    images_min: 6
+    images_max: 8
+
+  # SHARED MANDATORY ELEMENTS
   mandatory_elements:
-    faq_questions: 20
     internal_links: 5
-    authoritative_sources: 10
-    real_world_case_studies: 3
+    real_world_case_studies: 2
     ebook_opportunities: 2
     affiliate_opportunities: 2
     comparison_tables: 1
@@ -70,15 +89,26 @@ content:
     expert_recommendation_sections: 1
     newcomer_mistakes_sections: 1
 
+  # ARTICLE CLASSIFICATION
+  classification:
+    pillar_triggers:
+      keyword_difficulty_min: 50
+      search_volume_min: 5000
+      revenue_score_min: 70
+      strategic_topic: true
+    stored_in: "config/article_strategy.json"
+
   target_audience:
     primary: "Immigrants and newcomers to USA and Canada"
     secondary: "International students in USA and Canada"
+    tertiary: "Expats living in USA and Canada"
     topics:
-      - "Banking for newcomers"
+      - "Banking for newcomers USA/Canada"
       - "Credit scores for immigrants"
-      - "Taxes (IRS / CRA)"
-      - "Insurance for newcomers"
-      - "Personal finance in USA and Canada"
+      - "Taxes (IRS / CRA) for newcomers"
+      - "Insurance for immigrants"
+      - "Money transfers for newcomers"
+      - "Personal finance USA/Canada for immigrants"
 
   writing_standards:
     style: "Human-first, professional, helpful, trustworthy"
@@ -89,13 +119,14 @@ content:
       - "Weak conclusions"
       - "Generic filler content"
     required:
-      - "Practical examples"
+      - "Practical examples with real numbers"
       - "Actionable recommendations"
       - "Real data from authoritative sources"
       - "Strong EEAT principles"
+      - "Newcomer-specific advice"
 
 # ============================================================
-# IMAGE REQUIREMENTS (V2)
+# IMAGE REQUIREMENTS (V3 — Enhanced validation)
 # ============================================================
 images:
   minimum_per_article: 5
@@ -120,33 +151,43 @@ images:
       - "alt_text_generated"
       - "seo_filename_generated"
       - "embedded_in_article"
+      - "no_ai_artifacts"
+      - "mobile_readable"
+      - "branding_consistent"
+      - "financial_accuracy"
+    output_file: "image_quality_report.json"
 
 # ============================================================
-# QUALITY GATES (V2) — All must PASS for READY_TO_PUBLISH
+# QUALITY GATES (V3) — 18 Mandatory Gates
+# Expanded from 15 (V2) to 18 (V3)
 # ============================================================
 quality_gates:
-  word_count_min: 5000
-  images_min: 5
-  featured_image_required: true
-  faq_min: 20
-  internal_links_min: 5
-  sources_min: 10
-  case_studies_min: 3
-  author_required: true
-  author_bio_required: true
-  seo_score_min: 90
-  eeat_score_min: 90
-  affiliate_compliance_required: true
-  publishing_optimization_required: true
-  broken_links_max: 0
-  image_upload_errors_max: 0
-  ebook_opportunities_min: 2
-  affiliate_opportunities_min: 2
-  comparison_table_required: true
-  checklist_required: true
-  action_plan_required: true
-  expert_section_required: true
-  mistakes_section_required: true
+  # Gates 1-15 preserved from V2 with updated thresholds
+  gate_01_word_count_min: 3500            # UPDATED: was 5000
+  gate_02_images_min: 5
+  gate_03_featured_image_required: true
+  gate_04_faq_min: 8                      # UPDATED: was 20
+  gate_05_internal_links_min: 5
+  gate_06_sources_min: 5                  # UPDATED: was 10 (STANDARD), 10 still for PILLAR
+  gate_07_case_studies_min: 2
+  gate_08_author_required: true
+  gate_09_author_bio_required: true
+  gate_10_seo_score_min: 90
+  gate_11_eeat_score_min: 90
+  gate_12_affiliate_compliance_required: true   # Agent 15
+  gate_13_publishing_optimization_required: true # Agent 16
+  gate_14_broken_links_max: 0
+  gate_15_wordpress_draft_exists: true
+
+  # NEW V3 GATES
+  gate_16_cannibalization_pass: true      # NEW: Agent 17 must PASS
+  gate_17_revenue_score_min: 60           # NEW: Agent 18 score >= 60
+  gate_18_image_quality_validation: true  # NEW: Agent 10 enhanced validation
+
+  # PILLAR-specific overrides
+  pillar_overrides:
+    gate_04_faq_min: 15
+    gate_06_sources_min: 10
 
   failure_policy:
     do_not_publish: true
@@ -156,10 +197,11 @@ quality_gates:
     require_fix_instructions: true
 
 # ============================================================
-# FACT-CHECKING REQUIREMENTS (V2)
+# FACT-CHECKING REQUIREMENTS (V3)
 # ============================================================
 fact_checking:
-  min_authoritative_sources: 10
+  standard_articles_min_sources: 5
+  pillar_articles_min_sources: 10
   priority_sources:
     - "IRS (irs.gov)"
     - "CRA (canada.ca/cra)"
@@ -172,7 +214,7 @@ fact_checking:
   output_file: "sources_validation_report.json"
 
 # ============================================================
-# WORDPRESS REQUIREMENTS (V2)
+# WORDPRESS REQUIREMENTS (V3)
 # ============================================================
 wordpress:
   author:
@@ -208,7 +250,8 @@ wordpress:
   output_file: "wordpress_validation_report.json"
 
 # ============================================================
-# AGENT STACK (V2) — 16 Agents
+# AGENT STACK (V3) — 18 Agents
+# Added: Agent 17 (Cannibalization) + Agent 18 (Revenue)
 # ============================================================
 agents:
   "01":
@@ -224,6 +267,7 @@ agents:
     name: "Article Writer Agent"
     output: "article_draft.md"
     primary_llm: "Anthropic Claude API"
+    note: "Receives article_type (STANDARD|PILLAR) from classification"
   "05":
     name: "Fact Checker Agent"
     output: "fact_check_report.json"
@@ -245,6 +289,14 @@ agents:
     image_providers:
       - "Gemini AI"
       - "Nano Banana"
+    v3_enhancements:
+      - "Resolution validation"
+      - "Readability check"
+      - "Branding consistency"
+      - "Financial accuracy check"
+      - "No AI artifacts check"
+      - "Mobile readability"
+    output_also: "image_quality_report.json"
   "11":
     name: "WordPress Integration Agent"
     output: "wordpress_validation_report.json"
@@ -269,7 +321,7 @@ agents:
       executive: "18:30 UTC"
   "15":
     name: "Affiliate Compliance Agent"
-    status: "NEW in V2"
+    status: "Added in V2"
     output: "affiliate_compliance.json"
     responsibilities:
       - "FTC disclosure verification"
@@ -278,7 +330,7 @@ agents:
       - "Affiliate block validation"
   "16":
     name: "Publishing Optimization Agent"
-    status: "NEW in V2"
+    status: "Added in V2"
     output: "publishing_optimizer.json"
     responsibilities:
       - "Meta title generation (50-60 chars)"
@@ -288,9 +340,70 @@ agents:
       - "Twitter Card optimization"
       - "Rank Math field completion"
       - "Final SEO optimization"
+  "17":
+    name: "Content Cannibalization Agent"
+    status: "NEW in V3"
+    output: "cannibalization_report.json"
+    runs_before: "Agent 04"
+    decisions:
+      - "CREATE_NEW_ARTICLE"
+      - "UPDATE_EXISTING_ARTICLE"
+      - "MERGE_WITH_EXISTING"
+      - "REJECT_DUPLICATE"
+    responsibilities:
+      - "Scan WordPress published articles"
+      - "Scan WordPress drafts"
+      - "Scan internal topic database"
+      - "Run similarity analysis"
+      - "Run AI semantic analysis"
+      - "Block duplicate topics"
+  "18":
+    name: "Revenue Intelligence Agent"
+    status: "NEW in V3"
+    output: "revenue_score.json"
+    revenue_thresholds:
+      reject_below: 60
+      optional: "60-70"
+      prioritize: "70-85"
+      high_priority_above: 85
+    responsibilities:
+      - "Evaluate affiliate opportunities"
+      - "Evaluate ebook opportunities"
+      - "Evaluate AdSense potential"
+      - "Evaluate internal linking opportunities"
+      - "Assess search intent value"
+      - "Assess commercial intent"
 
 # ============================================================
-# REPORTING (V2)
+# V3 EXECUTION PIPELINE (Updated Workflow Order)
+# ============================================================
+pipeline_order:
+  pre_production:
+    - "Agent 01: SEO Research"
+    - "Agent 02: Keyword Validation"
+    - "Agent 17: Cannibalization Check (MUST PASS)"
+    - "Agent 18: Revenue Intelligence (Score >= 60)"
+    - "Agent 03: Content Planning + Article Classification"
+  production:
+    - "Agent 04: Article Writing (with article_type)"
+    - "Agent 05: Fact Checking"
+    - "Agent 06: EEAT Validation"
+    - "Agent 07: Internal Linking"
+    - "Agent 08: Affiliate Optimization"
+  media:
+    - "Agent 09: Image Prompt Generation"
+    - "Agent 10: Image Production + Quality Validation"
+    - "Agent 11: WordPress Integration"
+  quality:
+    - "Agent 12: Quality Assurance"
+    - "Agent 15: Affiliate Compliance"
+    - "Agent 16: Publishing Optimization"
+    - "Agent 13: Chief Editor (18-gate review)"
+  reporting:
+    - "Agent 14: Production Director Report"
+
+# ============================================================
+# REPORTING (V3 — Enhanced)
 # ============================================================
 reporting:
   email_recipient: "talalnewjersey@gmail.com"
@@ -299,34 +412,34 @@ reporting:
     morning:
       time: "09:45 UTC"
       contains:
-        - "Articles produced"
-        - "Articles validated"
+        - "Articles created"
         - "Articles rejected"
-        - "Errors"
+        - "Rejection reasons"
+        - "Revenue scores"
+        - "Cannibalization decisions"
         - "SEO scores"
         - "EEAT scores"
-        - "Image status"
+        - "Image quality scores"
         - "Workflow state"
     executive:
       time: "18:30 UTC"
       contains:
         - "Full daily summary"
         - "Total articles published"
-        - "Revenue analysis"
+        - "Articles rejected (with reasons)"
+        - "Revenue scores per article"
+        - "Cannibalization decisions"
+        - "SEO scores"
+        - "EEAT scores"
+        - "Image quality scores"
+        - "Affiliate opportunities identified"
+        - "Ebook opportunities identified"
+        - "Internal linking opportunities"
         - "Agent performance"
         - "Tomorrow queue"
 
-  mandatory_fields:
-    - "Timestamp"
-    - "Agent Name"
-    - "Execution Duration"
-    - "Input"
-    - "Output"
-    - "Validation Result"
-    - "Pass / Fail"
-
 # ============================================================
-# AI STACK (V2)
+# AI STACK (V3)
 # ============================================================
 ai_stack:
   content_generation: "Anthropic Claude API"
@@ -338,21 +451,36 @@ ai_stack:
   storage: "AWS S3"
 
 # ============================================================
-# FINAL ACCEPTANCE CRITERIA (V2)
+# FINAL ACCEPTANCE CRITERIA (V3 — Expanded)
 # ============================================================
 acceptance_criteria:
   operational_only_if:
-    - "A real article is generated"
-    - "Real images are generated"
-    - "Real images are uploaded"
-    - "A real WordPress draft exists"
-    - "All QA checks pass"
-    - "All validation reports exist"
-    - "A complete end-to-end report exists"
+    - "Real WordPress Draft URL exists"
+    - "Real WordPress Post ID exists"
+    - "Real Featured Image URL exists"
+    - "Real Uploaded Images URLs exist"
+    - "Real QA Report exists"
+    - "Real Image Validation Report exists"
+    - "Real Image Quality Report exists"
+    - "Real Cannibalization Report exists (Gate 16)"
+    - "Real Revenue Score Report exists (Gate 17)"
+    - "Real Affiliate Compliance Report exists"
+    - "Real Publishing Optimizer Report exists"
+    - "All 18 Quality Gates PASS"
   required_deliverables:
-    - "Real WordPress Draft URL"
-    - "Real WordPress Post ID"
-    - "Real Generated Image URLs"
-    - "Real QA Report"
-    - "Real End-to-End Test Report"
-    - "Production Readiness Assessment"
+    - "wordpress_draft_url"
+    - "wordpress_post_id"
+    - "featured_image_url"
+    - "uploaded_images_urls"
+    - "qa_report.json"
+    - "image_validation_report.json"
+    - "image_quality_report.json"
+    - "cannibalization_report.json"
+    - "revenue_score.json"
+    - "affiliate_compliance.json"
+    - "publishing_optimizer.json"
+    - "end_to_end_test_report.html"
+  failure_policy:
+    if_any_missing: "STATUS = FAILED"
+    never_report_success: true
+    never_declare_operational: true
