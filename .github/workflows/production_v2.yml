@@ -184,8 +184,8 @@ jobs:
         run: |
           mkdir -p output/agent_17
           python -m agents.agent_17_cannibalization \
-            --topic "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; topics=json.load(sys.stdin); print(topics[0].get("title",topics[0]) if isinstance(topics[0],dict) else topics[0])')" \
-            --keywords "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; topics=json.load(sys.stdin); kws=topics[0].get("keywords",[]) if isinstance(topics[0],dict) else []; print(",".join(kws[:5]))')" \
+            --topic "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("title",t.get("keyword","expat banking guide")) if isinstance(t,dict) else str(t))')" \
+            --keywords "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; kws=t.get("keywords",t.get("opportunity_types",[])) if isinstance(t,dict) else []; print(",".join(str(k) for k in kws[:5]))')" \
             --output output/agent_17/cannibalization_report.json
           echo "Cannibalization check complete"
           # Check if blocking
@@ -204,8 +204,8 @@ jobs:
         run: |
           mkdir -p output/agent_18
           python -m agents.agent_18_revenue_intelligence \
-            --topic "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; topics=json.load(sys.stdin); print(topics[0].get("title",topics[0]) if isinstance(topics[0],dict) else topics[0])')" \
-            --keywords "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; topics=json.load(sys.stdin); kws=topics[0].get("keywords",[]) if isinstance(topics[0],dict) else []; print(",".join(kws[:5]))')" \
+            --topic "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("title",t.get("keyword","expat banking guide")) if isinstance(t,dict) else str(t))')" \
+            --keywords "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; kws=t.get("keywords",t.get("opportunity_types",[])) if isinstance(t,dict) else []; print(",".join(str(k) for k in kws[:5]))')" \
             --output output/agent_18/revenue_score.json
           echo "Revenue intelligence complete"
           # Check revenue score
