@@ -4,175 +4,286 @@ Creates comprehensive article outlines with H2/H3 structure,
 FAQ, tables, and case studies.
 Input: validated_topics.json
 Output: article_outline.json
+
+V3.2: Added CLI main() entry point for workflow execution.
 """
 
+import argparse
 import asyncio
 import json
 import logging
+import os
+import re
+import sys
 from datetime import datetime
-from typing import Dict, List
-
-from agents.base_agent import BaseAgent
-from services.llm_service import LLMService
-from services.storage_service import StorageService
-
+from pathlib import Path
+from typing import Dict, List, Any
 
 logger = logging.getLogger(__name__)
 
 
-class ContentPlannerAgent(BaseAgent):
-    """
-    Agent 03: Content Planner Agent
-    Creates detailed article outlines for Agent 04 (Article Writer).
-    """
-    
-    AGENT_ID = "agent_03"
-    AGENT_NAME = "Content Planner Agent"
-    
-    def __init__(self, config: Dict, llm_service: LLMService, storage_service: StorageService):
-        super().__init__(config, llm_service, storage_service)
-    
-    async def run(self, context: Dict = None) -> Dict:
-        """Main execution: plan article structure."""
-        self.log_start()
-        
-        try:
-            # Load validated topics
-            topics = await self._load_topics()
-            
-            outlines = []
-            for topic in topics.get("topics", [])[:self.config.get("articles_per_batch", 5)]:
-                logger.info(f"Planning article: {topic.get('keyword')}")
-                outline = await self._create_outline(topic)
-                outlines.append(outline)
-                await asyncio.sleep(0.5)  # Rate limiting
-            
-            output = {
-                "agent": self.AGENT_NAME,
-                "timestamp": datetime.utcnow().isoformat(),
-                "outlines_created": len(outlines),
-                "outlines": outlines
-            }
-            
-            # Save primary outline (first article)
-            if outlines:
-                await self.save_output("article_outline.json", outlines[0])
-            
-            await self.save_output("all_outlines.json", output)
-            
-            self.log_complete({"outlines_created": len(outlines)})
-            return output
-            
-        except Exception as e:
-            self.log_error(e)
-            raise
-    
-    async def _load_topics(self) -> Dict:
-        """Load validated topics from Agent 02."""
-        import os
-        paths = ["output/agent_02/validated_topics.json", "output/validated_topics.json"]
-        for path in paths:
-            if os.path.exists(path):
-                with open(path) as f:
-                    return json.load(f)
-        raise FileNotFoundError("validated_topics.json not found")
-    
-    async def _create_outline(self, topic: Dict) -> Dict:
-        """Create a comprehensive article outline using LLM."""
-        keyword = topic.get("keyword", "")
-        market = topic.get("market", "USA")
-        intent = topic.get("intent", "informational")
-        
-        prompt = f"""Create a comprehensive article outline for MoneyAbroadGuide.com.
+# ============================================================
+# STANDALONE MAIN -- CLI entry point for workflow execution
+# ============================================================
 
-Primary keyword: {keyword}
-Target market: {market}
-Search intent: {intent}
-Target word count: 7,500 words
+def main():
+    """CLI entry point: called by workflow as python -m agents.agent_03_content_planner ..."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [AGENT-03] %(levelname)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S,%f"
+    )
 
-Create a detailed outline with:
-1. SEO-optimized title (H1) - include keyword naturally
-2. Meta description (150-160 chars)
-3. Introduction hook data
-4. 6-8 H2 sections, each with 2-3 H3 subsections
-5. 8-10 FAQ questions
-6. 2-3 comparison tables
-7. 1-2 case studies
-8. Key takeaways (5 bullet points)
-9. Call-to-action
+    parser = argparse.ArgumentParser(description="Agent 03 - Content Planner")
+    parser.add_argument("--input", required=True, help="Path to validated_topics.json")
+    parser.add_argument("--output", required=True, help="Output path for article_outline.json")
+    args = parser.parse_args()
 
-Return as JSON with this structure:
-{{
-  "title": "...",
-  "meta_description": "...",
-  "primary_keyword": "...",
-  "secondary_keywords": ["..."],
-  "market": "{market}",
-  "target_audience": "...",
-  "search_intent": "{intent}",
-  "estimated_word_count": 7500,
-  "hook_data": {{"statistic": "...", "question": "..."}},
-  "sections": [
-    {{
-      "h2": "...",
-      "h3": ["...", "..."],
-      "data": ["key facts to include"],
-      "has_table": true/false,
-      "has_case_study": true/false
-    }}
-  ],
-  "faq": ["question 1?", "question 2?"],
-  "tables": [{{"title": "...", "columns": ["col1", "col2"], "purpose": "..."}}],
-  "case_studies": [{{"scenario": "...", "profile": "..."}}],
-  "key_takeaways": ["...", "..."],
-  "call_to_action": "...",
-  "internal_link_opportunities": ["..."],
-  "affiliate_opportunities": ["..."]
-}}"""
-        
-        response = await self.call_llm(prompt, max_tokens=3000)
-        
-        try:
-            import re
-            json_match = re.search(r'\{.*\}', response, re.DOTALL)
-            if json_match:
+    anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not anthropic_api_key:
+        logger.error("ANTHROPIC_API_KEY not set -- cannot plan content")
+        sys.exit(1)
+
+    # Load validated topics
+    input_path = Path(args.input)
+    if not input_path.exists():
+        logger.error(f"Topics file not found: {input_path}")
+        sys.exit(1)
+
+    with open(input_path, "r", encoding="utf-8") as f:
+        topics_data = json.load(f)
+    logger.info(f"Loaded topics from: {input_path}")
+
+    # Extract first topic
+    if isinstance(topics_data, dict):
+        topics = topics_data.get("topics", [])
+    elif isinstance(topics_data, list):
+        topics = topics_data
+    else:
+        topics = [topics_data]
+
+    if not topics:
+        logger.error("No topics found in input file")
+        sys.exit(1)
+
+    topic = topics[0]
+    if not isinstance(topic, dict):
+        topic = {"keyword": str(topic), "market": "USA", "intent": "informational"}
+
+    logger.info(f"Planning content for: {topic.get("keyword", "Unknown")}")
+
+    # Plan the article outline
+    try:
+        outline = asyncio.run(_plan_outline_standalone(topic, anthropic_api_key))
+    except Exception as e:
+        logger.error(f"Content planning failed: {e}")
+        sys.exit(1)
+
+    # Write output
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(outline, indent=2, ensure_ascii=False), encoding="utf-8")
+    file_size = output_path.stat().st_size
+    logger.info(f"Outline written: {output_path} ({file_size} bytes)")
+    logger.info(f"Article title: {outline.get("title", "Unknown")}")
+    logger.info(f"Sections planned: {len(outline.get("sections", []))}")
+    logger.info(f"FAQ questions: {len(outline.get("faq", []))}")
+    sys.exit(0)
+
+
+# ============================================================
+# STANDALONE OUTLINE PLANNER
+# ============================================================
+
+async def _call_claude_03(api_key: str, prompt: str, max_tokens: int = 3000) -> str:
+    """Call Anthropic Claude API directly."""
+    import anthropic
+    client = anthropic.Anthropic(api_key=api_key)
+    response = await asyncio.to_thread(
+        client.messages.create,
+        model="claude-3-5-sonnet-20241022",
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.content[0].text
+
+
+async def _plan_outline_standalone(topic: Dict, api_key: str) -> Dict:
+    """Create a comprehensive article outline using Claude."""
+    keyword = topic.get("keyword", "")
+    market = topic.get("market", "USA")
+    intent = topic.get("intent", "informational")
+    year = datetime.utcnow().year
+
+    prompt = (
+        f"Create a comprehensive article outline for MoneyAbroadGuide.com.\n\n"
+        f"Primary keyword: {keyword}\n"
+        f"Target market: {market}\n"
+        f"Search intent: {intent}\n"
+        f"Target word count: 7,500 words\n\n"
+        "Create a detailed outline with:\n"
+        "1. SEO-optimized title (H1) - include keyword naturally\n"
+        "2. Meta description (150-160 chars)\n"
+        "3. Introduction hook data\n"
+        "4. 6-8 H2 sections, each with 2-3 H3 subsections\n"
+        "5. 8-10 FAQ questions\n"
+        "6. 2-3 comparison tables\n"
+        "7. 1-2 case studies\n"
+        "8. Key takeaways (5 bullet points)\n"
+        "9. Call-to-action\n\n"
+        "Return ONLY valid JSON with this structure (no markdown, no explanation):\n"
+        "{\n"
+        "  \"title\": \"...\"\n"
+        "  \"meta_description\": \"...\"\n"
+        "  \"primary_keyword\": \"...\"\n"
+        "  \"secondary_keywords\": [\"...\"]\n"
+        "  \"market\": \"...\"\n"
+        "  \"target_audience\": \"...\"\n"
+        "  \"search_intent\": \"...\"\n"
+        "  \"hook_data\": {\"statistic\": \"...\", \"question\": \"...\"}\n"
+        "  \"sections\": [{\"h2\": \"...\", \"h3\": [\"...\"], \"data\": [\"...\"]}]\n"
+        "  \"faq\": [\"question 1?\", \"question 2?\"]\n"
+        "  \"key_takeaways\": [\"...\"]\n"
+        "  \"call_to_action\": \"...\"\n"
+        "  \"internal_link_opportunities\": [\"...\"]\n"
+        "  \"affiliate_opportunities\": [\"...\"]\n"
+        "}"
+    )
+
+    logger.info("Calling Claude to generate outline...")
+    response = await _call_claude_03(api_key, prompt, max_tokens=3000)
+
+    # Parse JSON from response
+    try:
+        # Try direct parse first
+        outline = json.loads(response)
+        logger.info("Outline JSON parsed successfully (direct)")
+    except json.JSONDecodeError:
+        # Try extracting JSON block
+        json_match = re.search(r"{.*}", response, re.DOTALL)
+        if json_match:
+            try:
                 outline = json.loads(json_match.group())
-                outline["topic_data"] = topic
-                return outline
-        except Exception as e:
-            logger.warning(f"Failed to parse outline JSON: {e}")
-        
-        # Fallback outline
-        return {
-            "title": f"Complete Guide to {keyword.title()} ({market} {datetime.utcnow().year})",
-            "primary_keyword": keyword,
-            "market": market,
-            "search_intent": intent,
-            "estimated_word_count": 7500,
-            "sections": [
-                {"h2": f"What is {keyword.title()}?", "h3": ["Overview", "Why It Matters"]},
-                {"h2": "Best Options Compared", "h3": ["Top Picks", "Comparison Table"]},
-                {"h2": "How to Get Started", "h3": ["Step-by-Step Guide", "Requirements"]},
-                {"h2": "Costs and Fees", "h3": ["Fee Structures", "Hidden Costs"]},
-                {"h2": "Common Mistakes to Avoid", "h3": ["Top Pitfalls", "Expert Tips"]},
-            ],
-            "faq": [
-                f"What is the best {keyword} for {market} expats?",
-                f"How does {keyword} work for non-residents?",
-                f"What are the requirements for {keyword}?",
-                f"How much does {keyword} cost?",
-                f"Is {keyword} safe and regulated?",
-                f"How long does {keyword} take?",
-                f"Can I use {keyword} from abroad?",
-                f"What alternatives to {keyword} exist?"
-            ],
-            "key_takeaways": [
-                f"{keyword.title()} is essential for {market} expatriates",
-                "Compare multiple options before choosing",
-                "Consider fees, exchange rates, and regulations",
-                "Check eligibility requirements in advance",
-                "Start the process early to avoid delays"
-            ],
-            "call_to_action": f"Ready to find the best {keyword}? Compare your options below.",
-            "topic_data": topic
-        }
+                logger.info("Outline JSON parsed successfully (extracted)")
+            except json.JSONDecodeError as e:
+                logger.warning(f"JSON parse failed: {e} -- using fallback outline")
+                outline = _build_fallback_outline(topic)
+        else:
+            logger.warning("No JSON found in response -- using fallback outline")
+            outline = _build_fallback_outline(topic)
+
+    # Ensure required fields exist
+    outline.setdefault("primary_keyword", keyword)
+    outline.setdefault("market", market)
+    outline.setdefault("search_intent", intent)
+    outline.setdefault("topic_data", topic)
+
+    # Ensure sections list exists and is non-empty
+    if not outline.get("sections"):
+        outline["sections"] = _build_fallback_outline(topic)["sections"]
+
+    # Ensure FAQ exists
+    if not outline.get("faq"):
+        outline["faq"] = _build_fallback_outline(topic)["faq"]
+
+    return outline
+
+
+def _build_fallback_outline(topic: Dict) -> Dict:
+    """Fallback outline when LLM fails to produce valid JSON."""
+    keyword = topic.get("keyword", "expat banking")
+    market = topic.get("market", "USA")
+    year = datetime.utcnow().year
+    return {
+        "title": f"Complete Guide to {keyword.title()} ({market} {year})",
+        "meta_description": f"Everything you need to know about {keyword} for {market} expatriates in {year}.",
+        "primary_keyword": keyword,
+        "secondary_keywords": [f"{keyword} guide", f"best {keyword}", f"{keyword} {market}"],
+        "market": market,
+        "target_audience": "expatriates and non-residents",
+        "search_intent": topic.get("intent", "informational"),
+        "estimated_word_count": 7500,
+        "hook_data": {
+            "statistic": f"Over 50 million people are living abroad and need {keyword} solutions.",
+            "question": f"What is the best {keyword} option for {market} expatriates in {year}?"
+        },
+        "sections": [
+            {"h2": f"What is {keyword.title()}?", "h3": ["Overview", "Why It Matters for Expats"], "data": []},
+            {"h2": "Best Options Compared", "h3": ["Top Picks", "Comparison Table", "Pros and Cons"], "data": []},
+            {"h2": "How to Get Started", "h3": ["Step-by-Step Guide", "Requirements", "Timeline"], "data": []},
+            {"h2": "Costs and Fees", "h3": ["Fee Structures", "Hidden Costs", "Cost Comparison"], "data": []},
+            {"h2": "Eligibility Requirements", "h3": ["Who Qualifies", "Documents Needed", "Country Restrictions"], "data": []},
+            {"h2": "Common Mistakes to Avoid", "h3": ["Top Pitfalls", "Expert Tips", "Best Practices"], "data": []},
+        ],
+        "faq": [
+            f"What is the best {keyword} for {market} expats?",
+            f"How does {keyword} work for non-residents?",
+            f"What are the requirements for {keyword}?",
+            f"How much does {keyword} cost?",
+            f"Is {keyword} safe and regulated?",
+            f"How long does {keyword} take?",
+            f"Can I use {keyword} from abroad?",
+            f"What alternatives to {keyword} exist?",
+        ],
+        "key_takeaways": [
+            f"{keyword.title()} is essential for {market} expatriates",
+            "Compare multiple options before choosing",
+            "Consider fees, exchange rates, and regulations",
+            "Check eligibility requirements in advance",
+            "Start the process early to avoid delays",
+        ],
+        "call_to_action": f"Ready to find the best {keyword}? Compare your options below.",
+        "internal_link_opportunities": [],
+        "affiliate_opportunities": [],
+        "topic_data": topic
+    }
+
+
+# ============================================================
+# CLASS-BASED AGENT (kept for backward compatibility)
+# ============================================================
+
+try:
+    from agents.base_agent import BaseAgent
+    from services.llm_service import LLMService
+    from services.storage_service import StorageService
+
+    class ContentPlannerAgent(BaseAgent):
+        """Agent 03: class-based wrapper (for DI orchestrators)."""
+        AGENT_ID = "agent_03"
+        AGENT_NAME = "Content Planner Agent"
+
+        def __init__(self, config: Dict, llm_service: LLMService, storage_service: StorageService):
+            super().__init__(config, llm_service, storage_service)
+
+        async def run(self, context: Dict = None) -> Dict:
+            self.log_start()
+            try:
+                topics_data = await self._load_topics()
+                topics = topics_data.get("topics", []) if isinstance(topics_data, dict) else topics_data
+                if not topics:
+                    raise ValueError("No topics found")
+                topic = topics[0] if isinstance(topics[0], dict) else {"keyword": str(topics[0])}
+                api_key = self.config.get("anthropic_api_key", os.environ.get("ANTHROPIC_API_KEY", ""))
+                outline = await _plan_outline_standalone(topic, api_key)
+                output_path = await self.save_output("article_outline.json", outline)
+                self.log_complete({"sections": len(outline.get("sections", []))})
+                return {"outline": outline, "output_path": str(output_path)}
+            except Exception as e:
+                self.log_error(e)
+                raise
+
+        async def _load_topics(self) -> Dict:
+            paths = ["output/agent_02/validated_topics.json", "output/validated_topics.json"]
+            for path in paths:
+                if os.path.exists(path):
+                    with open(path) as f:
+                        return json.load(f)
+            raise FileNotFoundError("validated_topics.json not found")
+
+except ImportError:
+    pass  # No BaseAgent -- standalone mode only
+
+
+if __name__ == "__main__":
+    main()
