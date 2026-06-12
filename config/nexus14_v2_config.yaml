@@ -1,0 +1,358 @@
+# ============================================================
+# NEXUS-14 V2 — Master Configuration
+# MoneyAbroadGuide.com Autonomous Newsroom
+# Version: 2.0.0
+# Philosophy: Quality over Volume — Every article must earn its place.
+# ============================================================
+
+system:
+  name: "NEXUS-14 V2"
+  version: "2.0.0"
+  site: "MoneyAbroadGuide.com"
+  code_name: "Quality-First Autonomous Newsroom"
+  primary_ai: "Anthropic Claude API"
+  image_ai:
+    - "Gemini AI"
+    - "Nano Banana"
+
+# ============================================================
+# PRODUCTION STRATEGY
+# ============================================================
+production:
+  # REMOVED: 20+ articles/day target
+  # REPLACED: Maximum 6 quality articles/day
+  max_articles_per_day: 6
+  max_articles_per_batch: 3
+  quality_over_volume: true
+
+  batches:
+    batch_1:
+      start_time: "06:00 UTC"
+      max_articles: 3
+    audit_1:
+      time: "09:30 UTC"
+      type: "Global Quality Audit"
+    report_1:
+      time: "09:45 UTC"
+      type: "Morning Production Report"
+    batch_2:
+      start_time: "13:00 UTC"
+      max_articles: 3
+    audit_2:
+      time: "16:30 UTC"
+      type: "Global Quality Audit"
+    report_2:
+      time: "18:00 UTC"
+      type: "Evening Production Report"
+    executive_report:
+      time: "18:30 UTC"
+      type: "Executive Daily Report"
+
+# ============================================================
+# CONTENT REQUIREMENTS (V2)
+# ============================================================
+content:
+  word_count:
+    minimum: 5000
+    target: 7000
+    maximum: 9000
+
+  mandatory_elements:
+    faq_questions: 20
+    internal_links: 5
+    authoritative_sources: 10
+    real_world_case_studies: 3
+    ebook_opportunities: 2
+    affiliate_opportunities: 2
+    comparison_tables: 1
+    checklist_sections: 1
+    step_by_step_action_plans: 1
+    expert_recommendation_sections: 1
+    newcomer_mistakes_sections: 1
+
+  target_audience:
+    primary: "Immigrants and newcomers to USA and Canada"
+    secondary: "International students in USA and Canada"
+    topics:
+      - "Banking for newcomers"
+      - "Credit scores for immigrants"
+      - "Taxes (IRS / CRA)"
+      - "Insurance for newcomers"
+      - "Personal finance in USA and Canada"
+
+  writing_standards:
+    style: "Human-first, professional, helpful, trustworthy"
+    prohibited:
+      - "Generic AI introductions"
+      - "AI-style repetition"
+      - "Keyword stuffing"
+      - "Weak conclusions"
+      - "Generic filler content"
+    required:
+      - "Practical examples"
+      - "Actionable recommendations"
+      - "Real data from authoritative sources"
+      - "Strong EEAT principles"
+
+# ============================================================
+# IMAGE REQUIREMENTS (V2)
+# ============================================================
+images:
+  minimum_per_article: 5
+  standard_articles:
+    - featured_image: 1
+    - infographic: 1
+    - comparison_graphic: 1
+    - checklist_graphic: 1
+    - educational_diagram: 1
+  pillar_articles:
+    min_visuals: 6
+    max_visuals: 8
+
+  validation:
+    file_size_min_bytes: 1000
+    min_resolution: "800x600"
+    required_checks:
+      - "image_exists"
+      - "file_size_gt_zero"
+      - "resolution_acceptable"
+      - "upload_successful"
+      - "alt_text_generated"
+      - "seo_filename_generated"
+      - "embedded_in_article"
+
+# ============================================================
+# QUALITY GATES (V2) — All must PASS for READY_TO_PUBLISH
+# ============================================================
+quality_gates:
+  word_count_min: 5000
+  images_min: 5
+  featured_image_required: true
+  faq_min: 20
+  internal_links_min: 5
+  sources_min: 10
+  case_studies_min: 3
+  author_required: true
+  author_bio_required: true
+  seo_score_min: 90
+  eeat_score_min: 90
+  affiliate_compliance_required: true
+  publishing_optimization_required: true
+  broken_links_max: 0
+  image_upload_errors_max: 0
+  ebook_opportunities_min: 2
+  affiliate_opportunities_min: 2
+  comparison_table_required: true
+  checklist_required: true
+  action_plan_required: true
+  expert_section_required: true
+  mistakes_section_required: true
+
+  failure_policy:
+    do_not_publish: true
+    do_not_create_draft: true
+    do_not_report_success: true
+    require_explanation: true
+    require_fix_instructions: true
+
+# ============================================================
+# FACT-CHECKING REQUIREMENTS (V2)
+# ============================================================
+fact_checking:
+  min_authoritative_sources: 10
+  priority_sources:
+    - "IRS (irs.gov)"
+    - "CRA (canada.ca/cra)"
+    - "USCIS (uscis.gov)"
+    - "FDIC (fdic.gov)"
+    - "CFPB (consumerfinance.gov)"
+    - "Canada.ca"
+    - "Government websites (.gov, .gc.ca)"
+    - "Official financial institutions"
+  output_file: "sources_validation_report.json"
+
+# ============================================================
+# WORDPRESS REQUIREMENTS (V2)
+# ============================================================
+wordpress:
+  author:
+    name: "Talal Eddaouahiri"
+    bio: "Founder of MoneyAbroadGuide.com helping immigrants, international students and newcomers navigate banking, credit scores, taxes, insurance and personal finance in the USA and Canada."
+
+  auto_insert:
+    - "Author name"
+    - "Author bio"
+    - "Author image"
+    - "Featured image"
+    - "All generated visuals"
+    - "FAQ schema (JSON-LD)"
+    - "Internal links"
+    - "Affiliate blocks"
+    - "Ebook CTA blocks"
+    - "Rank Math metadata"
+    - "Meta title"
+    - "Meta description"
+    - "Open Graph tags"
+    - "Twitter Card tags"
+    - "BreadcrumbList schema"
+
+  mandatory_tests:
+    - "Draft exists"
+    - "Content exists"
+    - "Author assigned"
+    - "Author bio inserted"
+    - "Featured image uploaded"
+    - "Generated images uploaded"
+    - "FAQ schema inserted"
+    - "Rank Math fields populated"
+  output_file: "wordpress_validation_report.json"
+
+# ============================================================
+# AGENT STACK (V2) — 16 Agents
+# ============================================================
+agents:
+  "01":
+    name: "SEO Research Agent"
+    output: "topics.json"
+  "02":
+    name: "Keyword Validation Agent"
+    output: "validated_topics.json"
+  "03":
+    name: "Content Planner Agent"
+    output: "article_outline.json"
+  "04":
+    name: "Article Writer Agent"
+    output: "article_draft.md"
+    primary_llm: "Anthropic Claude API"
+  "05":
+    name: "Fact Checker Agent"
+    output: "fact_check_report.json"
+  "06":
+    name: "EEAT Validator Agent"
+    output: "eeat_report.json"
+  "07":
+    name: "Internal Linking Agent"
+    output: "internal_links.json"
+  "08":
+    name: "Affiliate Optimization Agent"
+    output: "affiliate_report.json"
+  "09":
+    name: "Image Prompt Generator Agent"
+    output: "image_prompts.json"
+  "10":
+    name: "Image Production Agent"
+    output: "image_validation_report.json"
+    image_providers:
+      - "Gemini AI"
+      - "Nano Banana"
+  "11":
+    name: "WordPress Integration Agent"
+    output: "wordpress_validation_report.json"
+  "12":
+    name: "Quality Assurance Agent"
+    output: "qa_report.json"
+  "13":
+    name: "Chief Editor Agent"
+    output: "editor_report.json"
+    decisions:
+      - "READY_TO_PUBLISH"
+      - "NEEDS_CORRECTION"
+      - "REJECTED"
+    audit_schedule:
+      - "09:30 UTC (Batch 1)"
+      - "16:30 UTC (Batch 2)"
+  "14":
+    name: "Production Director Agent"
+    output: "daily_production_report.html"
+    reports:
+      morning: "09:45 UTC"
+      executive: "18:30 UTC"
+  "15":
+    name: "Affiliate Compliance Agent"
+    status: "NEW in V2"
+    output: "affiliate_compliance.json"
+    responsibilities:
+      - "FTC disclosure verification"
+      - "Affiliate compliance audit"
+      - "Partner disclosure validation"
+      - "Affiliate block validation"
+  "16":
+    name: "Publishing Optimization Agent"
+    status: "NEW in V2"
+    output: "publishing_optimizer.json"
+    responsibilities:
+      - "Meta title generation (50-60 chars)"
+      - "Meta description generation (150-160 chars)"
+      - "Schema markup generation (Article + FAQ + BreadcrumbList)"
+      - "Open Graph optimization"
+      - "Twitter Card optimization"
+      - "Rank Math field completion"
+      - "Final SEO optimization"
+
+# ============================================================
+# REPORTING (V2)
+# ============================================================
+reporting:
+  email_recipient: "talalnewjersey@gmail.com"
+  service: "SendGrid"
+  reports:
+    morning:
+      time: "09:45 UTC"
+      contains:
+        - "Articles produced"
+        - "Articles validated"
+        - "Articles rejected"
+        - "Errors"
+        - "SEO scores"
+        - "EEAT scores"
+        - "Image status"
+        - "Workflow state"
+    executive:
+      time: "18:30 UTC"
+      contains:
+        - "Full daily summary"
+        - "Total articles published"
+        - "Revenue analysis"
+        - "Agent performance"
+        - "Tomorrow queue"
+
+  mandatory_fields:
+    - "Timestamp"
+    - "Agent Name"
+    - "Execution Duration"
+    - "Input"
+    - "Output"
+    - "Validation Result"
+    - "Pass / Fail"
+
+# ============================================================
+# AI STACK (V2)
+# ============================================================
+ai_stack:
+  content_generation: "Anthropic Claude API"
+  image_generation:
+    - "Gemini AI"
+    - "Nano Banana"
+  wordpress: "WordPress REST API"
+  email: "SendGrid"
+  storage: "AWS S3"
+
+# ============================================================
+# FINAL ACCEPTANCE CRITERIA (V2)
+# ============================================================
+acceptance_criteria:
+  operational_only_if:
+    - "A real article is generated"
+    - "Real images are generated"
+    - "Real images are uploaded"
+    - "A real WordPress draft exists"
+    - "All QA checks pass"
+    - "All validation reports exist"
+    - "A complete end-to-end report exists"
+  required_deliverables:
+    - "Real WordPress Draft URL"
+    - "Real WordPress Post ID"
+    - "Real Generated Image URLs"
+    - "Real QA Report"
+    - "Real End-to-End Test Report"
+    - "Production Readiness Assessment"
