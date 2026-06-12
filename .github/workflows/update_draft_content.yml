@@ -1,0 +1,36 @@
+name: NEXUS-14 Update Draft Content
+
+on:
+  push:
+    branches:
+      - claude/usa-canada-transfer-article-zp65tm
+    paths:
+      - '.github/workflows/update_draft_content.yml'
+      - 'scripts/update_post.py'
+      - 'drafts/wp_post_46707_content_revised.html'
+  workflow_dispatch:
+    inputs:
+      post_id:
+        description: 'WordPress post ID to update'
+        required: true
+        default: '46707'
+
+jobs:
+  update-content:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Install dependencies
+        run: pip install requests -q
+
+      - name: Update post content
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_PASSWORD: ${{ secrets.WORDPRESS_PASSWORD }}
+          POST_ID: ${{ github.event.inputs.post_id || '46707' }}
+        run: python3 scripts/update_post.py
