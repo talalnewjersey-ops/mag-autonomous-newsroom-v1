@@ -45,7 +45,10 @@ AFFILIATE_CATEGORIES = {
                      "bank for international students", "bank no ssn", "bank non-resident",
                      "banking for newcomers", "banking for immigrants", "banking for expats",
                      "newcomers banking", "immigrants banking", "guide for newcomers",
-                     "newcomers to canada", "newcomers to usa", "newcomers guide",
+                     # V3.5: Added simpler single-word triggers
+                     "banking", "banking guide", "banque", "online banking",
+                     "expat banking", "student banking", "banking students",
+                     "international students banking", "newcomers to canada", "newcomers to usa", "newcomers guide",
                      "immigrants guide", "expats guide", "financial guide",
                      "newcomers", "newcomer", "immigrants", "expats", "new to canada",
                      "new to usa", "new to america", "move to canada", "move to usa"],
