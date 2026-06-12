@@ -42,7 +42,13 @@ AFFILIATE_CATEGORIES = {
         "keywords": ["bank account", "checking", "savings", "open account", "direct deposit",
                      "routing number", "chime", "mercury", "wise bank", "revolut bank",
                      "bank for immigrants", "bank for newcomers", "bank for expats",
-                     "bank for international students", "bank no ssn", "bank non-resident"],
+                     "bank for international students", "bank no ssn", "bank non-resident",
+                     "banking for newcomers", "banking for immigrants", "banking for expats",
+                     "newcomers banking", "immigrants banking", "guide for newcomers",
+                     "newcomers to canada", "newcomers to usa", "newcomers guide",
+                     "immigrants guide", "expats guide", "financial guide",
+                     "newcomers", "newcomer", "immigrants", "expats", "new to canada",
+                     "new to usa", "new to america", "move to canada", "move to usa"],
         "partners": ["Wise", "Remitly", "Chime", "Mercury", "Chase", "Bank of America",
                      "TD Bank", "RBC", "Scotiabank", "HSBC", "Citibank",
                      "TD Canada Trust", "Charles Schwab", "Revolut"],
@@ -108,6 +114,8 @@ EBOOK_TOPICS = [
     "immigrant guide", "how to", "everything you need", "checklist",
     "banking guide", "credit guide", "tax guide", "financial guide",
     "comparison guide", "explained", "tips", "mistakes to avoid",
+    "newcomers guide", "immigrants guide", "expats guide", "newcomer's guide",
+    "guide for newcomers", "guide for immigrants", "guide for expats",
 ]
 
 HIGH_INTENT_PHRASES = [
@@ -348,7 +356,7 @@ Return JSON only:
 {{"ai_score_adjustment": -10 to +10, "affiliate_rating": "HIGH|MEDIUM|LOW", "ebook_viability": "YES|MAYBE|NO", "adsense_cpc_estimate": "$X.XX-$X.XX", "commercial_intent": "HIGH|MEDIUM|LOW", "audience_fit": "PERFECT|GOOD|POOR", "reasoning": "brief analysis", "top_affiliate_recommendation": "partner name", "revenue_maximization_tip": "actionable advice"}}"""
 
     try:
-        msg = client.messages.create(model="claude-opus-4-5", max_tokens=512,
+        msg = client.messages.create(model="claude-3-5-haiku-20241022", max_tokens=512,
                                      messages=[{"role": "user", "content": prompt}])
         text = msg.content[0].text.strip()
         m = re.search(r'\{.*\}', text, re.DOTALL)
