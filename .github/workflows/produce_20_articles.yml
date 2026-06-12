@@ -1,9 +1,15 @@
-# NEXUS-14: Production 20 Articles - v2 Engine
+# NEXUS-14: Production 6 Articles/Day - v2 Engine
+# Reduced from 20 articles/day to 6 articles/day, split into two daily batches of 3.
 # max-parallel: 2 to prevent WP rate limiting
 
-name: NEXUS-14 Produce 20 Articles
+name: NEXUS-14 Produce 6 Articles
 
 on:
+  schedule:
+    # Batch 1 (USA) - 08:00 UTC daily - 3 articles
+    - cron: '0 8 * * *'
+    # Batch 2 (Canada) - 18:00 UTC daily - 3 articles
+    - cron: '0 18 * * *'
   workflow_dispatch:
     inputs:
       batch:
@@ -26,6 +32,9 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 25
+    if: |
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.batch == 'all' || github.event.inputs.batch == 'usa_only'))
+      || github.event.schedule == '0 8 * * *'
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -39,27 +48,6 @@ jobs:
           market: usa
         - index: USA-03
           topic: how to send money abroad from USA fast and cheap 2026
-          market: usa
-        - index: USA-04
-          topic: best bank wire transfer alternatives USA expats 2026
-          market: usa
-        - index: USA-05
-          topic: Wise vs Remitly vs Western Union USA comparison 2026
-          market: usa
-        - index: USA-06
-          topic: how to transfer large amounts of money internationally USA 2026
-          market: usa
-        - index: USA-07
-          topic: best apps to send money internationally from USA 2026
-          market: usa
-        - index: USA-08
-          topic: how to avoid high fees when sending money abroad USA 2026
-          market: usa
-        - index: USA-09
-          topic: sending money to Mexico from USA best services 2026
-          market: usa
-        - index: USA-10
-          topic: OFX vs Wise USA international money transfer review 2026
           market: usa
 
     steps:
@@ -103,6 +91,9 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 25
+    if: |
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.batch == 'all' || github.event.inputs.batch == 'canada_only'))
+      || github.event.schedule == '0 18 * * *'
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -116,27 +107,6 @@ jobs:
           market: canada
         - index: CAN-03
           topic: how to send money abroad from Canada fast 2026
-          market: canada
-        - index: CAN-04
-          topic: best international wire transfer from Canada 2026
-          market: canada
-        - index: CAN-05
-          topic: Wise vs Remitly Canada money transfer comparison 2026
-          market: canada
-        - index: CAN-06
-          topic: how to transfer large sums internationally from Canada 2026
-          market: canada
-        - index: CAN-07
-          topic: best apps to send money internationally from Canada 2026
-          market: canada
-        - index: CAN-08
-          topic: how to avoid fees sending money abroad from Canada 2026
-          market: canada
-        - index: CAN-09
-          topic: sending money to Philippines from Canada best services 2026
-          market: canada
-        - index: CAN-10
-          topic: OFX vs Wise Canada international money transfer review 2026
           market: canada
 
     steps:
