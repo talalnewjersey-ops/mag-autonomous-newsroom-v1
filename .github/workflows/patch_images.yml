@@ -48,6 +48,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: patch-images-report-${{ github.run_id }}
-          path: patch_images_report.json
+          path: patch_report.json
           retention-days: 30
           if-no-files-found: warn

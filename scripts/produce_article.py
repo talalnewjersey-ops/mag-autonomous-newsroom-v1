@@ -351,7 +351,7 @@ def generate_one_image(prompt_text, idx):
 
 def upload_image_to_wp(img_bytes, filename, post_id, set_featured=False):
     if not creds_wp:
-        return None
+        return None, None
     try:
         hdr = {
             "Authorization": "Basic " + creds_wp,
@@ -371,15 +371,16 @@ def upload_image_to_wp(img_bytes, filename, post_id, set_featured=False):
                 if upd:
                     print("    Featured image set -> post", post_id)
                     image_report["featured_media_id"] = mid
-            return mid
+            return mid, murl
         else:
             print("    Media upload FAILED:", mr.text[:100])
-            return None
+            return None, None
     except Exception as e:
         print("    Media upload error:", e)
-        return None
+        return None, None
 
 provider_used = None
+media_urls = []
 for i, prompt in enumerate(IMG_PROMPTS):
     print(f"  Generating image {i+1}/4...")
     img_bytes, prov = generate_one_image(prompt, i+1)
@@ -389,9 +390,10 @@ for i, prompt in enumerate(IMG_PROMPTS):
             provider_used = prov
         fname = f"nexus14-{ARTICLE_INDEX}-img{i+1}-{int(time.time())}.jpg"
         is_featured = (i == 0)
-        mid = upload_image_to_wp(img_bytes, fname, wp_post_id, set_featured=is_featured)
+        mid, murl = upload_image_to_wp(img_bytes, fname, wp_post_id, set_featured=is_featured)
         if mid:
             media_ids.append(mid)
+            media_urls.append(murl)
     time.sleep(1)
 
 img_total_time = round(time.time() - img_t_start, 2)
@@ -405,6 +407,46 @@ print(f"  Images: {len(generated_images)}/4 generated, {len(media_ids)}/4 upload
 
 results["images_generated"] = image_report["images_generated"]
 results["featured_image_set"] = image_report.get("featured_media_id") is not None
+
+print()
+print("[STEP 6b] Inserting inline images into article content...")
+inline_inserted = 0
+if wp_post_id and len(media_urls) > 1:
+    nc = article_content
+    for k in range(1, len(media_urls)):
+        murl = media_urls[k]
+        mid = media_ids[k]
+        if not murl:
+            continue
+        img_html = (f'\n<figure class="wp-block-image size-large aligncenter">'
+                     f'<img src="{murl}" alt="{TOPIC[:50]}" class="wp-image-{mid}"/>'
+                     f'</figure>\n')
+        start, pos = -1, 0
+        for _ in range(inline_inserted + 1):
+            p2 = nc.find("</h2>", pos)
+            if p2 == -1:
+                start = -1
+                break
+            pos = p2 + 5
+            start = pos
+        if start > 0:
+            nc = nc[:start] + img_html + nc[start:]
+        else:
+            nc += img_html
+        inline_inserted += 1
+    if inline_inserted:
+        upd = wp_request("POST", "/wp-json/wp/v2/posts/" + str(wp_post_id),
+                         WP_JSON_HEADERS, json_data={"content": nc}, timeout=90)
+        if upd and upd.status_code in (200, 201):
+            print(f"  Content updated: {inline_inserted} inline image(s) inserted")
+            article_content = nc
+        else:
+            print("  Failed to update post content with inline images")
+            inline_inserted = 0
+else:
+    print("  Skipped (no post ID or fewer than 2 images uploaded)")
+
+results["images_in_content_4plus"] = (1 if image_report.get("featured_media_id") else 0) + inline_inserted >= 4
 
 print()
 print("[STEP 7] Email notification (non-bloquant)...")
@@ -445,6 +487,7 @@ checks = [
     ("wordpress_draft_created", results.get("wordpress_draft_created", False)),
     ("images_generated",        results.get("images_generated", False)),
     ("featured_image_set",      results.get("featured_image_set", False)),
+    ("images_in_content_4plus", results.get("images_in_content_4plus", False)),
 ]
 passed = sum(1 for _, v in checks if v)
 total_checks = len(checks)
@@ -460,7 +503,7 @@ for name, val in checks:
 print()
 print("Score  :", str(passed) + "/" + str(total_checks))
 print("Words  :", len(article_content.split()) if article_content else 0)
-print("Images :", len(generated_images), "/ 4 generated,", len(media_ids), "uploaded")
+print("Images :", len(generated_images), "/ 4 generated,", len(media_ids), "uploaded,", inline_inserted, "inline +", (1 if image_report.get("featured_media_id") else 0), "featured")
 print("Topic  :", TOPIC)
 print("Market :", MARKET.upper())
 print("Cat    :", "Newcomers to the USA" if MARKET == "usa" else "Newcomers to Canada")
@@ -472,7 +515,7 @@ print("Provider:", image_report.get("provider_used", "none"))
 print("Cost   : $" + str(round(openai_cost + img_cost, 4)))
 print("Time   :", str(elapsed) + "s")
 
-if passed >= 7 and critical_ok and results.get("word_count_5000plus") and results.get("images_generated"):
+if passed >= 7 and critical_ok and results.get("word_count_5000plus") and results.get("images_in_content_4plus"):
     print("STATUS : PUBLISHED (draft) - ALL GATES PASS")
 elif passed >= 6 and critical_ok:
     print("STATUS : PARTIAL - REVIEW REQUIRED")
@@ -495,6 +538,7 @@ report = {
     "critical_ok": critical_ok,
     "wp_post_id": wp_post_id,
     "images_generated": len(generated_images),
+    "images_inline_inserted": inline_inserted,
     "media_ids": media_ids,
     "featured_media_id": image_report.get("featured_media_id"),
     "image_provider": image_report.get("provider_used"),

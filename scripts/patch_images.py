@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-NEXUS-14: patch_images.py - Image Patcher v1
-Adds 4 images to all draft posts that have no featured image.
+NEXUS-14: patch_images.py - Image Patcher v2
+Tops up every draft post with fewer than 4 total images (featured + inline)
+up to 4: sets a featured image if missing, and inserts the remaining
+images inline after <h2> headings.
 Provider 1: Nano Banana (Gemini-2.0-flash)
 Provider 2: OpenAI gpt-image-1 (fallback)
 """
@@ -139,11 +141,23 @@ while True:
     if len(d)<50: break
     page+=1
 print(f"  Total drafts: {len(posts)}")
-to_patch=[p for p in posts if not p.get("featured_media")]
-print(f"  Need images : {len(to_patch)}")
+
+to_patch=[]
+for p in posts:
+    raw=p.get("content",{})
+    content=raw.get("rendered","") if isinstance(raw,dict) else str(raw)
+    inline=len(re.findall(r"<img ",content,re.IGNORECASE))
+    has_featured=bool(p.get("featured_media"))
+    total=(1 if has_featured else 0)+inline
+    if total<4:
+        p["_has_featured"]=has_featured
+        p["_needed"]=4-total
+        to_patch.append(p)
+
+print(f"  Need images : {len(to_patch)} (total images < 4)")
 print()
 if not to_patch:
-    print("All drafts already have images. Nothing to do.")
+    print("All drafts already have >=4 images. Nothing to do.")
     sys.exit(0)
 
 # STEP 2 - patch each post
@@ -153,24 +167,28 @@ for i,post in enumerate(to_patch):
     t=post.get("title",{})
     title=t.get("rendered","") if isinstance(t,dict) else str(t)
     title=re.sub(r"<[^>]+>","",title).strip()
-    print(f"[POST {i+1}/{len(to_patch)}] ID={pid} | {title[:55]}")
-    prs=prompts_for(title)
+    has_featured=post["_has_featured"]
+    needed=post["_needed"]
+    print(f"[POST {i+1}/{len(to_patch)}] ID={pid} | featured={'YES' if has_featured else 'NO'} | need {needed} more | {title[:50]}")
+    prs=prompts_for(title)[:needed]
     mids,murls,prov,feat=[],[],None,False
     for j,pr in enumerate(prs):
-        print(f"  Generating img {j+1}/4...")
+        print(f"  Generating img {j+1}/{needed}...")
         img,p=gen_image(pr,j+1)
         if img:
             if not prov: prov=p
             fname=f"nexus14-patch-{pid}-img{j+1}-{int(time.time())}.jpg"
             mid,murl=upload_media(img,fname)
             if mid:
-                mids.append(mid); murls.append(murl)
-                if j==0:
+                set_as_featured = (not has_featured) and (j==0)
+                if set_as_featured:
                     rf=wp_patch(f"/wp-json/wp/v2/posts/{pid}",{"featured_media":mid})
                     if rf and rf.status_code in(200,201):
-                        feat=True; print(f"  Featured set: Media ID {mid}")
+                        feat=True; has_featured=True; print(f"  Featured set: Media ID {mid}")
+                else:
+                    mids.append(mid); murls.append(murl)
         else:
-            print(f"  img {j+1}/4 FAILED")
+            print(f"  img {j+1}/{needed} FAILED")
         time.sleep(1)
     # Inline images after h2 tags
     if murls:
@@ -196,24 +214,25 @@ for i,post in enumerate(to_patch):
             ru=wp_patch(f"/wp-json/wp/v2/posts/{pid}",{"content":nc})
             if ru and ru.status_code in(200,201):
                 print(f"  Content updated: {len(murls)} images inline")
-    results.append({"post_id":pid,"title":title[:60],"images_added":len(mids),"featured_set":feat,"provider":prov,"media_ids":mids})
-    print(f"  RESULT: {len(mids)}/4 imgs | featured={'YES' if feat else 'NO'} | {prov}")
+    images_added=len(murls)+(1 if feat else 0)
+    results.append({"post_id":pid,"title":title[:60],"needed":needed,"images_added":images_added,"featured_set":feat,"inline_added":len(murls),"provider":prov,"media_ids":mids})
+    print(f"  RESULT: {images_added}/{needed} imgs added | featured_now_set={'YES' if feat else 'NO'} | {prov}")
     print()
     time.sleep(2)
 
 # Final report
 elapsed=round(time.time()-START,1)
-patched=sum(1 for r in results if r["featured_set"])
+patched=sum(1 for r in results if r["images_added"]>=r["needed"])
 print("="*60)
 print("IMAGE PATCHER — FINAL REPORT")
 print("="*60)
 for r in results:
-    print(f"  {'PATCHED' if r['featured_set'] else 'PARTIAL':8} | Post {r['post_id']} | {r['images_added']}/4 | {r['title'][:40]}")
+    print(f"  {'PATCHED' if r['images_added']>=r['needed'] else 'PARTIAL':8} | Post {r['post_id']} | {r['images_added']}/{r['needed']} added | {r['title'][:40]}")
 print()
-print(f"Posts patched : {patched}/{len(results)}")
-print(f"Elapsed       : {elapsed}s")
+print(f"Posts fully patched : {patched}/{len(results)}")
+print(f"Elapsed             : {elapsed}s")
 print("="*60)
 with open("patch_report.json","w") as f:
-    json.dump({"run":"patch_images_v1","timestamp":datetime.utcnow().isoformat(),"total":len(to_patch),"patched":patched,"elapsed":elapsed,"results":results},f,indent=2)
+    json.dump({"run":"patch_images_v2","timestamp":datetime.utcnow().isoformat(),"total":len(to_patch),"patched":patched,"elapsed":elapsed,"results":results},f,indent=2)
 print("Report: patch_report.json")
 if patched==0 and to_patch: sys.exit(1)
