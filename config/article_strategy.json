@@ -1,0 +1,90 @@
+{
+  "_description": "NEXUS-14 V3 - Article Classification Strategy for MoneyAbroadGuide.com",
+  "_version": "3.0.0",
+  "_last_updated": "2026-06-12",
+  "classification_rules": {
+    "PILLAR": {
+      "description": "Comprehensive cornerstone content targeting competitive keywords",
+      "triggers": {
+        "keyword_difficulty_min": 50,
+        "strategic_topic": true,
+        "search_volume_min": 5000,
+        "revenue_score_min": 70
+      },
+      "requirements": {
+        "word_count_min": 7000,
+        "word_count_target": 9000,
+        "word_count_max": 12000,
+        "faq_min": 15,
+        "faq_max": 20,
+        "sources_min": 10,
+        "images_min": 6,
+        "images_max": 8,
+        "case_studies_min": 3,
+        "internal_links_min": 8
+      }
+    },
+    "STANDARD": {
+      "description": "High-quality targeted articles for medium-competition keywords",
+      "triggers": {
+        "keyword_difficulty_max": 49,
+        "search_volume_min": 500
+      },
+      "requirements": {
+        "word_count_min": 3500,
+        "word_count_target": 5500,
+        "word_count_max": 7000,
+        "faq_min": 8,
+        "faq_max": 12,
+        "sources_min": 5,
+        "images_min": 5,
+        "case_studies_min": 2,
+        "internal_links_min": 5
+      }
+    }
+  },
+  "classification_logic": {
+    "pseudo_code": [
+      "IF keyword_difficulty > 50 OR strategic_topic == true:",
+      "  article_type = PILLAR",
+      "ELIF search_volume > 5000:",
+      "  article_type = PILLAR",
+      "ELIF revenue_score > 85:",
+      "  article_type = PILLAR",
+      "ELSE:",
+      "  article_type = STANDARD"
+    ],
+    "output_field": "article_type",
+    "stored_in": "article_strategy.json"
+  },
+  "strategic_topics": [
+    "Best bank accounts for immigrants USA",
+    "How to build credit in USA as immigrant",
+    "Banking for newcomers Canada",
+    "How to file taxes as international student USA",
+    "ITIN number guide for immigrants",
+    "Best credit cards for newcomers Canada",
+    "How to send money internationally from USA",
+    "Health insurance for immigrants USA",
+    "TFSA guide for newcomers Canada",
+    "RRSP explained for immigrants Canada",
+    "Tax filing for newcomers Canada CRA",
+    "How to get SSN as international student",
+    "Banking without credit history USA immigrants",
+    "Car insurance for newcomers USA",
+    "Renters insurance for immigrants USA"
+  ],
+  "production_limits": {
+    "max_articles_per_day": 6,
+    "max_articles_per_batch": 3,
+    "batch_1_time": "06:00 UTC",
+    "batch_2_time": "13:00 UTC",
+    "pillar_max_per_day": 2,
+    "standard_max_per_day": 4
+  },
+  "quality_first_policy": {
+    "rule": "Quality always wins over volume",
+    "max_daily_enforced": true,
+    "reject_if_below_standards": true
+  }
+}
