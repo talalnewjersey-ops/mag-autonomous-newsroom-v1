@@ -1,0 +1,37 @@
+name: NEXUS-14 Fetch Draft Content
+
+on:
+  workflow_dispatch:
+    inputs:
+      post_id:
+        description: 'WordPress post ID to fetch'
+        required: true
+        default: '46707'
+
+jobs:
+  fetch-content:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Install dependencies
+        run: pip install requests -q
+
+      - name: Fetch post content
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_PASSWORD: ${{ secrets.WORDPRESS_PASSWORD }}
+          POST_ID: ${{ github.event.inputs.post_id }}
+        run: python3 scripts/fetch_post.py
+
+      - name: Commit fetched content
+        run: |
+          git config user.name "nexus14-bot"
+          git config user.email "nexus14-bot@users.noreply.github.com"
+          git add drafts/
+          git diff --cached --quiet && echo "No changes" || git commit -m "Fetch WP draft ${{ github.event.inputs.post_id }} content for review"
+          git push origin HEAD:${{ github.ref_name }}
