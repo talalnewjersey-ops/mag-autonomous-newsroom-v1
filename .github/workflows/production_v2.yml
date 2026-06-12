@@ -170,6 +170,54 @@ jobs:
             --input output/agent_01/topics.json \
             --output output/agent_02/validated_topics.json
 
+
+      - name: "Phase 2.5 — Cannibalization Check (Agent 17) [NEW V3]"
+        id: cannibalization_check
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+        run: |
+          mkdir -p output/agent_17
+          python -m agents.agent_17_cannibalization \
+            --topic "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; topics=json.load(sys.stdin); print(topics[0].get("title",topics[0]) if isinstance(topics[0],dict) else topics[0])')" \
+            --keywords "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; topics=json.load(sys.stdin); kws=topics[0].get("keywords",[]) if isinstance(topics[0],dict) else []; print(",".join(kws[:5]))')" \
+            --output output/agent_17/cannibalization_report.json
+          echo "Cannibalization check complete"
+          # Check if blocking
+          DECISION=$(cat output/agent_17/cannibalization_report.json | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r.get("decision","UNKNOWN"))')
+          BLOCKING=$(cat output/agent_17/cannibalization_report.json | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r.get("blocking",True))')
+          echo "Decision: $DECISION | Blocking: $BLOCKING"
+          if [ "$BLOCKING" = "True" ]; then
+            echo "ERROR: Topic rejected by Agent 17 - $DECISION"
+            exit 1
+          fi
+
+      - name: "Phase 2.6 — Revenue Intelligence (Agent 18) [NEW V3]"
+        id: revenue_intelligence
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          mkdir -p output/agent_18
+          python -m agents.agent_18_revenue_intelligence \
+            --topic "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; topics=json.load(sys.stdin); print(topics[0].get("title",topics[0]) if isinstance(topics[0],dict) else topics[0])')" \
+            --keywords "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; topics=json.load(sys.stdin); kws=topics[0].get("keywords",[]) if isinstance(topics[0],dict) else []; print(",".join(kws[:5]))')" \
+            --output output/agent_18/revenue_score.json
+          echo "Revenue intelligence complete"
+          # Check revenue score
+          SCORE=$(cat output/agent_18/revenue_score.json | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r.get("revenue_score",0))')
+          DECISION=$(cat output/agent_18/revenue_score.json | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r.get("decision","UNKNOWN"))')
+          echo "Revenue Score: $SCORE/100 | Decision: $DECISION"
+          if [ "$SCORE" -lt 60 ] 2>/dev/null; then
+            echo "ERROR: Topic rejected by Agent 18 - Revenue score $SCORE < 60"
+            exit 1
+          fi
+          # Set article type for downstream steps
+          ARTICLE_TYPE=$(cat output/agent_18/revenue_score.json | python3 -c 'import json,sys; r=json.load(sys.stdin); print("PILLAR" if r.get("revenue_score",0) > 85 else "STANDARD")')
+          echo "ARTICLE_TYPE=$ARTICLE_TYPE" >> $GITHUB_ENV
+          echo "Article type set to: $ARTICLE_TYPE"
+
       - name: "Phase 3 — Content Planning (Agent 03)"
         id: content_planning
         env:
@@ -334,7 +382,10 @@ jobs:
             --wordpress-validation output/agent_11/wordpress_validation_report.json \
             --affiliate-compliance output/agent_15/affiliate_compliance.json \
             --publishing-optimizer output/agent_16/publishing_optimizer.json \
-            --content-validation output/content_validation_report.json \
+            --content-validation output/content_validation_report.json \\
+            --cannibalization-report output/agent_17/cannibalization_report.json \\
+            --revenue-score output/agent_18/revenue_score.json \\
+            --article-type ${ARTICLE_TYPE:-STANDARD} \\
             --output output/quality_gate_result.json
 
       - name: "Generate Content Validation Report"
@@ -352,11 +403,14 @@ jobs:
           retention-days: 30
           path: |
             output/agent_10/image_validation_report.json
+            output/agent_10/image_quality_report.json
             output/agent_11/wordpress_validation_report.json
             output/agent_12/qa_report.json
             output/agent_13/editor_report.json
             output/agent_15/affiliate_compliance.json
             output/agent_16/publishing_optimizer.json
+            output/agent_17/cannibalization_report.json
+            output/agent_18/revenue_score.json
             output/content_validation_report.json
             output/quality_gate_result.json
 
