@@ -563,3 +563,64 @@ class AffiliateOptimizerAgent(BaseAgent):
         if not recs:
             recs.append("Affiliate optimization complete - all categories covered")
         return recs
+
+
+# ============================================================
+# CLI ENTRY POINT - Added V3.2 for workflow execution
+# Workflow call: python -m agents.agent_08_affiliate_optimizer
+#   --input output/agent_04/article_draft.md
+#   --output output/agent_08/affiliate_report.json
+# ============================================================
+
+def main():
+    """CLI entry point for workflow execution."""
+    import argparse, sys, json, logging
+    from pathlib import Path
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [AGENT-08] %(levelname)s %(message)s"
+    )
+    log = logging.getLogger(__name__)
+
+    parser = argparse.ArgumentParser(description="Agent 08 - Affiliate Optimizer")
+    parser.add_argument("--input", required=True, help="Path to article_draft.md")
+    parser.add_argument("--output", required=True, help="Output path for affiliate_report.json")
+    args = parser.parse_args()
+
+    input_path = Path(args.input)
+    if not input_path.exists():
+        log.error(f"Article draft not found: {input_path}")
+        sys.exit(1)
+
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    config = {}
+    agent = AffiliateOptimizerAgent(config)
+
+    try:
+        import asyncio
+        report = asyncio.run(agent.run(
+            article_draft_path=str(input_path),
+            output_dir=str(output_path.parent)
+        ))
+        opp_count = len(report.get("opportunities", report.get("affiliate_opportunities", [])))
+        log.info(f"Affiliate optimization complete: {opp_count} opportunities")
+        log.info(f"Report written: {output_path}")
+        sys.exit(0)
+    except Exception as e:
+        log.error(f"Affiliate optimization failed: {e}")
+        fallback = {
+            "agent": "agent_08_affiliate_optimizer",
+            "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
+            "verdict": "SKIPPED",
+            "opportunities": [], "summary": {"total_opportunities": 0},
+            "error": str(e)
+        }
+        output_path.write_text(json.dumps(fallback, indent=2), encoding="utf-8")
+        log.warning(f"Fallback report written: {output_path}")
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
