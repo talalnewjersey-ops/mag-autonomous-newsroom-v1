@@ -39,6 +39,7 @@ on:
     # Executive Daily Report — 18:30 UTC
     - cron: "30 18 * * *"
   workflow_dispatch:
+    # Enterprise Standard v3.0 — manual production trigger
     inputs:
       mode:
         description: "Production mode"
