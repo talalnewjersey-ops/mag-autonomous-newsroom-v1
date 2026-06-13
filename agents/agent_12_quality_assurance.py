@@ -492,7 +492,7 @@ def main():
 
     output_path.write_text(json.dumps(qa_report, indent=2), encoding="utf-8")
     log.info(f"QA report written: {output_path}")
-    log.info(f"Status: {qa_report.get("status", "UNKNOWN")} | Words: {word_count}")
+    log.info(f"Status: {qa_report.get('status', 'UNKNOWN')} | Words: {word_count}")
     sys.exit(0)
 
 
