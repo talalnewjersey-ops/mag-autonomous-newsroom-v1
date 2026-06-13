@@ -39,10 +39,11 @@ if not TOPIC:
 OPENAI_KEY    = os.environ.get("OPENAI_API_KEY", "")
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 NANO_KEY     = os.environ.get("NANO_BANANA_API_KEY", "")
+GEMINI_KEY   = os.environ.get("GEMINI_API_KEY", "")
 SENDGRID_KEY = os.environ.get("SENDGRID_API_KEY", "")
 WP_URL       = os.environ.get("WORDPRESS_URL", "https://moneyabroadguide.com").rstrip("/")
 WP_USER      = os.environ.get("WORDPRESS_USERNAME", "")
-WP_PASS      = os.environ.get("WORDPRESS_PASSWORD", "")
+WP_PASS      = os.environ.get("WORDPRESS_APP_PASSWORD", "") or os.environ.get("WORDPRESS_PASSWORD", "")  # supports both secret names
 EMAIL_TO     = os.environ.get("EMAIL_RECIPIENT", "")
 SKIP_IMAGES = os.environ.get("SKIP_IMAGES", "").lower() == "true"
 
@@ -349,7 +350,56 @@ IMG_PROMPTS = [
 ]
 
 def generate_one_image(prompt_text, idx):
+    """
+    Image provider hierarchy (Enterprise v3.0):
+    Priority 1: Gemini Imagen (GEMINI_API_KEY)
+    Priority 2: OpenAI gpt-image-1 (OPENAI_API_KEY)
+    Priority 3: OpenAI dall-e-3 fallback (OPENAI_API_KEY)
+    If all fail: returns (None, None) -> publication blocked by quality gate
+    """
     global img_cost
+
+    # ── Priority 1: Gemini Imagen ──────────────────────────────────────
+    if GEMINI_KEY:
+        try:
+            endpoint = "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict"
+            headers = {"x-goog-api-key": GEMINI_KEY, "Content-Type": "application/json"}
+            payload = {
+                "instances": [{"prompt": prompt_text}],
+                "parameters": {"sampleCount": 1, "negativePrompt": "text, watermark, logo, blur, low quality"}
+            }
+            r = requests.post(endpoint, json=payload, headers=headers, timeout=60)
+            if r.status_code == 200:
+                data = r.json()
+                b64 = data.get("predictions", [{}])[0].get("bytesBase64Encoded", "")
+                if b64:
+                    img_cost += 0.03
+                    print(f"    Image {idx}: Gemini Imagen SUCCESS")
+                    return base64.b64decode(b64), "gemini-imagen-3"
+            else:
+                print(f"    Image {idx}: Gemini Imagen HTTP {r.status_code}: {r.text[:80]}")
+        except Exception as e:
+            print(f"    Image {idx}: Gemini Imagen ERROR: {str(e)[:80]}")
+
+    # ── Priority 2: Nano Banana ────────────────────────────────────────
+    if NANO_KEY:
+        try:
+            nb_headers = {"Authorization": f"Bearer {NANO_KEY}", "Content-Type": "application/json"}
+            nb_payload = {"prompt": prompt_text, "width": 1024, "height": 1024, "format": "jpg"}
+            r = requests.post("https://api.nanobanana.ai/v1/generate", json=nb_payload, headers=nb_headers, timeout=45)
+            if r.status_code == 200:
+                data = r.json()
+                b64 = data.get("image_b64") or data.get("base64_image", "")
+                if b64:
+                    img_cost += 0.02
+                    print(f"    Image {idx}: Nano Banana SUCCESS")
+                    return base64.b64decode(b64), "nano-banana"
+            else:
+                print(f"    Image {idx}: Nano Banana HTTP {r.status_code}: {r.text[:80]}")
+        except Exception as e:
+            print(f"    Image {idx}: Nano Banana ERROR: {str(e)[:80]}")
+
+    # ── Priority 3: OpenAI gpt-image-1 ────────────────────────────────
     if OPENAI_KEY:
         try:
             ci = openai.OpenAI(api_key=OPENAI_KEY)
@@ -359,13 +409,15 @@ def generate_one_image(prompt_text, idx):
                 img_cost += 0.04
                 print(f"    Image {idx}: gpt-image-1 SUCCESS")
                 return base64.b64decode(b64), "gpt-image-1"
-            elif ir.data[0].url:
+            elif ir.data and ir.data[0].url:
                 resp = requests.get(ir.data[0].url, timeout=30)
                 img_cost += 0.04
                 print(f"    Image {idx}: gpt-image-1 SUCCESS (url)")
                 return resp.content, "gpt-image-1"
         except Exception as e:
             print(f"    Image {idx}: gpt-image-1 ERROR: {str(e)[:80]}")
+
+    # ── Priority 4: OpenAI dall-e-3 last resort ────────────────────────
     if OPENAI_KEY:
         try:
             ci3 = openai.OpenAI(api_key=OPENAI_KEY)
@@ -379,7 +431,9 @@ def generate_one_image(prompt_text, idx):
                 return img_bytes, "dall-e-3"
         except Exception as e:
             print(f"    Image {idx}: dall-e-3 ERROR: {str(e)[:80]}")
-    print(f"    Image {idx}: ALL PROVIDERS FAILED")
+
+    # ── All providers failed — returns None → quality gate blocks publication ──
+    print(f"    Image {idx}: ALL PROVIDERS FAILED — publication will be blocked by quality gate")
     return None, None
 
 def upload_image_to_wp(img_bytes, filename, post_id, set_featured=False):
