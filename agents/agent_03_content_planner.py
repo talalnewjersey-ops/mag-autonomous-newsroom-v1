@@ -5,7 +5,7 @@ FAQ, tables, and case studies.
 Input: validated_topics.json
 Output: article_outline.json
 
-V3.2: Added CLI main() entry point for workflow execution.
+V3.3: Multi-model fallback + detailed HTTP error logging
 """
 
 import argparse
@@ -21,6 +21,13 @@ from typing import Dict, List, Any
 
 logger = logging.getLogger(__name__)
 
+# Models to try in order (fallback chain)
+CLAUDE_MODELS = [
+    "claude-3-5-sonnet-20241022",
+    "claude-3-5-haiku-20241022",
+    "claude-3-haiku-20240307",
+    "claude-3-sonnet-20240229",
+]
 
 # ============================================================
 # STANDALONE MAIN -- CLI entry point for workflow execution
@@ -43,6 +50,8 @@ def main():
     if not anthropic_api_key:
         logger.error("ANTHROPIC_API_KEY not set -- cannot plan content")
         sys.exit(1)
+
+    logger.info(f"API key present: length={len(anthropic_api_key)}, prefix={anthropic_api_key[:12]}...")
 
     # Load validated topics
     input_path = Path(args.input)
@@ -90,32 +99,62 @@ def main():
     logger.info(f"FAQ questions: {len(outline.get('faq', []))}")
     sys.exit(0)
 
-
 # ============================================================
-# STANDALONE OUTLINE PLANNER
+# CLAUDE API CALL WITH MULTI-MODEL FALLBACK
 # ============================================================
 
-async def _call_claude_03(api_key: str, prompt: str, max_tokens: int = 3000) -> str:
-    """Call Anthropic Claude API via raw HTTP (compatible with all SDK versions)."""
+async def _call_claude_with_fallback(api_key: str, prompt: str, max_tokens: int = 3000) -> str:
+    """Call Anthropic Claude API with multi-model fallback chain."""
     import urllib.request
-    payload = json.dumps({
-        "model": "claude-3-5-sonnet-20241022",
-        "max_tokens": max_tokens,
-        "messages": [{"role": "user", "content": prompt}]
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=payload,
-        headers={
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-        method="POST"
-    )
-    with urllib.request.urlopen(req, timeout=90) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-    return data["content"][0]["text"]
+    import urllib.error
+
+    last_error = None
+    for model in CLAUDE_MODELS:
+        logger.info(f"Trying model: {model}")
+        payload = json.dumps({
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": prompt}]
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=payload,
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            method="POST"
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=90) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                logger.info(f"Success with model: {model}")
+                return data["content"][0]["text"]
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode("utf-8")
+            except Exception:
+                pass
+            logger.warning(f"Model {model} failed: HTTP {e.code} {e.reason} | Body: {body}")
+            last_error = f"HTTP Error {e.code}: {e.reason} | {body}"
+            if e.code in (401, 403):
+                # Auth error - no point trying other models
+                raise Exception(f"Authentication failed: {last_error}")
+            # 404 or other - try next model
+            continue
+        except Exception as ex:
+            logger.warning(f"Model {model} failed with exception: {ex}")
+            last_error = str(ex)
+            continue
+
+    raise Exception(f"All Claude models failed. Last error: {last_error}")
+
+
+# Keep old name for backward compatibility
+async def _call_claude_03(api_key: str, prompt: str, max_tokens: int = 3000) -> str:
+    return await _call_claude_with_fallback(api_key, prompt, max_tokens)
 
 
 async def _plan_outline_standalone(topic: Dict, api_key: str) -> Dict:
@@ -143,33 +182,31 @@ async def _plan_outline_standalone(topic: Dict, api_key: str) -> Dict:
         "9. Call-to-action\n\n"
         "Return ONLY valid JSON with this structure (no markdown, no explanation):\n"
         "{\n"
-        "  \"title\": \"...\"\n"
-        "  \"meta_description\": \"...\"\n"
-        "  \"primary_keyword\": \"...\"\n"
-        "  \"secondary_keywords\": [\"...\"]\n"
-        "  \"market\": \"...\"\n"
-        "  \"target_audience\": \"...\"\n"
-        "  \"search_intent\": \"...\"\n"
-        "  \"hook_data\": {\"statistic\": \"...\", \"question\": \"...\"}\n"
-        "  \"sections\": [{\"h2\": \"...\", \"h3\": [\"...\"], \"data\": [\"...\"]}]\n"
-        "  \"faq\": [\"question 1?\", \"question 2?\"]\n"
-        "  \"key_takeaways\": [\"...\"]\n"
-        "  \"call_to_action\": \"...\"\n"
-        "  \"internal_link_opportunities\": [\"...\"]\n"
-        "  \"affiliate_opportunities\": [\"...\"]\n"
+        " \"title\": \"...\"\n"
+        " \"meta_description\": \"...\"\n"
+        " \"primary_keyword\": \"...\"\n"
+        " \"secondary_keywords\": [\"...\"]\n"
+        " \"market\": \"...\"\n"
+        " \"target_audience\": \"...\"\n"
+        " \"search_intent\": \"...\"\n"
+        " \"hook_data\": {\"statistic\": \"...\", \"question\": \"...\"}\n"
+        " \"sections\": [{\"h2\": \"...\", \"h3\": [\"...\"], \"data\": [\"...\"]}]\n"
+        " \"faq\": [\"question 1?\", \"question 2?\"]\n"
+        " \"key_takeaways\": [\"...\"]\n"
+        " \"call_to_action\": \"...\"\n"
+        " \"internal_link_opportunities\": [\"...\"]\n"
+        " \"affiliate_opportunities\": [\"...\"]\n"
         "}"
     )
 
     logger.info("Calling Claude to generate outline...")
-    response = await _call_claude_03(api_key, prompt, max_tokens=3000)
+    response = await _call_claude_with_fallback(api_key, prompt, max_tokens=3000)
 
     # Parse JSON from response
     try:
-        # Try direct parse first
         outline = json.loads(response)
         logger.info("Outline JSON parsed successfully (direct)")
     except json.JSONDecodeError:
-        # Try extracting JSON block
         json_match = re.search(r"{.*}", response, re.DOTALL)
         if json_match:
             try:
@@ -182,17 +219,14 @@ async def _plan_outline_standalone(topic: Dict, api_key: str) -> Dict:
             logger.warning("No JSON found in response -- using fallback outline")
             outline = _build_fallback_outline(topic)
 
-    # Ensure required fields exist
     outline.setdefault("primary_keyword", keyword)
     outline.setdefault("market", market)
     outline.setdefault("search_intent", intent)
     outline.setdefault("topic_data", topic)
 
-    # Ensure sections list exists and is non-empty
     if not outline.get("sections"):
         outline["sections"] = _build_fallback_outline(topic)["sections"]
 
-    # Ensure FAQ exists
     if not outline.get("faq"):
         outline["faq"] = _build_fallback_outline(topic)["faq"]
 
@@ -293,7 +327,6 @@ try:
 
 except ImportError:
     pass  # No BaseAgent -- standalone mode only
-
 
 if __name__ == "__main__":
     main()
