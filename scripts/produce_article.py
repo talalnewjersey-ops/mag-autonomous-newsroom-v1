@@ -414,7 +414,24 @@ def upload_image_to_wp(img_bytes, filename, post_id, set_featured=False):
 
 provider_used = None
 media_urls = []
-print("  [SKIP] Image generation disabled (SKIP_IMAGES=true)")
+
+if SKIP_IMAGES:
+    print("  [SKIP] Image generation disabled (SKIP_IMAGES=true)")
+else:
+    for i, prompt in enumerate(IMG_PROMPTS):
+        print(f"  Generating image {i+1}/4...")
+        img_bytes, prov = generate_one_image(prompt, i+1)
+        if img_bytes:
+            generated_images.append(img_bytes)
+            if not provider_used:
+                provider_used = prov
+            fname = f"nexus14-{ARTICLE_INDEX}-img{i+1}-{int(time.time())}.jpg"
+            is_featured = (i == 0)
+            mid, murl = upload_image_to_wp(img_bytes, fname, wp_post_id, set_featured=is_featured)
+            if mid:
+                media_ids.append(mid)
+                media_urls.append(murl)
+        time.sleep(1)
 
 img_total_time = round(time.time() - img_t_start, 2)
 image_report["images_generated"] = len(generated_images) >= 4
