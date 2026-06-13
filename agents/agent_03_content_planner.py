@@ -5,7 +5,7 @@ FAQ, tables, and case studies.
 Input: validated_topics.json
 Output: article_outline.json
 
-V3.3: Multi-model fallback + detailed HTTP error logging
+V3.4: Use ANTHROPIC_API_KEY_2 secret mapped to ANTHROPIC_API_KEY env var
 """
 
 import argparse
