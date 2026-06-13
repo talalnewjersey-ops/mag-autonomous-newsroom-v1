@@ -536,6 +536,8 @@ else:
     print("  Skipped (no post ID or fewer than 2 images uploaded)")
 
 results["images_in_content_4plus"] = (1 if image_report.get("featured_media_id") else 0) + inline_inserted >= 4
+results["images_generated"]  = image_report.get("image_count", 0) >= 4
+results["featured_image_set"] = image_report.get("featured_media_id") is not None
 
 print()
 print("[STEP 7] Email notification (non-bloquant)...")
