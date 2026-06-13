@@ -387,7 +387,7 @@ def main():
             article_draft_path=str(input_path),
             output_dir=str(output_path.parent)
         ))
-        log.info(f"Fact check complete: verdict={report.get("verdict", "UNKNOWN")}")
+        log.info(f"Fact check complete: verdict={report.get('verdict', 'UNKNOWN')}")
         log.info(f"Report written: {output_path}")
         # If verdict is FAIL, exit with warning but not error (allow pipeline to continue)
         sys.exit(0)
