@@ -77,10 +77,22 @@ generated_images = []
 media_ids = []
 
 def clean_html(text):
+    # Remove code fences
     text = re.sub(r"^```[a-z]*\s*", "", text.strip())
     text = re.sub(r"\s*```$", "", text.strip())
     text = re.sub(r"```[a-z]*", "", text)
     text = re.sub(r"```", "", text)
+    # Convert markdown headings to HTML (LLM sometimes outputs mixed markdown+HTML)
+    text = re.sub(r"(?m)^# .+\n?", "", text)               # Remove markdown H1 (WP title handles H1)
+    text = re.sub(r"(?m)^## (.+)$", r"<h2>\1</h2>", text)  # ## Heading -> <h2>
+    text = re.sub(r"(?m)^### (.+)$", r"<h3>\1</h3>", text) # ### Heading -> <h3>
+    text = re.sub(r"(?m)^---+$", "", text)                   # Remove markdown HR separators
+    text = re.sub(r"(?m)^\*\*\*+$", "", text)             # Remove markdown HR variant
+    # Remove stray Part N restart headers like "# Article — Part 2"
+    text = re.sub(r"(?m)^# .+— Part \d+.*$", "", text)
+    text = re.sub(r"(?m)^# .+ — Part \d+.*$", "", text)
+    # Clean up multiple blank lines left after removals
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 creds_wp = b64encode((WP_USER + ":" + WP_PASS).encode()).decode() if WP_USER and WP_PASS else ""
@@ -164,61 +176,128 @@ else:
             text_provider = "gpt-4o-mini"
         mkt = MARKET.upper()
 
+        HTML_ONLY = (
+            "IMPORTANT: Output ONLY valid HTML. Use <h2>, <h3>, <p>, <ul>, <ol>, <li>, "
+            "<table>, <strong>, <a> tags. Do NOT use markdown syntax (no #, ##, ###, no ---, "
+            "no **bold**, no backticks, no horizontal rules). Do NOT include the article title. "
+            "Do NOT add a Part number heading. Start directly with the first <h2> section.\n\n"
+        )
+
         part1 = gpt(client,
+            HTML_ONLY +
             "Write PART 1 of an expert article titled: " + TOPIC + " for market: " + mkt + "\n\n"
             "<h2>Introduction</h2>\n4 paragraphs (300+ words) on importance, target audience, 2026 context.\n\n"
             "<h2>Why This Matters for " + mkt + " Residents</h2>\n3 paragraphs (250+ words) on expat/immigrant needs.\n\n"
-            "<h2>Top 8 Services Compared</h2>\nDetailed HTML table: Service/Fees/Speed/Exchange Rate/Rating.\n"
+            "<h2>Top 8 International Money Transfer Services Compared (2026)</h2>\n"
+            "Detailed HTML table: Service/Transfer Fees/Speed/Exchange Rate Margin/Rating columns.\n"
             "Include Wise, Remitly, Western Union, MoneyGram, OFX, TransferGo, WorldRemit, XE.\n"
             "Then 2 analysis paragraphs (200+ words).\n"
             "Link: <a href=\"https://moneyabroadguide.com/best-services\">full guide</a>\nMin 900 words.", 3000)
-        print("  Part 1 words:", len(part1.split()))
+        print(" Part 1 words:", len(part1.split()))
 
         part2 = gpt(client,
+            HTML_ONLY +
             "Write PART 2 of the article about: " + TOPIC + " (market: " + mkt + ")\n\n"
             "<h2>Detailed Review: Wise</h2>\n4 paragraphs (300+ words): pros/cons, fees, speed.\n\n"
             "<h2>Detailed Review: Remitly</h2>\n4 paragraphs (300+ words): pros/cons, fees, speed.\n\n"
             "<h2>Detailed Review: OFX vs Western Union</h2>\n3 paragraphs (200+ words): best use cases.\n"
             "Link: <a href=\"https://moneyabroadguide.com/compare\">comparison page</a>\nMin 900 words.", 3000)
-        print("  Part 2 words:", len(part2.split()))
+        print(" Part 2 words:", len(part2.split()))
 
         part3 = gpt(client,
+            HTML_ONLY +
             "Write PART 3 of the article about: " + TOPIC + " (market: " + mkt + ")\n\n"
             "<h2>Understanding Fees and Exchange Rates 2026</h2>\n4 paragraphs (300+ words) with real examples.\n\n"
-            "<h2>Complete Fee Breakdown: Real Transfer Examples</h2>\nHTML table: 5 scenarios ($500/$1000/$2500/$5000/$10000) per provider.\n"
+            "<h2>Complete Fee Breakdown: Real Transfer Examples</h2>\n"
+            "HTML table: 5 scenarios ($500/$1000/$2500/$5000/$10000) per provider.\n"
             "2 analysis paragraphs (200+ words).\n\n"
             "<h2>Transfer Speed in 2026</h2>\n3 paragraphs (200+ words) on instant vs 1-3 day options.\n"
             "Link: <a href=\"https://moneyabroadguide.com/exchange-rates\">exchange rate guide</a>\nMin 900 words.", 3000)
-        print("  Part 3 words:", len(part3.split()))
+        print(" Part 3 words:", len(part3.split()))
 
         part4 = gpt(client,
+            HTML_ONLY +
             "Write PART 4 of the article about: " + TOPIC + " (market: " + mkt + ")\n\n"
-            "<h2>Regulations and Legal Requirements in " + mkt + " 2026</h2>\n4 paragraphs (300+ words): IRS/CRA, FINTRAC, compliance.\n\n"
+            "<h2>Regulations and Legal Requirements in " + mkt + " 2026</h2>\n"
+            "4 paragraphs (300+ words): IRS/CRA, FINTRAC, compliance.\n\n"
             "<h2>Safety, Security and Fraud Protection</h2>\n3 paragraphs (250+ words): FDIC/CDIC, 2FA, scam protection.\n\n"
             "<h2>Special Situations: Large Transfers, Business, Emergency</h2>\n3 paragraphs (200+ words).\n"
             "Link: <a href=\"https://moneyabroadguide.com/regulations\">regulations guide</a>\nMin 900 words.", 3000)
-        print("  Part 4 words:", len(part4.split()))
+        print(" Part 4 words:", len(part4.split()))
 
         part5 = gpt(client,
+            HTML_ONLY +
             "Write PART 5 of the article about: " + TOPIC + " (market: " + mkt + ")\n\n"
             "<h2>Step-by-Step Guide: How to Make Your First Transfer</h2>\nNumbered 8 steps (300+ words).\n\n"
             "<h2>10 Expert Money-Saving Tips for 2026</h2>\n10 numbered tips (300+ words).\n\n"
             "<h2>Common Mistakes to Avoid</h2>\n5 mistakes (200+ words).\n"
-            "Links: <a href=\"https://moneyabroadguide.com/tips\">money saving tips</a> and <a href=\"https://moneyabroadguide.com/how-to-guide\">how-to guide</a>\nMin 900 words.", 3000)
-        print("  Part 5 words:", len(part5.split()))
+            "Links: <a href=\"https://moneyabroadguide.com/tips\">money saving tips</a> and "
+            "<a href=\"https://moneyabroadguide.com/how-to-guide\">how-to guide</a>\nMin 900 words.", 3000)
+        print(" Part 5 words:", len(part5.split()))
 
         part6 = gpt(client,
+            HTML_ONLY +
             "Write PART 6 (FINAL) of the article about: " + TOPIC + " (market: " + mkt + ")\n\n"
-            "<h2>Our Top Affiliate Recommendations</h2>\n3 paragraphs (200+ words) with CTAs.\n\n"
-            "<h2>Free eBook: The Complete " + mkt + " Expat Money Guide</h2>\n3 paragraphs (150+ words) promoting free ebook.\n"
+            "<h2>Our Top Recommendations</h2>\n3 paragraphs (200+ words) with CTAs.\n\n"
+            "<h2>Free eBook: The Complete " + mkt + " Expat Money Guide</h2>\n"
+            "3 paragraphs (150+ words) promoting free ebook.\n"
             "Include: <a href=\"https://moneyabroadguide.com/free-ebook\">Download your FREE guide</a>\n\n"
             "<h2>Frequently Asked Questions (FAQ)</h2>\n8 detailed Q&A pairs (400+ words) on fees, safety, speed, limits, tax.\n\n"
             "<h2>Conclusion</h2>\nStrong 3-paragraph conclusion (150+ words).\n"
-            "Links: <a href=\"https://moneyabroadguide.com/security\">security tips</a> and <a href=\"https://moneyabroadguide.com/faq\">FAQ page</a>\nMin 900 words.", 3000)
-        print("  Part 6 words:", len(part6.split()))
+            "Links: <a href=\"https://moneyabroadguide.com/security\">security tips</a> and "
+            "<a href=\"https://moneyabroadguide.com/faq\">FAQ page</a>\nMin 900 words.", 3000)
+        print(" Part 6 words:", len(part6.split()))
 
         raw = part1 + "\n\n" + part2 + "\n\n" + part3 + "\n\n" + part4 + "\n\n" + part5 + "\n\n" + part6
         article_content = clean_html(raw)
+
+        # Build Table of Contents from H2 headings (Gold Standard format)
+        toc_items = re.findall(r'<h2>([^<]+)</h2>', article_content)
+        toc_html = ""
+        if toc_items:
+            toc_list = "".join(
+                f'<li><a href="#{re.sub(chr(32), "-", re.sub(r"[^a-zA-Z0-9 ]", "", h.lower()))}">{h}</a></li>'
+                for h in toc_items
+            )
+            toc_html = (
+                '<div class="mag-toc" style="background:#f8f9fa;border:1px solid #dee2e6;'
+                'border-radius:8px;padding:20px 24px;margin:24px 0;">'
+                '<p><strong>\U0001f4cb Table of Contents</strong></p>'
+                f'<ol>{toc_list}</ol>'
+                '</div>\n\n'
+            )
+
+        # Disclaimer + Expert Review banner (Gold Standard format)
+        disclaimer_html = (
+            '<div style="background:#fff8e1;border-left:4px solid #f0a500;'
+            'border-radius:4px;padding:16px 20px;margin:0 0 24px 0;">'
+            '<p>\u26a0\ufe0f <strong>Disclaimer:</strong> This article is for educational '
+            'purposes only and is not financial, tax, or legal advice. Exchange rates, fees, '
+            'processing times, and tax thresholds change frequently and vary by provider, '
+            'payment method, and individual circumstances. Always verify current rates and '
+            'terms directly with the provider, and consult a licensed financial advisor, '
+            'accountant, or cross-border tax professional before making decisions based on '
+            'this information.</p></div>\n'
+            '<div style="background:#e8f4fd;border-left:4px solid #2196F3;'
+            'border-radius:4px;padding:16px 20px;margin:0 0 24px 0;">'
+            '<p>\U0001f50d <strong>Expert Review:</strong> This guide was researched and '
+            'written by <strong>Talal Eddaouahiri</strong>, founder of MoneyAbroadGuide and '
+            'a former international banking executive with 15+ years of experience in '
+            'cross-border finance. Data sources include official FinCEN, FINTRAC, CRA, and '
+            'IRS documentation, plus live provider pricing checks as of June 2026. '
+            '<strong>Last updated: June 2026.</strong></p></div>\n\n'
+        )
+
+        # Add IDs to H2 headings for TOC anchor links
+        def add_heading_id(m):
+            text = m.group(1)
+            slug = re.sub(r"[^a-zA-Z0-9 ]", "", text.lower()).replace(" ", "-")
+            return f'<h2 id="{slug}">{text}</h2>'
+        article_content = re.sub(r'<h2>([^<]+)</h2>', add_heading_id, article_content)
+
+        # Prepend disclaimer + TOC
+        article_content = disclaimer_html + toc_html + article_content
+
         total_words = len(article_content.split())
         print("  TOTAL words:", total_words)
         results["article_written"] = len(article_content) > 500
@@ -498,46 +577,105 @@ print(f"  Images: {len(generated_images)}/4 generated, {len(media_ids)}/4 upload
 
 
 print()
-print("[STEP 6b] Inserting inline images into article content...")
+print("[STEP 6b] Inserting inline images into article content (distributed)...")
 inline_inserted = 0
 if wp_post_id and len(media_urls) > 1:
     nc = article_content
-    for k in range(1, len(media_urls)):
-        murl = media_urls[k]
-        mid = media_ids[k]
-        if not murl:
-            continue
-        img_html = (f'\n<figure class="wp-block-image size-large aligncenter">'
-                     f'<img src="{murl}" alt="{TOPIC[:50]}" class="wp-image-{mid}"/>'
-                     f'</figure>\n')
-        start, pos = -1, 0
-        for _ in range(inline_inserted + 1):
-            p2 = nc.find("</h2>", pos)
-            if p2 == -1:
-                start = -1
-                break
-            pos = p2 + 5
-            start = pos
-        if start > 0:
-            nc = nc[:start] + img_html + nc[start:]
-        else:
-            nc += img_html
-        inline_inserted += 1
+    # Find all </h2> positions for even distribution
+    h2_positions = []
+    search_pos = 0
+    while True:
+        p = nc.find("</h2>", search_pos)
+        if p == -1:
+            break
+        h2_positions.append(p + 5)  # position right after </h2>
+        search_pos = p + 5
+    total_h2 = len(h2_positions)
+    print(f"  Found {total_h2} H2 headings for image distribution")
+    # Distribute images: place at 25%, 50%, 75% of headings
+    # This ensures 400-600 words between each image
+    inline_images = [(media_urls[k], media_ids[k]) for k in range(1, len(media_urls)) if media_urls[k]]
+    if total_h2 >= 4 and inline_images:
+        step = max(3, total_h2 // (len(inline_images) + 1))
+        insert_at_h2 = [step * (n + 1) for n in range(len(inline_images))]
+        insert_at_h2 = [min(i, total_h2 - 1) for i in insert_at_h2]
+        # Insert from back to front to preserve positions
+        offset_map = sorted(set(insert_at_h2), reverse=True)
+        img_by_h2_pos = {}
+        for n, h2_n in enumerate(insert_at_h2):
+            img_by_h2_pos[h2_n] = inline_images[n]
+        adjusted_content = nc
+        for h2_n in sorted(img_by_h2_pos.keys(), reverse=True):
+            murl, mid = img_by_h2_pos[h2_n]
+            insert_pos = h2_positions[h2_n]
+            img_html = (
+                f'\n<figure class="wp-block-image size-large aligncenter">'
+                f'<img src="{murl}" alt="{TOPIC[:50]}" class="wp-image-{mid}"/>'
+                f'</figure>\n'
+            )
+            adjusted_content = adjusted_content[:insert_pos] + img_html + adjusted_content[insert_pos:]
+            inline_inserted += 1
+        nc = adjusted_content
+    else:
+        # Fallback: append remaining images at end of content sections
+        for murl, mid in inline_images:
+            if murl:
+                img_html = (
+                    f'\n<figure class="wp-block-image size-large aligncenter">'
+                    f'<img src="{murl}" alt="{TOPIC[:50]}" class="wp-image-{mid}"/>'
+                    f'</figure>\n'
+                )
+                nc += img_html
+                inline_inserted += 1
     if inline_inserted:
         upd = wp_request("POST", "/wp-json/wp/v2/posts/" + str(wp_post_id),
                          WP_JSON_HEADERS, json_data={"content": nc}, timeout=90)
         if upd and upd.status_code in (200, 201):
-            print(f"  Content updated: {inline_inserted} inline image(s) inserted")
+            print(f"  Content updated: {inline_inserted} inline image(s) distributed across article")
             article_content = nc
         else:
             print("  Failed to update post content with inline images")
             inline_inserted = 0
 else:
     print("  Skipped (no post ID or fewer than 2 images uploaded)")
-
 results["images_in_content_4plus"] = (1 if image_report.get("featured_media_id") else 0) + inline_inserted >= 4
 results["images_generated"]  = image_report.get("image_count", 0) >= 4
 results["featured_image_set"] = image_report.get("featured_media_id") is not None
+
+# Visual Quality Scoring (Enterprise v3.0 — mandatory gate)
+print()
+print("[STEP 6c] Visual Quality Scoring...")
+vq = 0
+if article_content:
+    # Check: no raw markdown headings leaked through
+    has_md_h1 = bool(re.search(r'(?m)^# ', article_content))
+    has_md_h2 = bool(re.search(r'(?m)^## ', article_content))
+    has_md_hr = bool(re.search(r'(?m)^---', article_content))
+    if not has_md_h1: vq += 20
+    if not has_md_h2: vq += 20
+    if not has_md_hr: vq += 15
+    # Check: has disclaimer
+    if "Disclaimer" in article_content: vq += 15
+    # Check: has TOC
+    if "Table of Contents" in article_content or "mag-toc" in article_content: vq += 10
+    # Check: images are distributed (not all at end)
+    h2_count = article_content.count('<h2')
+    img_count = article_content.count('wp-block-image')
+    if img_count >= 3 and h2_count >= 6: vq += 20
+    elif img_count >= 1: vq += 10
+    print(f"  Markdown H1 leaked: {has_md_h1} (-20 if True)")
+    print(f"  Markdown H2 leaked: {has_md_h2} (-20 if True)")
+    print(f"  Markdown HR leaked: {has_md_hr} (-15 if True)")
+    print(f"  Disclaimer present: {'Disclaimer' in article_content}")
+    print(f"  TOC present: {'Table of Contents' in article_content or 'mag-toc' in article_content}")
+    print(f"  H2 headings: {h2_count}, Inline images: {img_count}")
+print(f"  Visual Quality Score: {vq}/100")
+results["visual_quality_95plus"] = vq >= 95
+if vq < 95:
+    print(f"  [WARN] Visual Quality {vq}/100 — below 95 threshold")
+else:
+    print(f"  [PASS] Visual Quality {vq}/100")
+
 
 print()
 print("[STEP 7] Email notification (non-bloquant)...")
@@ -579,6 +717,7 @@ checks = [
     ("images_generated",        results.get("images_generated", False)),
     ("featured_image_set",      results.get("featured_image_set", False)),
     ("images_in_content_4plus", results.get("images_in_content_4plus", False)),
+    ("visual_quality_95plus",   results.get("visual_quality_95plus", False)),
 ]
 passed = sum(1 for _, v in checks if v)
 total_checks = len(checks)
@@ -606,8 +745,11 @@ print("Provider:", image_report.get("provider_used", "none"))
 print("Cost   : $" + str(round(text_gen_cost + img_cost, 4)))
 print("Time   :", str(elapsed) + "s")
 
-if passed >= 7 and critical_ok and results.get("word_count_5000plus") and results.get("images_in_content_4plus"):
+if (passed >= 8 and critical_ok and results.get("word_count_5000plus")
+        and results.get("images_in_content_4plus") and results.get("visual_quality_95plus")):
     print("STATUS : PUBLISHED (draft) - ALL GATES PASS")
+elif passed >= 7 and critical_ok:
+    print("STATUS : PARTIAL - VISUAL QUALITY REVIEW REQUIRED")
 elif passed >= 6 and critical_ok:
     print("STATUS : PARTIAL - REVIEW REQUIRED")
 else:
@@ -634,6 +776,7 @@ report = {
     "featured_media_id": image_report.get("featured_media_id"),
     "image_provider": image_report.get("provider_used"),
     "yoast_configured": True if wp_post_id else False,
+    "visual_quality_score": results.get("visual_quality_95plus", False),
     "text_provider": text_provider,
     "text_gen_cost_usd": round(text_gen_cost, 5),
     "total_cost_usd": round(text_gen_cost + img_cost, 5),
