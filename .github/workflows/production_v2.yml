@@ -1,45 +1,32 @@
 # ============================================================
 # NEXUS-14 ENTERPRISE v3.0 — Gold Standard Production Workflow
 # MoneyAbroadGuide.com — Gold Standard Financial Education Platform
-# Version: 3.0.0-ENTERPRISE | Upgraded: 2026-06-13
-#
-# NEW IN V3: Agent 17 (Cannibalization) + Agent 18 (Revenue)
-#            18 Quality Gates | STANDARD/PILLAR types
+# Version: 3.0.1-ENTERPRISE | Fixed: 2026-06-12
 #
 # ENTERPRISE STANDARD: 95/100 minimum ALL gates | Gold Standard only
 # GOLD STANDARD: 8500-12000 words | 6 case studies | 20 FAQ | 15 internal links
 #                6 images (featured+5) | 5 schemas | Author box | EEAT
 #
-# Schedule:
-#   Batch 1: 06:00 UTC — max 3 articles
-#   Audit 1: 09:30 UTC
-#   Report 1: 09:45 UTC
-#   Batch 2: 13:00 UTC — max 3 articles
-#   Audit 2: 16:30 UTC
-#   Report 2: 18:00 UTC
-#   Executive Report: 18:30 UTC
+# SECRETS REQUIRED (minimal set):
+#   ANTHROPIC_API_KEY      — Claude API (article writing, all agents)
+#   GEMINI_API_KEY         — Image generation
+#   WORDPRESS_URL          — Your WordPress site URL
+#   WORDPRESS_USERNAME     — WordPress username
+#   WORDPRESS_APP_PASSWORD — WordPress application password
 # ============================================================
 
 name: "NEXUS-14 ENTERPRISE v3.0 — Gold Standard Production"
 
 on:
   schedule:
-    # Batch 1 — 06:00 UTC
     - cron: "0 6 * * *"
-    # Global Audit 1 — 09:30 UTC
     - cron: "30 9 * * *"
-    # Morning Production Report — 09:45 UTC
     - cron: "45 9 * * *"
-    # Batch 2 — 13:00 UTC
     - cron: "0 13 * * *"
-    # Global Audit 2 — 16:30 UTC
     - cron: "30 16 * * *"
-    # Evening Production Report — 18:00 UTC
     - cron: "0 18 * * *"
-    # Executive Daily Report — 18:30 UTC
     - cron: "30 18 * * *"
   workflow_dispatch:
-    # Enterprise Standard v3.0 — manual production trigger
     inputs:
       mode:
         description: "Production mode"
@@ -52,9 +39,9 @@ on:
           - audit
           - executive_report
           - end_to_end_test
-        - rewrite_audit
+          - rewrite_audit
       max_articles:
-        description: "Max articles (V2 limit: 3 per batch)"
+        description: "Max articles per batch (max 3)"
         required: false
         default: "3"
       topic_override:
@@ -85,9 +72,9 @@ env:
   MIN_OVERALL_SCORE: 95
   MAX_AFFILIATE_PARTNERS: 3
   MIN_SCHEMAS: 5
-  ARTICLE_TYPES: "best_x_for_newcomers,comparison,banking_guide,credit_score,tax_guide,money_transfer,insurance,settlement"
 
 jobs:
+
   # ============================================================
   # JOB 1: ROUTE BASED ON TRIGGER TIME
   # ============================================================
@@ -103,7 +90,6 @@ jobs:
         run: |
           HOUR=$(date -u +%H)
           MINUTE=$(date -u +%M)
-
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "mode=${{ github.event.inputs.mode }}" >> $GITHUB_OUTPUT
             echo "max_articles=${{ github.event.inputs.max_articles }}" >> $GITHUB_OUTPUT
@@ -134,7 +120,7 @@ jobs:
           fi
 
   # ============================================================
-  # JOB 2: PRODUCTION BATCH (Batch 1 or Batch 2)
+  # JOB 2: PRODUCTION BATCH
   # ============================================================
   production-batch:
     name: "Enterprise Production Batch — Max 3 Gold Standard Articles"
@@ -144,7 +130,7 @@ jobs:
       needs.route-trigger.outputs.mode == 'batch_1' ||
       needs.route-trigger.outputs.mode == 'batch_2' ||
       needs.route-trigger.outputs.mode == 'end_to_end_test' ||
-    needs.route-trigger.outputs.mode == 'rewrite_audit'
+      needs.route-trigger.outputs.mode == 'rewrite_audit'
     timeout-minutes: 180
 
     steps:
@@ -154,7 +140,7 @@ jobs:
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: 3.11
+          python-version: "3.11"
           cache: pip
 
       - name: Install dependencies
@@ -166,29 +152,21 @@ jobs:
         id: seo_research
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          # SERPAPI_KEY is OPTIONAL: if absent, Claude+built-in DB fallback activates
-          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
-          # SEMRUSH_API_KEY is OPTIONAL: if absent, built-in difficulty scores used
-          SEMRUSH_API_KEY: ${{ secrets.SEMRUSH_API_KEY }}
         run: |
           python -m agents.agent_01_seo_research \
             --max-topics 3 \
             --output output/agent_01/topics.json
-          echo "Agent 01 complete (SERPAPI+SEMRUSH optional, fallback active)"
 
       - name: "Phase 2 — Keyword Validation (Agent 02)"
         id: keyword_validation
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          # SERPAPI_KEY is OPTIONAL in Agent 02 (uses LLM only)
-          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
         run: |
           python -m agents.agent_02_keyword_validation \
             --input output/agent_01/topics.json \
             --output output/agent_02/validated_topics.json
 
-
-      - name: "Phase 2.5 — Cannibalization Check (Agent 17) [NEW V3]"
+      - name: "Phase 2.5 — Cannibalization Check (Agent 17)"
         id: cannibalization_check
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -197,48 +175,42 @@ jobs:
           WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
         run: |
           mkdir -p output/agent_17
+          TOPIC=$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("title",t.get("keyword","expat banking guide")) if isinstance(t,dict) else str(t))')
+          KEYWORDS=$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; kw=t.get("keyword","") if isinstance(t,dict) else ""; opps=t.get("opportunity_types",[]) if isinstance(t,dict) else []; parts=[kw]+opps; print(",".join(str(p) for p in parts[:6] if p))')
           python -m agents.agent_17_cannibalization \
-            --topic "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("title",t.get("keyword","expat banking guide")) if isinstance(t,dict) else str(t))')" \
-            --keywords "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; kw=t.get("keyword","") if isinstance(t,dict) else ""; opps=t.get("opportunity_types",[]) if isinstance(t,dict) else []; parts=[kw]+opps; print(",".join(str(p) for p in parts[:6] if p))')" \
+            --topic "$TOPIC" \
+            --keywords "$KEYWORDS" \
             --output output/agent_17/cannibalization_report.json
-          echo "Cannibalization check complete"
-          # Check if blocking
-          DECISION=$(cat output/agent_17/cannibalization_report.json | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r.get("decision","UNKNOWN"))')
           BLOCKING=$(cat output/agent_17/cannibalization_report.json | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r.get("blocking",True))')
+          DECISION=$(cat output/agent_17/cannibalization_report.json | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r.get("decision","UNKNOWN"))')
           echo "Decision: $DECISION | Blocking: $BLOCKING"
           if [ "$BLOCKING" = "True" ]; then
-            echo "ERROR: Topic rejected by Agent 17 - $DECISION"
-            exit 1
+            echo "ERROR: Topic rejected by Agent 17 - $DECISION"; exit 1
           fi
 
-      - name: "Phase 2.6 — Revenue Intelligence (Agent 18) [NEW V3]"
+      - name: "Phase 2.6 — Revenue Intelligence (Agent 18)"
         id: revenue_intelligence
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           mkdir -p output/agent_18
+          TOPIC=$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("title",t.get("keyword","expat banking guide")) if isinstance(t,dict) else str(t))')
+          KEYWORDS=$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; kw=t.get("keyword","") if isinstance(t,dict) else ""; opps=t.get("opportunity_types",[]) if isinstance(t,dict) else []; aff=t.get("affiliate_programs",[]) if isinstance(t,dict) else []; parts=[kw]+opps+aff; print(",".join(str(p) for p in parts[:10] if p))')
+          SV=$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("search_volume",0) if isinstance(t,dict) else 0)')
+          CPC=$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("cpc",0.0) if isinstance(t,dict) else 0.0)')
           python -m agents.agent_18_revenue_intelligence \
-            --topic "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("title",t.get("keyword","expat banking guide")) if isinstance(t,dict) else str(t))')" \
-            --keywords "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; kw=t.get("keyword","") if isinstance(t,dict) else ""; opps=t.get("opportunity_types",[]) if isinstance(t,dict) else []; aff=t.get("affiliate_programs",[]) if isinstance(t,dict) else []; parts=[kw]+opps+aff; print(",".join(str(p) for p in parts[:10] if p))')" \
-            --search-volume "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("search_volume",0) if isinstance(t,dict) else 0)')" \
-            --cpc "$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("cpc",0.0) if isinstance(t,dict) else 0.0)')" \
+            --topic "$TOPIC" --keywords "$KEYWORDS" \
+            --search-volume "$SV" --cpc "$CPC" \
             --output output/agent_18/revenue_score.json
-          echo "Revenue intelligence complete"
-          # Check revenue score
           SCORE=$(cat output/agent_18/revenue_score.json | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r.get("revenue_score",0))')
-          DECISION=$(cat output/agent_18/revenue_score.json | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r.get("decision","UNKNOWN"))')
-          echo "Revenue Score: $SCORE/100 | Decision: $DECISION"
+          echo "Revenue Score: $SCORE/100"
           if [ "$SCORE" -lt 60 ] 2>/dev/null; then
-            echo "ERROR: Topic rejected by Agent 18 - Revenue score $SCORE < 60"
-            exit 1
+            echo "ERROR: Revenue score $SCORE < 60"; exit 1
           fi
-          # Set article type for downstream steps
           ARTICLE_TYPE=$(cat output/agent_18/revenue_score.json | python3 -c 'import json,sys; r=json.load(sys.stdin); print("PILLAR" if r.get("revenue_score",0) > 85 else "STANDARD")')
           echo "ARTICLE_TYPE=$ARTICLE_TYPE" >> $GITHUB_ENV
-          echo "Article type set to: $ARTICLE_TYPE"
 
       - name: "Phase 3 — Content Planning (Agent 03)"
-        id: content_planning
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -246,8 +218,7 @@ jobs:
             --input output/agent_02/validated_topics.json \
             --output output/agent_03/article_outline.json
 
-      - name: "Phase 4 — Article Writing (Agent 04 — Claude API)"
-        id: article_writing
+      - name: "Phase 4 — Article Writing (Agent 04 — Claude)"
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -258,7 +229,6 @@ jobs:
             --target-words ${{ env.TARGET_WORD_COUNT }}
 
       - name: "Phase 5 — Fact Checking (Agent 05)"
-        id: fact_checking
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -268,7 +238,6 @@ jobs:
             --min-sources ${{ env.MIN_SOURCES }}
 
       - name: "Phase 6 — EEAT Validation (Agent 06)"
-        id: eeat_validation
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -278,7 +247,6 @@ jobs:
             --threshold ${{ env.EEAT_SCORE_THRESHOLD }}
 
       - name: "Phase 7 — Internal Linking (Agent 07)"
-        id: internal_linking
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
@@ -289,7 +257,6 @@ jobs:
             --min-links ${{ env.MIN_INTERNAL_LINKS }}
 
       - name: "Phase 8 — Affiliate Optimization (Agent 08)"
-        id: affiliate_optimization
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -298,7 +265,6 @@ jobs:
             --output output/agent_08/affiliate_report.json
 
       - name: "Phase 9 — Image Prompt Generation (Agent 09)"
-        id: image_prompts
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -307,17 +273,12 @@ jobs:
             --output output/agent_09/image_prompts.json \
             --count 5
 
-      - name: "Phase 10 — Image Production (Agent 10 — Gemini + NanoBanana)"
-        id: image_production
+      - name: "Phase 10 — Image Production (Agent 10 — Gemini)"
         env:
-          # Image generation APIs (at least one recommended)
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          NANO_BANANA_KEY: ${{ secrets.NANO_BANANA_KEY }}
-          # WordPress credentials for image upload (replaces S3)
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
           WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
           WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
-          # AWS S3 REMOVED: images now upload to WordPress Media Library
         run: |
           python -m agents.agent_10_image_production \
             --input output/agent_09/image_prompts.json \
@@ -325,8 +286,7 @@ jobs:
             --validation-report output/agent_10/image_validation_report.json \
             --min-images ${{ env.MIN_IMAGES }}
 
-      - name: "Phase 10.5 — Affiliate Compliance (Agent 15 — NEW V2)"
-        id: affiliate_compliance
+      - name: "Phase 10.5 — Affiliate Compliance (Agent 15)"
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -335,8 +295,7 @@ jobs:
             --affiliate-data output/agent_08/affiliate_report.json \
             --output output/agent_15/affiliate_compliance.json
 
-      - name: "Phase 10.6 — Publishing Optimization (Agent 16 — NEW V2)"
-        id: publishing_optimization
+      - name: "Phase 10.6 — Publishing Optimization (Agent 16)"
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
@@ -348,7 +307,6 @@ jobs:
             --output output/agent_16/publishing_optimizer.json
 
       - name: "Phase 11 — WordPress Integration (Agent 11)"
-        id: wordpress_integration
         env:
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
           WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
@@ -363,7 +321,6 @@ jobs:
             --validation-report output/agent_11/wordpress_validation_report.json
 
       - name: "Phase 12 — Quality Assurance (Agent 12)"
-        id: quality_assurance
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
@@ -385,7 +342,6 @@ jobs:
             --eeat-threshold ${{ env.EEAT_SCORE_THRESHOLD }}
 
       - name: "Phase 13 — Chief Editor Decision (Agent 13)"
-        id: chief_editor
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -394,51 +350,36 @@ jobs:
             --article output/agent_04/article_draft.md \
             --output output/agent_13/editor_report.json
 
-
       - name: "Enterprise Standard Compliance Check"
-        id: enterprise_compliance
         run: |
           python3 -c "
           import json, sys, os
           errors = []
-          # Check article word count
           try:
-            article = open('output/agent_04/article_draft.md', encoding='utf-8').read()
-            wc = len(article.split())
-            if wc < int(os.environ.get('MIN_WORD_COUNT', 8500)):
-              errors.append(f'Word count {wc} < {os.environ.get(\"MIN_WORD_COUNT\",8500)} (Enterprise: 8500+)')
-            else:
-              print(f'✅ Word count: {wc} words')
+              article = open('output/agent_04/article_draft.md', encoding='utf-8').read()
+              wc = len(article.split())
+              if wc < 8500:
+                  errors.append(f'Word count {wc} < 8500')
+              else:
+                  print(f'Word count: {wc} words OK')
           except Exception as e:
-            errors.append(f'Article not found: {e}')
-          # Check QA score
+              errors.append(f'Article not found: {e}')
           try:
-            qa = json.load(open('output/agent_12/qa_report.json'))
-            overall = qa.get('overall_score', qa.get('score', 0))
-            if isinstance(overall, (int, float)) and overall < 95:
-              errors.append(f'QA overall score {overall} < 95 (Enterprise standard)')
-            else:
-              print(f'✅ QA score: {overall}')
+              qa = json.load(open('output/agent_12/qa_report.json'))
+              overall = qa.get('overall_score', qa.get('score', 0))
+              if isinstance(overall, (int, float)) and overall < 95:
+                  errors.append(f'QA score {overall} < 95')
+              else:
+                  print(f'QA score: {overall} OK')
           except Exception as e:
-            print(f'QA report not yet available: {e}')
-          # Check EEAT
-          try:
-            eeat = json.load(open('output/agent_06/eeat_report.json'))
-            eeat_score = eeat.get('total_score', eeat.get('score', 0))
-            if isinstance(eeat_score, (int, float)) and eeat_score < 95:
-              errors.append(f'EEAT score {eeat_score} < 95 (Enterprise standard)')
-            else:
-              print(f'✅ EEAT score: {eeat_score}')
-          except Exception as e:
-            print(f'EEAT report not yet available: {e}')
-          # Report
+              print(f'QA: {e}')
           if errors:
-            print('❌ Enterprise Standard violations:', \"\n\".join(errors))
+              print('VIOLATIONS:', chr(10).join(errors))
           else:
-            print('✅ Enterprise Standard compliance: PASSED')
+              print('Enterprise Standard: PASSED')
           "
-      - name: "Enterprise Quality Gate — Validate GOLD_STANDARD (95/100)"
-        id: quality_gate
+
+      - name: "Enterprise Quality Gate (95/100)"
         run: |
           python scripts/v2_quality_gate.py \
             --qa-report output/agent_12/qa_report.json \
@@ -452,8 +393,8 @@ jobs:
             --cannibalization-report output/agent_17/cannibalization_report.json \
             --revenue-score output/agent_18/revenue_score.json \
             --article-type ${ARTICLE_TYPE:-STANDARD} \
-              --min-quality-score ${{ env.MIN_QUALITY_SCORE }} \
-              --enterprise-standard true \
+            --min-quality-score ${{ env.MIN_QUALITY_SCORE }} \
+            --enterprise-standard true \
             --output output/quality_gate_result.json
 
       - name: "Generate Content Validation Report"
@@ -463,18 +404,17 @@ jobs:
             --outline output/agent_03/article_outline.json \
             --output output/content_validation_report.json
 
-      - name: Upload all validation reports
+      - name: Upload all reports
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: "nexus14-enterprise-reports-${{ github.run_id }}"
           retention-days: 30
           path: |
-            output/agent_10/image_validation_report.json
-            output/agent_10/image_quality_report.json
-            output/agent_11/wordpress_validation_report.json
             output/agent_12/qa_report.json
             output/agent_13/editor_report.json
+            output/agent_10/image_validation_report.json
+            output/agent_11/wordpress_validation_report.json
             output/agent_15/affiliate_compliance.json
             output/agent_16/publishing_optimizer.json
             output/agent_17/cannibalization_report.json
@@ -495,7 +435,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: 3.11
+          python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
 
@@ -511,7 +451,6 @@ jobs:
       - name: Run Production Director Audit Summary
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
         run: |
           python -m agents.agent_14_production_director \
             --mode audit \
@@ -533,15 +472,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: 3.11
+          python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
 
-      - name: Generate and Send Production Report
+      - name: Generate Production Report
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-          EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
         run: |
           python -m agents.agent_14_production_director \
             --mode ${{ needs.route-trigger.outputs.mode }} \
@@ -572,7 +509,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: 3.11
+          python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
 
@@ -580,16 +517,9 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          NANO_BANANA_KEY: ${{ secrets.NANO_BANANA_KEY }}
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
           WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
           WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
-          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-          EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          S3_BUCKET: ${{ secrets.S3_BUCKET }}
-          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
         run: |
           python scripts/end_to_end_test.py \
             --output output/end_to_end_test_report.html \
@@ -607,9 +537,6 @@ jobs:
           retention-days: 90
           path: |
             output/end_to_end_test_report.html
-            output/agent_10/image_validation_report.json
-            output/agent_11/wordpress_validation_report.json
             output/agent_12/qa_report.json
-            output/agent_15/affiliate_compliance.json
-            output/agent_16/publishing_optimizer.json
+            output/agent_11/wordpress_validation_report.json
             output/content_validation_report.json
