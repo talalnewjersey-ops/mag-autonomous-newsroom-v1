@@ -53,7 +53,7 @@ def main():
 
     with open(input_path, "r", encoding="utf-8") as f:
         outline = json.load(f)
-    logger.info(f"Loaded outline: {outline.get("title", "Unknown")}")
+    logger.info(f"Loaded outline: {outline.get('title', 'Unknown')}")
 
     # Determine output directory and filename
     output_path = Path(args.output)
