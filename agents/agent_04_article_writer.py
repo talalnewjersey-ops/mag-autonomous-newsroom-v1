@@ -144,7 +144,7 @@ Quality Standards:
 
 
 async def _call_claude(api_key: str, prompt: str, system: str = None,
-                       max_tokens: int = 4096, model: str = "claude-3-5-sonnet-20241022") -> str:
+                       max_tokens: int = 4096, model: str = "claude-sonnet-4-5") -> str:
     """Call Anthropic Claude API via raw HTTP (compatible with all SDK versions)."""
     import urllib.request
     payload_dict = {
