@@ -46,7 +46,7 @@ class FactCheckerAgent(BaseAgent):
     """Agent 05: Automated fact-checking for NEXUS-14 articles."""
 
     def __init__(self, config: dict[str, Any]):
-        super().__init__(agent_id="agent_05", name="FactCheckerAgent", config=config)
+        super().__init__(name="FactCheckerAgent", config=config)
         self.search_service = None
         self.llm_service = None
         self.session: aiohttp.ClientSession | None = None
