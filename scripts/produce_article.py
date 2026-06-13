@@ -44,6 +44,7 @@ WP_URL       = os.environ.get("WORDPRESS_URL", "https://moneyabroadguide.com").r
 WP_USER      = os.environ.get("WORDPRESS_USERNAME", "")
 WP_PASS      = os.environ.get("WORDPRESS_PASSWORD", "")
 EMAIL_TO     = os.environ.get("EMAIL_RECIPIENT", "")
+SKIP_IMAGES = os.environ.get("SKIP_IMAGES", "").lower() == "true"
 
 WP_CAT_USA    = 17  # Newcomers to the USA (confirmed WP ID)
 WP_CAT_CANADA = 18  # Newcomers to Canada (confirmed WP ID)
@@ -413,20 +414,7 @@ def upload_image_to_wp(img_bytes, filename, post_id, set_featured=False):
 
 provider_used = None
 media_urls = []
-for i, prompt in enumerate(IMG_PROMPTS):
-    print(f"  Generating image {i+1}/4...")
-    img_bytes, prov = generate_one_image(prompt, i+1)
-    if img_bytes:
-        generated_images.append(img_bytes)
-        if not provider_used:
-            provider_used = prov
-        fname = f"nexus14-{ARTICLE_INDEX}-img{i+1}-{int(time.time())}.jpg"
-        is_featured = (i == 0)
-        mid, murl = upload_image_to_wp(img_bytes, fname, wp_post_id, set_featured=is_featured)
-        if mid:
-            media_ids.append(mid)
-            media_urls.append(murl)
-    time.sleep(1)
+print("  [SKIP] Image generation disabled (SKIP_IMAGES=true)")
 
 img_total_time = round(time.time() - img_t_start, 2)
 image_report["images_generated"] = len(generated_images) >= 4
@@ -437,8 +425,6 @@ image_report["media_ids"] = media_ids
 image_report["image_count"] = len(generated_images)
 print(f"  Images: {len(generated_images)}/4 generated, {len(media_ids)}/4 uploaded to WP")
 
-results["images_generated"] = image_report["images_generated"]
-results["featured_image_set"] = image_report.get("featured_media_id") is not None
 
 print()
 print("[STEP 6b] Inserting inline images into article content...")
