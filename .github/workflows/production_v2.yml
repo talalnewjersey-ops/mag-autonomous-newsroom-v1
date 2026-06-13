@@ -1,12 +1,14 @@
 # ============================================================
-# NEXUS-14 V3 — Quality-First Production Workflow
-# MoneyAbroadGuide.com Quality-First Newsroom
-# Version: 3.0.0 | Upgraded: 2026-06-12
+# NEXUS-14 ENTERPRISE v3.0 — Gold Standard Production Workflow
+# MoneyAbroadGuide.com — Gold Standard Financial Education Platform
+# Version: 3.0.0-ENTERPRISE | Upgraded: 2026-06-13
 #
 # NEW IN V3: Agent 17 (Cannibalization) + Agent 18 (Revenue)
 #            18 Quality Gates | STANDARD/PILLAR types
 #
-# STRATEGY: Maximum 6 articles/day | Quality over Volume
+# ENTERPRISE STANDARD: 95/100 minimum ALL gates | Gold Standard only
+# GOLD STANDARD: 8500-12000 words | 6 case studies | 20 FAQ | 15 internal links
+#                6 images (featured+5) | 5 schemas | Author box | EEAT
 #
 # Schedule:
 #   Batch 1: 06:00 UTC — max 3 articles
@@ -18,7 +20,7 @@
 #   Executive Report: 18:30 UTC
 # ============================================================
 
-name: "NEXUS-14 V3 — Quality-First Production"
+name: "NEXUS-14 ENTERPRISE v3.0 — Gold Standard Production"
 
 on:
   schedule:
@@ -49,6 +51,7 @@ on:
           - audit
           - executive_report
           - end_to_end_test
+        - rewrite_audit
       max_articles:
         description: "Max articles (V2 limit: 3 per batch)"
         required: false
@@ -62,17 +65,26 @@ env:
   PYTHON_VERSION: "3.11"
   MAX_ARTICLES_PER_BATCH: 3
   MAX_ARTICLES_PER_DAY: 6
-  MIN_WORD_COUNT: 5000
-  TARGET_WORD_COUNT: 7000
-  MIN_IMAGES: 5
+  MIN_WORD_COUNT: 8500
+  TARGET_WORD_COUNT: 10000
+  MIN_IMAGES: 6
   MIN_FAQ: 20
-  MIN_INTERNAL_LINKS: 5
+  MIN_INTERNAL_LINKS: 15
   MIN_SOURCES: 10
-  MIN_CASE_STUDIES: 3
-  SEO_SCORE_THRESHOLD: 90
-  EEAT_SCORE_THRESHOLD: 90
-  SYSTEM_VERSION: "V2"
+  MIN_CASE_STUDIES: 6
+  SEO_SCORE_THRESHOLD: 95
+  EEAT_SCORE_THRESHOLD: 95
+  SYSTEM_VERSION: "ENTERPRISE-V3"
   QUALITY_FIRST: "true"
+  ENTERPRISE_STANDARD: "true"
+  MIN_QUALITY_SCORE: 95
+  MIN_SEO_SCORE: 95
+  MIN_EEAT_SCORE: 95
+  MIN_UX_SCORE: 95
+  MIN_OVERALL_SCORE: 95
+  MAX_AFFILIATE_PARTNERS: 3
+  MIN_SCHEMAS: 5
+  ARTICLE_TYPES: "best_x_for_newcomers,comparison,banking_guide,credit_score,tax_guide,money_transfer,insurance,settlement"
 
 jobs:
   # ============================================================
@@ -124,13 +136,14 @@ jobs:
   # JOB 2: PRODUCTION BATCH (Batch 1 or Batch 2)
   # ============================================================
   production-batch:
-    name: "Production Batch — Max 3 Articles (Quality-First)"
+    name: "Enterprise Production Batch — Max 3 Gold Standard Articles"
     runs-on: ubuntu-latest
     needs: route-trigger
     if: |
       needs.route-trigger.outputs.mode == 'batch_1' ||
       needs.route-trigger.outputs.mode == 'batch_2' ||
-      needs.route-trigger.outputs.mode == 'end_to_end_test'
+      needs.route-trigger.outputs.mode == 'end_to_end_test' ||
+    needs.route-trigger.outputs.mode == 'rewrite_audit'
     timeout-minutes: 180
 
     steps:
@@ -380,7 +393,50 @@ jobs:
             --article output/agent_04/article_draft.md \
             --output output/agent_13/editor_report.json
 
-      - name: "V2 Quality Gate — Validate READY_TO_PUBLISH"
+
+      - name: "Enterprise Standard Compliance Check"
+        id: enterprise_compliance
+        run: |
+          python3 -c "
+          import json, sys, os
+          errors = []
+          # Check article word count
+          try:
+            article = open('output/agent_04/article_draft.md', encoding='utf-8').read()
+            wc = len(article.split())
+            if wc < int(os.environ.get('MIN_WORD_COUNT', 8500)):
+              errors.append(f'Word count {wc} < {os.environ.get(\"MIN_WORD_COUNT\",8500)} (Enterprise: 8500+)')
+            else:
+              print(f'✅ Word count: {wc} words')
+          except Exception as e:
+            errors.append(f'Article not found: {e}')
+          # Check QA score
+          try:
+            qa = json.load(open('output/agent_12/qa_report.json'))
+            overall = qa.get('overall_score', qa.get('score', 0))
+            if isinstance(overall, (int, float)) and overall < 95:
+              errors.append(f'QA overall score {overall} < 95 (Enterprise standard)')
+            else:
+              print(f'✅ QA score: {overall}')
+          except Exception as e:
+            print(f'QA report not yet available: {e}')
+          # Check EEAT
+          try:
+            eeat = json.load(open('output/agent_06/eeat_report.json'))
+            eeat_score = eeat.get('total_score', eeat.get('score', 0))
+            if isinstance(eeat_score, (int, float)) and eeat_score < 95:
+              errors.append(f'EEAT score {eeat_score} < 95 (Enterprise standard)')
+            else:
+              print(f'✅ EEAT score: {eeat_score}')
+          except Exception as e:
+            print(f'EEAT report not yet available: {e}')
+          # Report
+          if errors:
+            print('❌ Enterprise Standard violations:', \"\n\".join(errors))
+          else:
+            print('✅ Enterprise Standard compliance: PASSED')
+          "
+      - name: "Enterprise Quality Gate — Validate GOLD_STANDARD (95/100)"
         id: quality_gate
         run: |
           python scripts/v2_quality_gate.py \
@@ -395,6 +451,8 @@ jobs:
             --cannibalization-report output/agent_17/cannibalization_report.json \
             --revenue-score output/agent_18/revenue_score.json \
             --article-type ${ARTICLE_TYPE:-STANDARD} \
+              --min-quality-score ${{ env.MIN_QUALITY_SCORE }} \
+              --enterprise-standard true \
             --output output/quality_gate_result.json
 
       - name: "Generate Content Validation Report"
@@ -408,7 +466,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: "nexus14-v2-reports-${{ github.run_id }}"
+          name: "nexus14-enterprise-reports-${{ github.run_id }}"
           retention-days: 30
           path: |
             output/agent_10/image_validation_report.json
@@ -487,7 +545,7 @@ jobs:
           python -m agents.agent_14_production_director \
             --mode ${{ needs.route-trigger.outputs.mode }} \
             --output output/agent_14/daily_production_report.html \
-            --system-version V3 \
+            --system-version ENTERPRISE-V3 \
             --max-daily 6 \
             --quality-first true
 
@@ -495,7 +553,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: "nexus14-v2-daily-report-${{ github.run_id }}"
+          name: "nexus14-enterprise-daily-report-${{ github.run_id }}"
           retention-days: 90
           path: output/agent_14/daily_production_report.html
 
@@ -534,7 +592,7 @@ jobs:
         run: |
           python scripts/end_to_end_test.py \
             --output output/end_to_end_test_report.html \
-            --system-version V3 \
+            --system-version ENTERPRISE-V3 \
             --max-articles 1 \
             --require-real-wordpress true \
             --require-real-images true \
@@ -544,7 +602,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: "nexus14-v2-e2e-test-${{ github.run_id }}"
+          name: "nexus14-enterprise-e2e-test-${{ github.run_id }}"
           retention-days: 90
           path: |
             output/end_to_end_test_report.html
