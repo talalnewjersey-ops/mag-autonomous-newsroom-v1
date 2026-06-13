@@ -178,74 +178,117 @@ else:
 
         HTML_ONLY = (
             "IMPORTANT: Output ONLY valid HTML. Use <h2>, <h3>, <p>, <ul>, <ol>, <li>, "
-            "<table>, <strong>, <a> tags. Do NOT use markdown syntax (no #, ##, ###, no ---, "
-            "no **bold**, no backticks, no horizontal rules). Do NOT include the article title. "
+            "<table>, <strong>, <em>, <a> tags. Do NOT use markdown syntax (no #, ##, ###, no ---, "
+            "no **bold**, no backticks). Do NOT include the article title. "
             "Do NOT add a Part number heading. Start directly with the first <h2> section.\n\n"
         )
+
+        # Internal link bank for MoneyAbroadGuide.com (15+ links across parts)
+        IL = {
+            "wise-review":     "https://moneyabroadguide.com/wise-review",
+            "remitly-review":  "https://moneyabroadguide.com/remitly-review",
+            "ofx-review":      "https://moneyabroadguide.com/ofx-review",
+            "compare":         "https://moneyabroadguide.com/compare",
+            "best-services":   "https://moneyabroadguide.com/best-services",
+            "exchange-rates":  "https://moneyabroadguide.com/exchange-rates",
+            "fees-guide":      "https://moneyabroadguide.com/fees-guide",
+            "regulations":     "https://moneyabroadguide.com/regulations",
+            "security":        "https://moneyabroadguide.com/security",
+            "tips":            "https://moneyabroadguide.com/tips",
+            "how-to-guide":    "https://moneyabroadguide.com/how-to-guide",
+            "tax-guide":       "https://moneyabroadguide.com/tax-guide",
+            "faq":             "https://moneyabroadguide.com/faq",
+            "free-ebook":      "https://moneyabroadguide.com/free-ebook",
+            "newcomers-usa":   "https://moneyabroadguide.com/newcomers-usa",
+            "newcomers-canada":"https://moneyabroadguide.com/newcomers-canada",
+            "bank-accounts":   "https://moneyabroadguide.com/bank-accounts-newcomers",
+            "credit-score":    "https://moneyabroadguide.com/credit-score-newcomers",
+        }
 
         part1 = gpt(client,
             HTML_ONLY +
             "Write PART 1 of an expert article titled: " + TOPIC + " for market: " + mkt + "\n\n"
-            "<h2>Introduction</h2>\n4 paragraphs (300+ words) on importance, target audience, 2026 context.\n\n"
-            "<h2>Why This Matters for " + mkt + " Residents</h2>\n3 paragraphs (250+ words) on expat/immigrant needs.\n\n"
+            "<h2>Introduction</h2>\n4 paragraphs (300+ words) on importance, target audience, 2026 context. "
+            "Link to <a href=\"" + IL["newcomers-usa"] + "\">newcomers financial guide</a> and "
+            "<a href=\"" + IL["best-services"] + "\">top services</a>.\n\n"
+            "<h2>Why This Matters for " + mkt + " Residents</h2>\n3 paragraphs (250+ words). "
+            "Link to <a href=\"" + IL["bank-accounts"] + "\">bank accounts for newcomers</a> and "
+            "<a href=\"" + IL["credit-score"] + "\">building credit</a>.\n\n"
             "<h2>Top 8 International Money Transfer Services Compared (2026)</h2>\n"
             "Detailed HTML table: Service/Transfer Fees/Speed/Exchange Rate Margin/Rating columns.\n"
             "Include Wise, Remitly, Western Union, MoneyGram, OFX, TransferGo, WorldRemit, XE.\n"
-            "Then 2 analysis paragraphs (200+ words).\n"
-            "Link: <a href=\"https://moneyabroadguide.com/best-services\">full guide</a>\nMin 900 words.", 3000)
+            "Then 2 analysis paragraphs (200+ words). "
+            "Link to <a href=\"" + IL["compare"] + "\">full comparison</a> and "
+            "<a href=\"" + IL["best-services"] + "\">best services guide</a>.\nMin 900 words.", 3000)
         print(" Part 1 words:", len(part1.split()))
 
         part2 = gpt(client,
             HTML_ONLY +
             "Write PART 2 of the article about: " + TOPIC + " (market: " + mkt + ")\n\n"
-            "<h2>Detailed Review: Wise</h2>\n4 paragraphs (300+ words): pros/cons, fees, speed.\n\n"
-            "<h2>Detailed Review: Remitly</h2>\n4 paragraphs (300+ words): pros/cons, fees, speed.\n\n"
-            "<h2>Detailed Review: OFX vs Western Union</h2>\n3 paragraphs (200+ words): best use cases.\n"
-            "Link: <a href=\"https://moneyabroadguide.com/compare\">comparison page</a>\nMin 900 words.", 3000)
+            "<h2>Detailed Review: Wise</h2>\n4 paragraphs (300+ words): pros/cons, fees, speed. "
+            "Link to <a href=\"" + IL["wise-review"] + "\">Wise full review</a> and "
+            "<a href=\"" + IL["exchange-rates"] + "\">exchange rate guide</a>.\n\n"
+            "<h2>Detailed Review: Remitly</h2>\n4 paragraphs (300+ words): pros/cons, fees, speed. "
+            "Link to <a href=\"" + IL["remitly-review"] + "\">Remitly full review</a>.\n\n"
+            "<h2>Detailed Review: OFX vs Western Union</h2>\n3 paragraphs (200+ words). "
+            "Link to <a href=\"" + IL["ofx-review"] + "\">OFX review</a> and "
+            "<a href=\"" + IL["compare"] + "\">comparison page</a>.\nMin 900 words.", 3000)
         print(" Part 2 words:", len(part2.split()))
 
         part3 = gpt(client,
             HTML_ONLY +
             "Write PART 3 of the article about: " + TOPIC + " (market: " + mkt + ")\n\n"
-            "<h2>Understanding Fees and Exchange Rates 2026</h2>\n4 paragraphs (300+ words) with real examples.\n\n"
+            "<h2>Understanding Fees and Exchange Rates 2026</h2>\n4 paragraphs (300+ words) with real examples. "
+            "Link to <a href=\"" + IL["fees-guide"] + "\">complete fees guide</a> and "
+            "<a href=\"" + IL["exchange-rates"] + "\">exchange rate tracker</a>.\n\n"
             "<h2>Complete Fee Breakdown: Real Transfer Examples</h2>\n"
             "HTML table: 5 scenarios ($500/$1000/$2500/$5000/$10000) per provider.\n"
             "2 analysis paragraphs (200+ words).\n\n"
-            "<h2>Transfer Speed in 2026</h2>\n3 paragraphs (200+ words) on instant vs 1-3 day options.\n"
-            "Link: <a href=\"https://moneyabroadguide.com/exchange-rates\">exchange rate guide</a>\nMin 900 words.", 3000)
+            "<h2>Transfer Speed in 2026</h2>\n3 paragraphs (200+ words) on instant vs 1-3 day options. "
+            "Link to <a href=\"" + IL["compare"] + "\">speed comparison chart</a>.\nMin 900 words.", 3000)
         print(" Part 3 words:", len(part3.split()))
 
         part4 = gpt(client,
             HTML_ONLY +
             "Write PART 4 of the article about: " + TOPIC + " (market: " + mkt + ")\n\n"
             "<h2>Regulations and Legal Requirements in " + mkt + " 2026</h2>\n"
-            "4 paragraphs (300+ words): IRS/CRA, FINTRAC, compliance.\n\n"
-            "<h2>Safety, Security and Fraud Protection</h2>\n3 paragraphs (250+ words): FDIC/CDIC, 2FA, scam protection.\n\n"
-            "<h2>Special Situations: Large Transfers, Business, Emergency</h2>\n3 paragraphs (200+ words).\n"
-            "Link: <a href=\"https://moneyabroadguide.com/regulations\">regulations guide</a>\nMin 900 words.", 3000)
+            "4 paragraphs (300+ words): IRS/CRA, FINTRAC, compliance. "
+            "Link to <a href=\"" + IL["regulations"] + "\">full regulations guide</a> and "
+            "<a href=\"" + IL["tax-guide"] + "\">tax guide for newcomers</a>.\n\n"
+            "<h2>Safety, Security and Fraud Protection</h2>\n3 paragraphs (250+ words). "
+            "Link to <a href=\"" + IL["security"] + "\">security best practices</a>.\n\n"
+            "<h2>Special Situations: Large Transfers, Business, Emergency</h2>\n3 paragraphs (200+ words). "
+            "Link to <a href=\"" + IL["best-services"] + "\">specialized service guide</a>.\nMin 900 words.", 3000)
         print(" Part 4 words:", len(part4.split()))
 
         part5 = gpt(client,
             HTML_ONLY +
             "Write PART 5 of the article about: " + TOPIC + " (market: " + mkt + ")\n\n"
-            "<h2>Step-by-Step Guide: How to Make Your First Transfer</h2>\nNumbered 8 steps (300+ words).\n\n"
-            "<h2>10 Expert Money-Saving Tips for 2026</h2>\n10 numbered tips (300+ words).\n\n"
-            "<h2>Common Mistakes to Avoid</h2>\n5 mistakes (200+ words).\n"
-            "Links: <a href=\"https://moneyabroadguide.com/tips\">money saving tips</a> and "
-            "<a href=\"https://moneyabroadguide.com/how-to-guide\">how-to guide</a>\nMin 900 words.", 3000)
+            "<h2>Step-by-Step Guide: How to Make Your First Transfer</h2>\nNumbered 8 steps (300+ words). "
+            "Link to <a href=\"" + IL["how-to-guide"] + "\">complete how-to guide</a>.\n\n"
+            "<h2>10 Expert Money-Saving Tips for 2026</h2>\n10 numbered tips (300+ words). "
+            "Link to <a href=\"" + IL["tips"] + "\">money saving tips</a> and "
+            "<a href=\"" + IL["fees-guide"] + "\">fees reduction guide</a>.\n\n"
+            "<h2>Common Mistakes to Avoid</h2>\n5 mistakes (200+ words). "
+            "Link to <a href=\"" + IL["security"] + "\">fraud protection tips</a>.\nMin 900 words.", 3000)
         print(" Part 5 words:", len(part5.split()))
 
         part6 = gpt(client,
             HTML_ONLY +
             "Write PART 6 (FINAL) of the article about: " + TOPIC + " (market: " + mkt + ")\n\n"
-            "<h2>Our Top Recommendations</h2>\n3 paragraphs (200+ words) with CTAs.\n\n"
+            "<h2>Our Top Recommendations</h2>\n3 paragraphs (200+ words) with CTAs. "
+            "Link to <a href=\"" + IL["wise-review"] + "\">Wise</a>, "
+            "<a href=\"" + IL["remitly-review"] + "\">Remitly</a>, "
+            "<a href=\"" + IL["ofx-review"] + "\">OFX</a>.\n\n"
             "<h2>Free eBook: The Complete " + mkt + " Expat Money Guide</h2>\n"
-            "3 paragraphs (150+ words) promoting free ebook.\n"
-            "Include: <a href=\"https://moneyabroadguide.com/free-ebook\">Download your FREE guide</a>\n\n"
-            "<h2>Frequently Asked Questions (FAQ)</h2>\n8 detailed Q&A pairs (400+ words) on fees, safety, speed, limits, tax.\n\n"
-            "<h2>Conclusion</h2>\nStrong 3-paragraph conclusion (150+ words).\n"
-            "Links: <a href=\"https://moneyabroadguide.com/security\">security tips</a> and "
-            "<a href=\"https://moneyabroadguide.com/faq\">FAQ page</a>\nMin 900 words.", 3000)
+            "3 paragraphs (150+ words). "
+            "Include: <a href=\"" + IL["free-ebook"] + "\">Download your FREE guide</a>.\n\n"
+            "<h2>Frequently Asked Questions (FAQ)</h2>\n8 detailed Q&A pairs (400+ words). "
+            "Link to <a href=\"" + IL["faq"] + "\">full FAQ page</a> and "
+            "<a href=\"" + IL["regulations"] + "\">regulations</a>.\n\n"
+            "<h2>Conclusion</h2>\nStrong 3-paragraph conclusion (150+ words). "
+            "Link to <a href=\"" + IL["newcomers-usa"] + "\">newcomers guide</a> and "
+            "<a href=\"" + IL["security"] + "\">security tips</a>.\nMin 900 words.", 3000)
         print(" Part 6 words:", len(part6.split()))
 
         raw = part1 + "\n\n" + part2 + "\n\n" + part3 + "\n\n" + part4 + "\n\n" + part5 + "\n\n" + part6
@@ -313,17 +356,58 @@ print()
 print("[STEP 2] SEO scoring...")
 seo_score = 0
 if article_content:
+    # Score only the article body (strip disclaimer/TOC prefix to avoid keyword dilution)
+    body_start = article_content.find('<h2')
+    article_body = article_content[body_start:] if body_start > 0 else article_content
+    body_lower = article_body.lower()
+
+    # 1. Keyword density check (20pts) — use article body, not full content with disclaimer
     words_in_topic = [w for w in TOPIC.lower().split() if len(w) > 3]
-    found_kw = sum(1 for w in words_in_topic if w in article_content.lower())
+    found_kw = sum(1 for w in words_in_topic if w in body_lower)
     kw_density = found_kw / max(len(words_in_topic), 1)
-    if kw_density >= 0.7: seo_score += 25
-    if article_content.count("<h2>") >= 5: seo_score += 20
-    if "<table" in article_content: seo_score += 15
-    if len(article_content.split()) >= 5000: seo_score += 20
-    if "href=" in article_content: seo_score += 15
-    if "faq" in article_content.lower() or "frequently asked" in article_content.lower(): seo_score += 5
+    if kw_density >= 0.8: seo_score += 20
+    elif kw_density >= 0.5: seo_score += 10
+    print(f"  KW density: {kw_density:.2f} ({found_kw}/{len(words_in_topic)} keywords found)")
+
+    # 2. Heading structure (20pts) — use <h2 to match <h2 id="...">
+    h2_count = article_content.count('<h2')
+    h3_count = article_content.count('<h3')
+    if h2_count >= 8: seo_score += 15
+    elif h2_count >= 5: seo_score += 10
+    if h3_count >= 3: seo_score += 5
+    print(f"  H2 count: {h2_count}, H3 count: {h3_count}")
+
+    # 3. Tables (10pts)
+    if article_content.count('<table') >= 2: seo_score += 10
+    elif '<table' in article_content: seo_score += 7
+
+    # 4. Word count (15pts)
+    wc = len(article_body.split())
+    if wc >= 8000: seo_score += 15
+    elif wc >= 5000: seo_score += 10
+    print(f"  Body word count: {wc}")
+
+    # 5. Internal links (20pts) — count moneyabroadguide.com links
+    internal_link_list = re.findall(r'href="https?://moneyabroadguide.com[^"]*"', article_content)
+    il_count = len(internal_link_list)
+    if il_count >= 15: seo_score += 20
+    elif il_count >= 10: seo_score += 15
+    elif il_count >= 5: seo_score += 10
+    print(f"  Internal links: {il_count}")
+
+    # 6. FAQ present (5pts)
+    if "faq" in body_lower or "frequently asked" in body_lower: seo_score += 5
+
+    # 7. Image alt text present (5pts)
+    if article_content.count('alt=') >= 5: seo_score += 5
+    elif article_content.count('alt=') >= 1: seo_score += 3
+
+    # 8. Disclaimer / authority signals (5pts)
+    if "Disclaimer" in article_content and "Expert" in article_content: seo_score += 5
+
+    seo_score = min(seo_score, 100)
 results["seo_score_95plus"] = seo_score >= 95
-print("  SEO score:", seo_score)
+print(f"  SEO score: {seo_score}/100")
 
 print()
 print("[STEP 3] EEAT scoring...")
@@ -340,14 +424,15 @@ results["eeat_score_95plus"] = eeat_score >= 95
 print("  EEAT score:", eeat_score)
 
 print()
-print("[STEP 4] Counting internal links...")
+print("[STEP 4] Counting internal links (Gold Standard: 15+)...")
 if article_content:
-    links = re.findall(r"href=\"(https?://[^\"]+)\"", article_content)
+    links = re.findall(r'href="(https?://[^"]+)"', article_content)
     internal_links = sum(1 for l in links if "moneyabroadguide.com" in l)
 else:
     internal_links = 0
 results["internal_links_5plus"] = internal_links >= 5
-print("  Internal links:", internal_links)
+results["internal_links_15plus"] = internal_links >= 15
+print(f"  Internal links: {internal_links} ({'PASS' if internal_links >= 15 else 'BELOW 15 target'})")
 
 print()
 print("[QUALITY GATE CHECK]")
@@ -414,18 +499,45 @@ else:
         results["wordpress_draft_created"] = False
 
 print()
-print("[STEP 6] IMAGE PIPELINE -- 4 images")
+print("[STEP 6] IMAGE PIPELINE -- 6 images (Enterprise v3.0 full package)")
 print("  Chain: gpt-image-1 -> dall-e-3")
 print("-" * 50)
 
 img_t_start = time.time()
 img_cost = 0.0
 
+# Enterprise v3.0 — 6-image package (named types)
 IMG_PROMPTS = [
-    "Professional financial infographic comparing international money transfer services for topic: " + TOPIC + ". Blue green palette, white background, data visualization, no people.",
-    "Modern flat design: world map with money transfer arrows. " + MARKET.upper() + " to international destinations. Blue green corporate style.",
-    "Clean infographic: fee comparison chart for international wire transfers. Green bars, white background, professional financial.",
-    "Professional financial banner: smartphone showing money transfer app with currency symbols USD CAD. Blue and green theme, minimal."
+    # Image 1 — Featured Image
+    "Professional hero banner for article: " + TOPIC + ". "
+    "Vibrant financial technology scene: smartphone displaying money transfer interface, "
+    "world map in background, currency symbols (USD, EUR, GBP, MXN) floating around. "
+    "Blue-green gradient, clean modern design, no people, no text overlay.",
+
+    # Image 2 — Comparison Graphic
+    "Professional comparison infographic: side-by-side review of international money transfer apps "
+    "(Wise, Remitly, Western Union, OFX). Bar chart with fees and exchange rate margins. "
+    "Blue and green corporate palette, white background, data-driven visual, no people.",
+
+    # Image 3 — Process Graphic
+    "Step-by-step process infographic: how to send money internationally from " + MARKET.upper() + ". "
+    "5 numbered steps with icons: 1-Register, 2-Verify, 3-Enter Amount, 4-Confirm Rate, 5-Send. "
+    "Clean flat design, teal and green color scheme, white background, no people.",
+
+    # Image 4 — Checklist Graphic
+    "Professional checklist infographic: pre-transfer checklist for newcomers sending money abroad. "
+    "Numbered checklist items with checkmarks, key documents and verification steps. "
+    "Green accent colors, white background, clean modern typography, no people.",
+
+    # Image 5 — Data Visualization
+    "Financial data visualization: bar chart comparing international wire transfer fees "
+    "across 6 providers (Wise, Remitly, OFX, Western Union, MoneyGram, XE). "
+    "Y-axis shows cost in USD, clean minimal design, green bars, white background, no text overlay.",
+
+    # Image 6 — Topic Graphic
+    "Editorial financial illustration: newcomer immigrants using smartphone to send money home. "
+    "Abstract style, no realistic faces, blue-green color palette, world map with transfer arrows, "
+    "currency symbols, professional corporate aesthetic, white background.",
 ]
 
 def generate_one_image(prompt_text, idx):
@@ -552,7 +664,7 @@ if SKIP_IMAGES:
     print("  [SKIP] Image generation disabled (SKIP_IMAGES=true)")
 else:
     for i, prompt in enumerate(IMG_PROMPTS):
-        print(f"  Generating image {i+1}/4...")
+        print(f"  Generating image {i+1}/6 ({['Featured','Comparison','Process','Checklist','Data Viz','Topic'][i] if i < 6 else i})...")
         img_bytes, prov = generate_one_image(prompt, i+1)
         if img_bytes:
             generated_images.append(img_bytes)
@@ -573,7 +685,7 @@ image_report["generation_time_s"] = img_total_time
 image_report["cost_usd"] = img_cost
 image_report["media_ids"] = media_ids
 image_report["image_count"] = len(generated_images)
-print(f"  Images: {len(generated_images)}/4 generated, {len(media_ids)}/4 uploaded to WP")
+print(f"  Images: {len(generated_images)}/6 generated, {len(media_ids)}/6 uploaded to WP")
 
 
 print()
@@ -638,8 +750,8 @@ if wp_post_id and len(media_urls) > 1:
             inline_inserted = 0
 else:
     print("  Skipped (no post ID or fewer than 2 images uploaded)")
-results["images_in_content_4plus"] = (1 if image_report.get("featured_media_id") else 0) + inline_inserted >= 4
-results["images_generated"]  = image_report.get("image_count", 0) >= 4
+results["images_in_content_6plus"] = (1 if image_report.get("featured_media_id") else 0) + inline_inserted >= 6
+results["images_generated"]  = image_report.get("image_count", 0) >= 6
 results["featured_image_set"] = image_report.get("featured_media_id") is not None
 
 # Visual Quality Scoring (Enterprise v3.0 — mandatory gate)
@@ -661,7 +773,7 @@ if article_content:
     # Check: images are distributed (not all at end)
     h2_count = article_content.count('<h2')
     img_count = article_content.count('wp-block-image')
-    if img_count >= 3 and h2_count >= 6: vq += 20
+    if img_count >= 5 and h2_count >= 6: vq += 20
     elif img_count >= 1: vq += 10
     print(f"  Markdown H1 leaked: {has_md_h1} (-20 if True)")
     print(f"  Markdown H2 leaked: {has_md_h2} (-20 if True)")
@@ -713,10 +825,11 @@ checks = [
     ("seo_score_95plus",        results.get("seo_score_95plus", False)),
     ("eeat_score_95plus",       results.get("eeat_score_95plus", False)),
     ("internal_links_5plus",    results.get("internal_links_5plus", False)),
+    ("internal_links_15plus",   results.get("internal_links_15plus", False)),
     ("wordpress_draft_created", results.get("wordpress_draft_created", False)),
     ("images_generated",        results.get("images_generated", False)),
     ("featured_image_set",      results.get("featured_image_set", False)),
-    ("images_in_content_4plus", results.get("images_in_content_4plus", False)),
+    ("images_in_content_6plus", results.get("images_in_content_6plus", False)),
     ("visual_quality_95plus",   results.get("visual_quality_95plus", False)),
 ]
 passed = sum(1 for _, v in checks if v)
@@ -733,7 +846,7 @@ for name, val in checks:
 print()
 print("Score  :", str(passed) + "/" + str(total_checks))
 print("Words  :", len(article_content.split()) if article_content else 0)
-print("Images :", len(generated_images), "/ 4 generated,", len(media_ids), "uploaded,", inline_inserted, "inline +", (1 if image_report.get("featured_media_id") else 0), "featured")
+print("Images :", len(generated_images), "/ 6 generated,", len(media_ids), "uploaded,", inline_inserted, "inline +", (1 if image_report.get("featured_media_id") else 0), "featured")
 print("Topic  :", TOPIC)
 print("Market :", MARKET.upper())
 print("Cat    :", "Newcomers to the USA" if MARKET == "usa" else "Newcomers to Canada")
@@ -745,9 +858,10 @@ print("Provider:", image_report.get("provider_used", "none"))
 print("Cost   : $" + str(round(text_gen_cost + img_cost, 4)))
 print("Time   :", str(elapsed) + "s")
 
-if (passed >= 8 and critical_ok and results.get("word_count_5000plus")
-        and results.get("images_in_content_4plus") and results.get("visual_quality_95plus")):
-    print("STATUS : PUBLISHED (draft) - ALL GATES PASS")
+if (passed >= 10 and critical_ok and results.get("word_count_5000plus")
+        and results.get("images_in_content_6plus") and results.get("visual_quality_95plus")
+        and results.get("internal_links_15plus") and results.get("seo_score_95plus")):
+    print("STATUS : PUBLISHED (draft) - ALL GATES PASS — Gold Standard Compliant")
 elif passed >= 7 and critical_ok:
     print("STATUS : PARTIAL - VISUAL QUALITY REVIEW REQUIRED")
 elif passed >= 6 and critical_ok:
@@ -777,6 +891,8 @@ report = {
     "image_provider": image_report.get("provider_used"),
     "yoast_configured": True if wp_post_id else False,
     "visual_quality_score": results.get("visual_quality_95plus", False),
+    "internal_links_15plus": results.get("internal_links_15plus", False),
+    "images_in_content_6plus": results.get("images_in_content_6plus", False),
     "text_provider": text_provider,
     "text_gen_cost_usd": round(text_gen_cost, 5),
     "total_cost_usd": round(text_gen_cost + img_cost, 5),
