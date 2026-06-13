@@ -29,7 +29,7 @@ class BaseAgent(ABC):
     AGENT_NAME = "Base Agent"
     VERSION = "1.0.0"
     
-    def __init__(self, config: Dict, llm_service: LLMService, storage_service: StorageService):
+    def __init__(self, config: Dict, llm_service: LLMService = None, storage_service: StorageService = None, **kwargs):
         self.config = config
         self.llm = llm_service
         self.storage = storage_service
