@@ -70,7 +70,7 @@ def main():
     if not isinstance(topic, dict):
         topic = {"keyword": str(topic), "market": "USA", "intent": "informational"}
 
-    logger.info(f"Planning content for: {topic.get("keyword", "Unknown")}")
+    logger.info(f"Planning content for: {topic.get('keyword', 'Unknown')}")
 
     # Plan the article outline
     try:
@@ -85,9 +85,9 @@ def main():
     output_path.write_text(json.dumps(outline, indent=2, ensure_ascii=False), encoding="utf-8")
     file_size = output_path.stat().st_size
     logger.info(f"Outline written: {output_path} ({file_size} bytes)")
-    logger.info(f"Article title: {outline.get("title", "Unknown")}")
-    logger.info(f"Sections planned: {len(outline.get("sections", []))}")
-    logger.info(f"FAQ questions: {len(outline.get("faq", []))}")
+    logger.info(f"Article title: {outline.get('title', 'Unknown')}")
+    logger.info(f"Sections planned: {len(outline.get('sections', []))}")
+    logger.info(f"FAQ questions: {len(outline.get('faq', []))}")
     sys.exit(0)
 
 
