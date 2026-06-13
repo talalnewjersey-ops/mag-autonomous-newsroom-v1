@@ -151,7 +151,7 @@ jobs:
       - name: "Phase 1 — SEO Research (Agent 01)"
         id: seo_research
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           python -m agents.agent_01_seo_research \
             --max-topics 3 \
@@ -160,7 +160,7 @@ jobs:
       - name: "Phase 2 — Keyword Validation (Agent 02)"
         id: keyword_validation
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           python -m agents.agent_02_keyword_validation \
             --input output/agent_01/topics.json \
@@ -169,7 +169,7 @@ jobs:
       - name: "Phase 2.5 — Cannibalization Check (Agent 17)"
         id: cannibalization_check
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
           WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
           WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
@@ -191,7 +191,7 @@ jobs:
       - name: "Phase 2.6 — Revenue Intelligence (Agent 18)"
         id: revenue_intelligence
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           mkdir -p output/agent_18
           TOPIC=$(cat output/agent_02/validated_topics.json | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("title",t.get("keyword","expat banking guide")) if isinstance(t,dict) else str(t))')
@@ -212,7 +212,7 @@ jobs:
 
       - name: "Phase 3 — Content Planning (Agent 03)"
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           python -m agents.agent_03_content_planner \
             --input output/agent_02/validated_topics.json \
@@ -220,7 +220,7 @@ jobs:
 
       - name: "Phase 4 — Article Writing (Agent 04 — Claude)"
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           python -m agents.agent_04_article_writer \
             --input output/agent_03/article_outline.json \
@@ -230,7 +230,7 @@ jobs:
 
       - name: "Phase 5 — Fact Checking (Agent 05)"
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           python -m agents.agent_05_fact_checker \
             --input output/agent_04/article_draft.md \
@@ -239,7 +239,7 @@ jobs:
 
       - name: "Phase 6 — EEAT Validation (Agent 06)"
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           python -m agents.agent_06_eeat_validator \
             --input output/agent_04/article_draft.md \
@@ -248,7 +248,7 @@ jobs:
 
       - name: "Phase 7 — Internal Linking (Agent 07)"
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
         run: |
           python -m agents.agent_07_internal_linking \
@@ -258,7 +258,7 @@ jobs:
 
       - name: "Phase 8 — Affiliate Optimization (Agent 08)"
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           python -m agents.agent_08_affiliate_optimizer \
             --input output/agent_04/article_draft.md \
@@ -266,7 +266,7 @@ jobs:
 
       - name: "Phase 9 — Image Prompt Generation (Agent 09)"
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           python -m agents.agent_09_image_prompt_generator \
             --input output/agent_04/article_draft.md \
@@ -288,7 +288,7 @@ jobs:
 
       - name: "Phase 10.5 — Affiliate Compliance (Agent 15)"
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           python -m agents.agent_15_affiliate_compliance \
             --input output/agent_04/article_draft.md \
@@ -297,7 +297,7 @@ jobs:
 
       - name: "Phase 10.6 — Publishing Optimization (Agent 16)"
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
         run: |
           python -m agents.agent_16_publishing_optimization \
@@ -311,7 +311,7 @@ jobs:
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
           WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
           WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           python -m agents.agent_11_wordpress_integration \
             --article output/agent_04/article_draft.md \
@@ -322,7 +322,7 @@ jobs:
 
       - name: "Phase 12 — Quality Assurance (Agent 12)"
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
         run: |
           python -m agents.agent_12_quality_assurance \
@@ -343,7 +343,7 @@ jobs:
 
       - name: "Phase 13 — Chief Editor Decision (Agent 13)"
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           python -m agents.agent_13_chief_editor \
             --qa-report output/agent_12/qa_report.json \
@@ -441,7 +441,7 @@ jobs:
 
       - name: Run Chief Editor Global Audit
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
         run: |
           python -m agents.agent_13_chief_editor \
@@ -450,7 +450,7 @@ jobs:
 
       - name: Run Production Director Audit Summary
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           python -m agents.agent_14_production_director \
             --mode audit \
@@ -478,7 +478,7 @@ jobs:
 
       - name: Generate Production Report
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           python -m agents.agent_14_production_director \
             --mode ${{ needs.route-trigger.outputs.mode }} \
@@ -515,7 +515,7 @@ jobs:
 
       - name: Run Full End-to-End Test
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
           WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
