@@ -420,7 +420,7 @@ def main():
 
     output_path.write_text(json.dumps(editor_report, indent=2), encoding="utf-8")
     log.info(f"Editor report written: {output_path}")
-    log.info(f"Decision: {editor_report.get("decision", "UNKNOWN")}")
+    log.info(f"Decision: {editor_report.get('decision', 'UNKNOWN')}")
     sys.exit(0)
 
 
