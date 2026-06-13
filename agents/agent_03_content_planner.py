@@ -96,16 +96,26 @@ def main():
 # ============================================================
 
 async def _call_claude_03(api_key: str, prompt: str, max_tokens: int = 3000) -> str:
-    """Call Anthropic Claude API directly."""
-    import anthropic
-    client = anthropic.Anthropic(api_key=api_key)
-    response = await asyncio.to_thread(
-        client.messages.create,
-        model="claude-3-5-sonnet-20241022",
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}]
+    """Call Anthropic Claude API via raw HTTP (compatible with all SDK versions)."""
+    import urllib.request
+    payload = json.dumps({
+        "model": "claude-3-5-sonnet-20241022",
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": prompt}]
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=payload,
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        method="POST"
     )
-    return response.content[0].text
+    with urllib.request.urlopen(req, timeout=90) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    return data["content"][0]["text"]
 
 
 async def _plan_outline_standalone(topic: Dict, api_key: str) -> Dict:
