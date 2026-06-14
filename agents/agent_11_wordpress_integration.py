@@ -1,7 +1,8 @@
 """
-NEXUS-14: Agent 11 - WordPress Integration Agent
+NEXUS-14: Agent 11 - WordPress Integration Agent v1.1
 Creates WordPress drafts, uploads images, inserts FAQ schema,
 and adds author/bio information.
+v1.1: Fixed categories API - resolves slug names to integer IDs via WP REST API.
 Output: wordpress_report.json
 """
 
@@ -370,7 +371,7 @@ class WordPressIntegrationAgent(BaseAgent):
             "content": html_content,
             "status": "draft",
             "slug": slug[:100],
-            "categories": categories,
+            "categories": await self._resolve_category_ids(categories),
             "featured_media": featured_image_id,
             "author": 1,  # Will be set properly
             "meta": {
@@ -387,6 +388,67 @@ class WordPressIntegrationAgent(BaseAgent):
             logger.error(f"Failed to create WordPress post: {e}")
             return {"id": None, "link": "", "error": str(e)}
     
+    async def _resolve_category_ids(self, category_slugs: List[str]) -> List[int]:
+        """Resolve category slug names to WordPress integer IDs via REST API.
+        
+        WordPress REST API requires integer category IDs, not slug strings.
+        This method queries /wp-json/wp/v2/categories?slug=<slug> for each slug.
+        Falls back to an empty list if the WP service is unavailable.
+        """
+        resolved_ids = []
+        try:
+            import aiohttp, base64
+            wp_url = getattr(self.wp, 'base_url', None) or getattr(self.wp, 'wp_url', None) or ''
+            wp_user = getattr(self.wp, 'username', None) or getattr(self.wp, 'wp_username', None) or ''
+            wp_pass = getattr(self.wp, 'app_password', None) or getattr(self.wp, 'wp_app_password', None) or ''
+            
+            if not wp_url:
+                import os
+                wp_url = os.environ.get('WORDPRESS_URL', '').rstrip('/')
+                wp_user = os.environ.get('WORDPRESS_USERNAME', '')
+                wp_pass = os.environ.get('WORDPRESS_APP_PASSWORD', '')
+            
+            if not wp_url:
+                logger.warning("WordPress URL not available for category lookup -- skipping categories")
+                return []
+            
+            auth = ''
+            if wp_user and wp_pass:
+                credentials = f"{wp_user}:{wp_pass}"
+                auth = 'Basic ' + base64.b64encode(credentials.encode()).decode()
+            
+            headers = {'User-Agent': 'NEXUS-14/3.0'}
+            if auth:
+                headers['Authorization'] = auth
+            
+            async with aiohttp.ClientSession() as session:
+                for slug in category_slugs:
+                    try:
+                        url = f"{wp_url}/wp-json/wp/v2/categories"
+                        params = {'slug': slug, 'per_page': 1}
+                        async with session.get(url, params=params, headers=headers,
+                                               timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                if data and isinstance(data, list) and len(data) > 0:
+                                    cat_id = data[0].get('id')
+                                    if isinstance(cat_id, int):
+                                        resolved_ids.append(cat_id)
+                                        logger.info(f"Resolved category '{slug}' -> ID {cat_id}")
+                                    else:
+                                        logger.warning(f"Category '{slug}' found but ID not integer: {cat_id}")
+                                else:
+                                    logger.warning(f"Category slug '{slug}' not found in WordPress -- skipping")
+                            else:
+                                logger.warning(f"Category lookup for '{slug}' returned HTTP {resp.status} -- skipping")
+                    except Exception as e:
+                        logger.warning(f"Category lookup for '{slug}' failed: {e} -- skipping")
+        except Exception as e:
+            logger.error(f"_resolve_category_ids failed: {e} -- returning empty list")
+        
+        logger.info(f"Resolved {len(resolved_ids)} category IDs from {len(category_slugs)} slugs: {resolved_ids}")
+        return resolved_ids
+
     async def _set_author(self, post_id: Optional[int]):
         """Set author information for the post."""
         if not post_id:
