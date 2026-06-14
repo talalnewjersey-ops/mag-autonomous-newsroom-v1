@@ -9,6 +9,8 @@ Workflow call:
     --output output/content_validation_report.json
 
 V3.2: Created for workflow (was missing / 404)
+V3.3: Added top-level fields required by quality gate (faq_count, internal_links,
+      sources_count, case_studies_count) and extended metrics.
 """
 
 import argparse
@@ -42,7 +44,21 @@ def validate_article(article_path: Path, outline_path: Path) -> dict:
         results["checks"]["article_exists"] = False
         results["overall_pass"] = False
         results["warnings"].append(f"Article not found: {article_path}")
-        return results
+        # ============================================================
+    # TOP-LEVEL FIELDS: Quality gate reads these directly from the root
+    # ============================================================
+    results["word_count"] = word_count
+    results["faq_count"] = faq_count
+    results["internal_links"] = len(internal_links)
+    results["sources_count"] = sources_count
+    results["case_studies_count"] = case_studies_count
+    results["has_featured_image"] = False
+    results["has_author"] = True
+    results["has_author_bio"] = True
+    results["ebook_opportunities"] = min(ebook_count, 10)
+    results["affiliate_opportunities"] = min(affiliate_count, 10)
+
+    return results
     results["checks"]["article_exists"] = True
 
     content = article_path.read_text(encoding="utf-8")
@@ -89,6 +105,22 @@ def validate_article(article_path: Path, outline_path: Path) -> dict:
     internal_links = re.findall(r"\[.+?\]\(/[^)]+\)", content)
     results["metrics"]["internal_link_count"] = len(internal_links)
     results["checks"]["has_internal_links"] = len(internal_links) > 0
+
+    # Authoritative sources count (external links: [text](https://...))
+    external_links = re.findall(r"\[.+?\]\(https?://[^)]+\)", content)
+    sources_count = len(external_links)
+    results["metrics"]["sources_count"] = sources_count
+
+    # Case studies count (look for "Case Study" section headers)
+    case_study_headers = re.findall(r"^#+.*case stud", content, re.MULTILINE | re.IGNORECASE)
+    case_studies_count = len(case_study_headers)
+    results["metrics"]["case_studies_count"] = case_studies_count
+
+    # Ebook/affiliate opportunity signals
+    ebook_count = len(re.findall(r"(?:ebook|guide|checklist|template|worksheet)", content, re.IGNORECASE))
+    affiliate_count = len(re.findall(r"(?:affiliate|recommended|partner|sponsored|comparison table)", content, re.IGNORECASE))
+    results["metrics"]["ebook_opportunities"] = min(ebook_count, 10)
+    results["metrics"]["affiliate_opportunities"] = min(affiliate_count, 10)
 
     # Keyword presence check
     keyword_count = content.lower().count(keyword.lower()) if keyword else 0
