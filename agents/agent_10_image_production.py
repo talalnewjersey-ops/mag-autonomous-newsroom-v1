@@ -1,7 +1,8 @@
-"""NEXUS-14 V3 Agent 10: Image Production Agent
+"""NEXUS-14 V3.1 Agent 10: Image Production Agent
 MoneyAbroadGuide Autonomous Newsroom
 
 Generates images using Gemini Imagen or Nano Banana.
+V3.1: Updated Gemini endpoint to imagen-3.0-generate-002 (GA model). Added imagen-3.0-generate-001 fallback.
 Uploads images to WordPress Media Library (NOT S3).
 
 V3 ARCHITECTURE — IMAGE HOSTING:
@@ -40,9 +41,17 @@ logger = logging.getLogger(__name__)
 # Supported image generation APIs
 IMAGE_APIS = {
     "gemini_imagen": {
-        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict",
+        # Primary: Imagen 3 GA model (updated from imagen-3.0-generate-001 which returned 404)
+        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict",
         "auth_header": "x-goog-api-key",
         "max_retries": 3,
+        "timeout": 60,
+    },
+    "gemini_imagen_v1": {
+        # Fallback: Original Imagen 3 endpoint (v1beta)
+        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict",
+        "auth_header": "x-goog-api-key",
+        "max_retries": 2,
         "timeout": 60,
     },
     "nano_banana": {
@@ -319,7 +328,7 @@ class ImageProductionAgent:
         fmt = prompt_data.get("format", "jpg")
         timeout = aiohttp.ClientTimeout(total=api["timeout"])
 
-        if api_name == "gemini_imagen":
+        if api_name in ("gemini_imagen", "gemini_imagen_v1"):
             payload = {
                 "instances": [{"prompt": prompt}],
                 "parameters": {"sampleCount": 1, "negativePrompt": neg_prompt},
@@ -402,7 +411,7 @@ class ImageProductionAgent:
         }
 
     def _get_api_key(self, api_name: str) -> str:
-        if api_name == "gemini_imagen":
+        if api_name in ("gemini_imagen", "gemini_imagen_v1"):
             return self.gemini_api_key
         if api_name == "openai_dalle":
             return self.openai_key
