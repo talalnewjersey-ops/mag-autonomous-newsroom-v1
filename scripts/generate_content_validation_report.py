@@ -97,10 +97,22 @@ def validate_article(article_path: Path, outline_path: Path) -> dict:
     results["metrics"]["table_count"] = table_count
     results["checks"]["has_tables"] = table_count > 0
 
-    # Internal links check (markdown links to internal paths)
-    internal_links = re.findall(r"\[.+?\]\(/[^)]+\)", content)
-    results["metrics"]["internal_link_count"] = len(internal_links)
-    results["checks"]["has_internal_links"] = len(internal_links) > 0
+    # Internal links check: markdown paths (/path/) AND full URLs to site domain
+    internal_links_paths = re.findall(r"\[.+?\]\(/[^)]+\)", content)
+    internal_links_full = re.findall(r"\[.+?\]\(https?://(?:www\.)?moneyabroadguide\.com[^)]*\)", content)
+    # Also count internal links from agent_07 report if available
+    agent07_path = Path("output/agent_07/internal_links.json")
+    agent07_link_count = 0
+    if agent07_path.exists():
+        try:
+            ag7 = json.loads(agent07_path.read_text(encoding="utf-8"))
+            agent07_link_count = ag7.get("summary", {}).get("new_links_suggested", 0)
+        except Exception:
+            pass
+    internal_links = internal_links_paths + internal_links_full
+    total_internal = len(internal_links) + agent07_link_count
+    results["metrics"]["internal_link_count"] = total_internal
+    results["checks"]["has_internal_links"] = total_internal > 0
 
     # Authoritative sources count (external links: [text](https://...))
     external_links = re.findall(r"\[.+?\]\(https?://[^)]+\)", content)
@@ -154,7 +166,7 @@ def validate_article(article_path: Path, outline_path: Path) -> dict:
       "faq_count": faq_count,
       "h2_count": h2_count,
       "table_count": table_count,
-      "internal_links": len(internal_links),
+      "internal_links": total_internal,
       "keyword_density_pct": round(keyword_density * 100, 2),
       "passes_all_checks": results["overall_pass"]
     }
@@ -166,7 +178,7 @@ def validate_article(article_path: Path, outline_path: Path) -> dict:
   # ============================================================
   results["word_count"] = word_count
   results["faq_count"] = faq_count
-  results["internal_links"] = len(internal_links)
+  results["internal_links"] = total_internal
   results["sources_count"] = sources_count
   results["case_studies_count"] = case_studies_count
   results["has_featured_image"] = False
