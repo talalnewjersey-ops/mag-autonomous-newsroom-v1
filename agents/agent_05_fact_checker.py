@@ -387,26 +387,40 @@ def main():
             article_draft_path=str(input_path),
             output_dir=str(output_path.parent)
         ))
-        log.info(f"Fact check complete: verdict={report.get('verdict', 'UNKNOWN')}")
+        verdict = report.get('verdict', 'UNKNOWN')
+        log.info(f"Fact check complete: verdict={verdict}")
         log.info(f"Report written: {output_path}")
-        # If verdict is FAIL, exit with warning but not error (allow pipeline to continue)
+
+        # P4 FIX: Fact checker is now a BLOCKING GATE
+        # FAIL or DISPUTED verdict blocks publication (exit code 1)
+        if verdict in ("FAIL", "DISPUTED"):
+            broken_urls = report.get('summary', {}).get('broken_urls', 0)
+            disputed = report.get('summary', {}).get('disputed_count', 0)
+            log.error(f"FACT CHECK GATE FAIL: verdict={verdict} | broken_urls={broken_urls} | disputed={disputed}")
+            log.error("Publication BLOCKED: Fix all disputed claims and broken URLs before publishing.")
+            sys.exit(1)
+
+        # PASS or PASS_WITH_WARNINGS: continue pipeline
+        if verdict == "PASS_WITH_WARNINGS":
+            log.warning(f"Fact check passed with warnings — review recommendations before publishing")
         sys.exit(0)
+
     except Exception as e:
-        log.error(f"Fact checking failed: {e}")
-        # Write minimal report so pipeline can continue
+        log.error(f"Fact checking failed with exception: {e}")
+        # P4 FIX: Exception in fact checker also blocks publication
         import json
         fallback = {
             "agent": "agent_05_fact_checker",
             "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
-            "verdict": "SKIPPED",
-            "summary": {"total_claims": 0, "verified_count": 0, "issues_count": 0},
+            "verdict": "EXCEPTION",
+            "summary": {"total_claims": 0, "verified_count": 0, "issues_count": 1},
             "claims": [], "url_check": {}, "statistics_validation": {},
-            "recommendations": [f"Fact check failed: {str(e)[:100]}"],
+            "recommendations": [f"Fact check exception: {str(e)[:200]}"],
             "error": str(e)
         }
         output_path.write_text(json.dumps(fallback, indent=2), encoding="utf-8")
-        log.warning(f"Fallback report written: {output_path}")
-        sys.exit(0)
+        log.error(f"Fact check exception — publication blocked. Report: {output_path}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
