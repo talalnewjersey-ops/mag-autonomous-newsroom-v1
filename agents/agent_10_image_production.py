@@ -5,6 +5,7 @@ Generates images using Gemini Imagen or Nano Banana.
 V3.1: Updated Gemini endpoint to imagen-3.0-generate-002 (GA model). Added imagen-3.0-generate-001 fallback.
 V3.2: Added _create_placeholder() that generates a real PNG when all API calls fail,
       ensuring at least 5 images are available for WordPress upload.
+V3.3: Optimized PNG generation to use fast bytearray instead of slow Python pixel loop.
 Uploads images to WordPress Media Library (NOT S3).
 
 V3 ARCHITECTURE — IMAGE HOSTING:
@@ -422,11 +423,9 @@ class ImageProductionAgent:
                 ihdr_data = struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)
                 ihdr_crc = zlib.crc32(b'IHDR' + ihdr_data)
                 ihdr = struct.pack('>I', 13) + b'IHDR' + ihdr_data + struct.pack('>I', ihdr_crc)
-                raw_data = b''
-                for row in range(h):
-                    raw_data += b'\x00'
-                    for col in range(w):
-                        raw_data += bytes([r, g, b])
+                # Fast pixel data generation (no Python loop over 400k pixels)
+                row_data = bytes([0]) + bytes([r, g, b]) * w  # filter byte + one row of pixels
+                raw_data = row_data * h  # repeat all rows
                 compressed = zlib.compress(raw_data, 1)
                 idat_crc = zlib.crc32(b'IDAT' + compressed)
                 idat = struct.pack('>I', len(compressed)) + b'IDAT' + compressed + struct.pack('>I', idat_crc)
