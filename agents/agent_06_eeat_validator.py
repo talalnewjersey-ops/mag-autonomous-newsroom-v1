@@ -359,8 +359,25 @@ def main():
 
     print(f"EEAT Score: {report['total_eeat_score']:.1f}/100")
     print(f"Verdict: {report['verdict']}")
-    # Agent 06 EEAT failure is a warning, not a hard blocker — pipeline continues
-    # (Downstream quality gates handle final PASS/FAIL decisions)
+
+    # P5 FIX: EEAT validator is now a BLOCKING GATE
+    # If EEAT score is below threshold, publication is blocked (exit code 1)
+    eeat_score = report['total_eeat_score']
+    threshold = args.threshold
+    verdict = report['verdict']
+
+    if verdict == "FAIL" or eeat_score < threshold:
+        critical_issues = report.get('critical_issues', [])
+        print(f"EEAT GATE FAIL: score={eeat_score:.1f} < threshold={threshold}")
+        print(f"Publication BLOCKED: EEAT score below minimum {threshold}/100")
+        if critical_issues:
+            for issue in critical_issues:
+                print(f"  CRITICAL: {issue}")
+        print("Fix all EEAT issues before publishing. See eeat_report.json for recommendations.")
+        sys.exit(1)
+
+    # PASS: EEAT score meets threshold
+    print(f"EEAT GATE PASS: score={eeat_score:.1f} >= threshold={threshold}")
     sys.exit(0)
 
 
