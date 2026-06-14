@@ -2,285 +2,12 @@
 NEXUS-14 - Agent 09: Image Prompt Generator Agent
 MoneyAbroadGuide Autonomous Newsroom
 
-Creates AI image prompts for:
-- Featured Image (hero)
-- 3 Secondary Images
-- Infographic
-- Visual Table
-Compatibility: Gemini, DALL-E 3, Nano Banana
-Output: image_prompts.json
-"""
-
-import json
-import re
-import logging
-from datetime import datetime
-from pathlib import Path
-
-from agents.base_agent import BaseAgent
-
-logger = logging.getLogger(__name__)
-
-# Image style guide for MoneyAbroadGuide
-MAG_STYLE = {
-    "brand_colors": "navy blue (#1a237e), gold (#ffd700), white (#ffffff)",
-    "typography_style": "clean, modern, sans-serif",
-    "mood": "professional, trustworthy, aspirational, financial empowerment",
-    "avoid": "stock photo cliches, dollar signs alone, generic handshakes",
-    "include": "diverse people, global elements, digital/fintech aesthetics",
-}
-
-# Image type specifications
-IMAGE_SPECS = {
-    "featured": {
-        "label": "Featured Image (Hero)",
-        "width": 1200,
-        "height": 630,
-        "aspect_ratio": "1.91:1",
-        "purpose": "SEO thumbnail and social sharing",
-        "style_notes": "Bold, eye-catching, text overlay space on left third",
-    },
-    "secondary": {
-        "label": "Secondary Image",
-        "width": 800,
-        "height": 450,
-        "aspect_ratio": "16:9",
-        "purpose": "In-article illustration",
-        "style_notes": "Clean, informative, supports article text",
-    },
-    "infographic": {
-        "label": "Infographic",
-        "width": 800,
-        "height": 1200,
-        "aspect_ratio": "2:3",
-        "purpose": "Data visualization and social sharing",
-        "style_notes": "Data-driven, numbered steps or comparisons, brand colors",
-    },
-    "table": {
-        "label": "Visual Comparison Table",
-        "width": 1000,
-        "height": 600,
-        "aspect_ratio": "5:3",
-        "purpose": "Product/service comparison visualization",
-        "style_notes": "Clean grid layout, checkmarks, clear headers",
-    },
-}
-
-
-class ImagePromptGeneratorAgent(BaseAgent):
-    """Agent 09 - Generates AI image prompts for all article images."""
-
-    def __init__(self, config: dict):
-        super().__init__(agent_id="agent_09", name="ImagePromptGeneratorAgent", config=config)
-        self.llm_service = None
-
-    async def run(self, article_draft_path: str, output_dir: str = "outputs") -> dict:
-        """
-        Analyze article and generate optimized image prompts.
-        Produces prompts for featured, secondary, infographic, and table images.
-        Output: image_prompts.json
-        """
-        self.logger.info("Agent 09 - Image Prompt Generator starting...")
-        start_time = datetime.now()
-
-        draft_path = Path(article_draft_path)
-        if not draft_path.exists():
-            raise FileNotFoundError(f"Article draft not found: {article_draft_path}")
-        article_text = draft_path.read_text(encoding="utf-8")
-
-        # Extract article metadata
-        title = self._extract_title(article_text)
-        main_topic = self._extract_main_topic(article_text)
-        geo_focus = self._detect_geo_focus(article_text)
-        key_services = self._extract_key_services(article_text)
-        data_points = self._extract_data_points(article_text)
-
-        self.logger.info(f"Generating prompts for: {title}")
-
-        # Generate all image prompts
-        prompts = {
-            "featured": self._generate_featured_prompt(title, main_topic, geo_focus),
-            "secondary_1": self._generate_secondary_prompt(title, main_topic, key_services, 1),
-            "secondary_2": self._generate_secondary_prompt(title, main_topic, key_services, 2),
-            "secondary_3": self._generate_secondary_prompt(title, main_topic, key_services, 3),
-            "infographic": self._generate_infographic_prompt(title, data_points, geo_focus),
-            "table": self._generate_table_prompt(key_services, main_topic),
-        }
-
-        # Build full image manifest
-        manifest = self._build_manifest(prompts, title, main_topic)
-
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
-        (output_path / "image_prompts.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
-
-        elapsed = (datetime.now() - start_time).total_seconds()
-        self.logger.info(f"Image prompts generated: {len(prompts)} prompts in {elapsed:.1f}s")
-        return manifest
-
-    # ------------------------------------------------------------------ #
-    #  Article Analysis                                                    #
-    # ------------------------------------------------------------------ #
-
-    def _extract_title(self, text: str) -> str:
-        lines = text.strip().split("\n")
-        for line in lines[:5]:
-            if line.startswith("#"):
-                return re.sub(r"^#+\s*", "", line).strip()
-        return "Financial Guide"
-
-    def _extract_main_topic(self, text: str) -> str:
-        topic_patterns = [
-            r"(?i)\b(?:money transfer|international transfer|wire transfer|remittance)",
-            r"(?i)\b(?:bank account|banking|checking account|savings account)",
-            r"(?i)\b(?:credit card|debit card|prepaid card)",
-            r"(?i)\b(?:tax|taxes|tax return|tax filing)",
-            r"(?i)\b(?:insurance|health insurance|travel insurance)",
-            r"(?i)\b(?:investing|investment|stocks|etf|portfolio)",
-            r"(?i)\b(?:mortgage|home loan|real estate)",
-        ]
-        topic_names = ["money transfer", "banking", "credit cards", "taxes", "insurance", "investing", "mortgage"]
-        counts = []
-        for pattern, name in zip(topic_patterns, topic_names):
-            count = len(re.findall(pattern, text))
-            counts.append((count, name))
-        best = max(counts, key=lambda x: x[0])
-        return best[1] if best[0] > 0 else "financial services"
-
-    def _detect_geo_focus(self, text: str) -> str:
-        usa = len(re.findall(r"\b(?:usa|united states|america|american)\b", text, re.I))
-        canada = len(re.findall(r"\b(?:canada|canadian|newcomer to canada)\b", text, re.I))
-        if usa > canada * 2: return "usa"
-        if canada > usa * 2: return "canada"
-        return "international"
-
-    def _extract_key_services(self, text: str) -> list:
-        services = []
-        service_patterns = {
-            "Wise": r"\b(?:wise|transferwise)\b",
-            "Revolut": r"\brevolut\b",
-            "Remitly": r"\bremitly\b",
-            "PayPal": r"\bpaypal\b",
-            "Western Union": r"\bwestern union\b",
-            "MoneyGram": r"\bmoneygram\b",
-            "XE": r"\bxe\.com\b|\bxe money\b",
-            "Chime": r"\bchime\b",
-            "N26": r"\bn26\b",
-        }
-        for service, pattern in service_patterns.items():
-            if re.search(pattern, text, re.I):
-                services.append(service)
-        return services[:5]
-
-    def _extract_data_points(self, text: str) -> list:
-        data = []
-        percentages = re.findall(r"(\d+(?:\.\d+)?%)", text)
-        amounts = re.findall(r"(\$[\d,]+(?:\.\d+)?)", text)
-        times = re.findall(r"(\d+\s+(?:hours?|days?|minutes?))", text, re.I)
-        if percentages: data.extend(percentages[:3])
-        if amounts: data.extend(amounts[:3])
-        if times: data.extend(times[:2])
-        return data[:6]
-
-    # ------------------------------------------------------------------ #
-    #  Prompt Generation                                                   #
-    # ------------------------------------------------------------------ #
-
-    def _generate_featured_prompt(self, title: str, topic: str, geo: str) -> dict:
-        """Generate the featured/hero image prompt."""
-        geo_desc = {
-            "usa": "American cityscape with Manhattan skyline or Golden Gate Bridge",
-            "canada": "Canadian landscape with CN Tower or Vancouver mountains",
-            "international": "Global world map with financial district skylines",
-        }.get(geo, "global financial city skyline")
-
-        prompt = (
-            f"Professional financial blog hero image about {topic}. "
-            f"{geo_desc} in the background, blurred with depth of field. "
-            f"Foreground: Diverse person holding smartphone showing money transfer app. "
-            f"Mood: empowering, modern, trustworthy. "
-            f"Color palette: navy blue, gold accents, clean white space on left side for text overlay. "
-            f"Style: modern fintech photography aesthetic, 8K, ultra detailed. "
-            f"No text, no logos, no dollar signs floating."
-        )
-        alt_text = f"{title.replace(chr(39), '')}: person using smartphone for {topic}"
-        caption = f"A modern approach to {topic} for expats and international users"
-        return {
-            "type": "featured",
-            "prompt": prompt,
-            "alt_text": alt_text,
-            "caption": caption,
-            "width": IMAGE_SPECS["featured"]["width"],
-            "height": IMAGE_SPECS["featured"]["height"],
-            "aspect_ratio": IMAGE_SPECS["featured"]["aspect_ratio"],
-            "gemini_prompt": f"Create: {prompt}",
-            "dalle_prompt": prompt,
-            "nano_banana_prompt": f"photorealistic, {prompt}",
-        }
-
-    def _generate_secondary_prompt(self, title: str, topic: str, services: list, num: int) -> dict:
-        """Generate secondary/in-article image prompts."""
-        scenarios = [
-            f"Close-up of hands using a laptop for {topic}, clean desk setup, financial charts on screen, professional lighting",
-            f"Flat lay of credit card, passport, smartphone with {topic} app open, minimal aesthetic, brand colors navy and gold",
-            f"Split screen showing old complex bank wire transfer vs modern {topic} app interface, before/after comparison, clean infographic style",
-        ]
-        idx = (num - 1) % len(scenarios)
-        prompt = scenarios[idx]
-        service_hint = f" Service featured: {services[idx % len(services)]}" if services else ""
-        full_prompt = prompt + service_hint
-        return {
-            "type": f"secondary_{num}",
-            "prompt": full_prompt,
-            "alt_text": f"Illustration {num} for {topic} guide",
-            "caption": f"How {topic} works in practice",
-            "width": IMAGE_SPECS["secondary"]["width"],
-            "height": IMAGE_SPECS["secondary"]["height"],
-            "aspect_ratio": IMAGE_SPECS["secondary"]["aspect_ratio"],
-            "gemini_prompt": f"Create: {full_prompt}",
-            "dalle_prompt": full_prompt,
-            "nano_banana_prompt": f"photorealistic, {full_prompt}",
-        }
-
-    def _generate_infographic_prompt(self, title: str, data_points: list, geo: str) -> dict:
-        """Generate infographic prompt with data visualization."""
-        data_str = ", ".join(data_points[:4]) if data_points else "key statistics"
-        prompt = (
-            f"Professional infographic for MoneyAbroadGuide about {title}. "
-            f"Vertical format (800x1200px). Clean modern design. "
-            f"Brand colors: navy blue header, gold accents, white background. "
-            f"Include: numbered steps (1-5), comparison arrows, data visualization. "
-            f"Key data to visualize: {data_str}. "
-            f"Style: flat design, minimal icons, clear typography. "
-            f"Footer: MoneyAbroadGuide.com branding. "
-            f"No stock photo elements, data-driven visual."
-        )
-        return {
-            "type": "infographic",
-            "prompt": prompt,
-            "alt_text": f"Infographic: Key statistics and steps for {title}",
-            "caption": f"Complete guide to {title} - key facts and steps",
-            "width": IMAGE_SPECS["infographic"]["width"],
-            "height": IMAGE_SPECS["infographic"]["height"],
-            "aspect_ratio": IMAGE_SPECS["infographic"]["aspect_ratio"],
-            "gemini_prompt": f"Create infographic: {prompt}",
-            "dalle_prompt": prompt,
-            "nano_banana_prompt": f"infographic design, {prompt}",
-            "data_points": data_points,
-        }
-
-    def _generate_table_prompt(self, services: list, topic: str) -> dict:
-        """Generate visual comparison table image prompt."""
-        service_list = ", ".join(services[:4]) if services else "top financial services"
-        prompt = (
-            f"Clean professional comparison table image for financial services. "
-            f"Services to compare: {service_list}. "
-NEXUS-14 - Agent 09: Image Prompt Generator Agent
-MoneyAbroadGuide Autonomous Newsroom
 Creates image prompts for: Featured Image, 3 secondary images,
 infographic, visual table. Compatible with Gemini and Nano Banana.
 Generates: prompt, alt text, caption, description.
 Output: image_prompts.json
+
+V3.2 FIX: Removed duplicate class definition that caused SyntaxError.
 """
 
 import json
@@ -356,7 +83,7 @@ NANO_BANANA_SPECS = {
 class ImagePromptGeneratorAgent(BaseAgent):
     """Agent 09: Automated image prompt generation for NEXUS-14."""
 
-    def __init__(self, config: dict[str, Any]):
+    def __init__(self, config: dict):
         super().__init__(agent_id="agent_09", name="ImagePromptGeneratorAgent", config=config)
         self.llm_service = None
         self.image_provider = config.get("image_provider", "gemini")
@@ -367,7 +94,7 @@ class ImagePromptGeneratorAgent(BaseAgent):
         article_draft_path: str,
         article_outline_path: str = None,
         output_dir: str = "outputs",
-    ) -> dict[str, Any]:
+    ) -> dict:
         """Generate all required image prompts for the article."""
         self.logger.info("Agent 09 - Image Prompt Generator starting...")
         start_time = datetime.now()
@@ -664,11 +391,11 @@ class ImagePromptGeneratorAgent(BaseAgent):
 
 
 # ============================================================
-# CLI ENTRY POINT - Added V3.2 for workflow execution
+# CLI ENTRY POINT
 # Workflow: python -m agents.agent_09_image_prompt_generator
-#   --input output/agent_04/article_draft.md
-#   --output output/agent_09/image_prompts.json
-#   --count 5
+# --input output/agent_04/article_draft.md
+# --output output/agent_09/image_prompts.json
+# --count 5
 # ============================================================
 
 def main():
