@@ -1,5 +1,5 @@
 """
-NEXUS-14: Agent 04 - Article Writer Agent — GOLD STANDARD ENFORCEMENT v4.0
+NEXUS-14: Agent 04 - Article Writer Agent — GOLD STANDARD ENFORCEMENT v4.1
 Writes 8,500-12,000 word Gold Standard articles for SEO 2026 + EEAT.
 Input: article_outline.json
 Output: article_draft.md
@@ -8,11 +8,11 @@ GOLD STANDARD REQUIREMENTS (HARD FAIL if not met):
 - Minimum 8,500 words (target 10,000-12,000)
 - Minimum 20 FAQs
 - Minimum 10 authoritative sources
-- Minimum 15 internal links
+- Minimum 15 internal link
 - Minimum 6 case studies
 - Comparison table, Expert recommendation, Compliance section, Author box
 
-V4.0: Gold Standard Enforcement.
+V4.1: FAQ Auto-Remediation — never assembles with < 20 FAQs.
 """
 
 import argparse
@@ -32,6 +32,7 @@ GOLD_MIN_WORDS = 8500
 GOLD_TARGET_WORDS = 10000
 GOLD_MAX_WORDS = 12000
 GOLD_MIN_FAQS = 20
+GOLD_TARGET_FAQS = 25
 GOLD_MIN_SOURCES = 10
 GOLD_MIN_INTERNAL_LINKS = 15
 GOLD_MIN_CASE_STUDIES = 6
@@ -108,11 +109,65 @@ def main():
     sys.exit(0)
 
 
+
+def _count_faqs(text: str) -> int:
+    """Count FAQ entries matching ### heading + question mark pattern."""
+    return len(re.findall(r"^###\s+.+\?", text, re.MULTILINE))
+
+
+def _extract_faq_questions(faq_text: str) -> str:
+    """Extract existing FAQ questions to avoid duplication in top-up."""
+    questions = re.findall(r"^###\s+(.+\?)\s*$", faq_text, re.MULTILINE)
+    return "\n".join(f"- {q}" for q in questions[:30])
+
+
+async def _ensure_faq_count(faq_text: str, keyword: str, market: str, target_audience: str,
+                             api_key: str) -> str:
+    """Ensure FAQ section has at least GOLD_MIN_FAQS entries. Auto-generates missing FAQs."""
+    current_count = _count_faqs(faq_text)
+    logger.info(f"FAQ count check: {current_count} (min={GOLD_MIN_FAQS}, target={GOLD_TARGET_FAQS})")
+
+    attempt = 0
+    while current_count < GOLD_MIN_FAQS and attempt < 5:
+        needed = GOLD_TARGET_FAQS - current_count
+        attempt += 1
+        logger.warning(f"FAQ count {current_count} < minimum {GOLD_MIN_FAQS}. "
+                       f"Generating {needed} additional FAQs (attempt {attempt})...")
+        topup_prompt = f"""Generate EXACTLY {needed} additional FAQ items for an article about:
+Keyword: {keyword}
+Market: {market}
+Audience: {target_audience}
+
+REQUIREMENTS:
+- Each FAQ: ### [Question ending with ?]
+- Each answer: 100-200 words with specific facts, data, and regulatory details
+- Do NOT duplicate any of these existing questions (already answered):
+{_extract_faq_questions(faq_text)}
+- Output ONLY the new FAQ items in Markdown, no preamble.
+- Ensure every question ends with a question mark (?)"""
+        try:
+            extra_faqs = await _call_claude(api_key, topup_prompt, SYSTEM_PROMPT,
+                                             max_tokens=min(needed * 400 + 500, 8096))
+            faq_text = faq_text + "\n\n" + extra_faqs
+            current_count = _count_faqs(faq_text)
+            logger.info(f"FAQ count after top-up attempt {attempt}: {current_count}")
+        except Exception as e:
+            logger.warning(f"FAQ top-up attempt {attempt} failed: {e}")
+
+    if current_count < GOLD_MIN_FAQS:
+        logger.error(f"FATAL: Could not reach minimum FAQ count after {attempt} attempts. "
+                     f"Final count: {current_count}")
+    else:
+        logger.info(f"FAQ count PASSED: {current_count} >= {GOLD_MIN_FAQS}")
+
+    return faq_text
+
+
 def _validate_gold_standard(article: str, word_count: int) -> list:
     errors = []
     if word_count < GOLD_MIN_WORDS:
         errors.append(f"Word count {word_count} < minimum {GOLD_MIN_WORDS}")
-    faq_count = len(re.findall(r"^###\s+.+\?", article, re.MULTILINE))
+    faq_count = _count_faqs(article)
     if faq_count < GOLD_MIN_FAQS:
         errors.append(f"FAQ count {faq_count} < minimum {GOLD_MIN_FAQS}")
     source_count = len(re.findall(r"https?://\S+", article))
@@ -344,16 +399,21 @@ Base questions: {json.dumps(faq_questions[:10])}
 
 REQUIREMENTS:
 1. H2: ## Frequently Asked Questions About {keyword}
-2. Write EXACTLY 22 FAQ questions
+2. Write EXACTLY {GOLD_TARGET_FAQS} FAQ questions (minimum {GOLD_MIN_FAQS})
 3. Each: ### [Question ending with ?]
 4. Each answer: 100-200 words with specific facts and regulatory details
 5. First answer: featured-snippet format (40-60 words, direct)
 6. Include 3-4 internal links naturally
 7. Total: 2,500-3,500 words
 
-Write all 22 Q&As in Markdown."""
-    faq = await _call_claude(api_key, faq_prompt, SYSTEM_PROMPT, max_tokens=6000)
+CRITICAL: You MUST produce at least {GOLD_MIN_FAQS} FAQ ### headings ending with ?.
+Write all {GOLD_TARGET_FAQS} Q&As in Markdown."""
+    faq = await _call_claude(api_key, faq_prompt, SYSTEM_PROMPT, max_tokens=8096)
     logger.info(f"FAQ: {len(faq.split())} words")
+    # ── FAQ AUTO-REMEDIATION (v4.1) ──────────────────────────────────────────
+    # Hard requirement: never assemble with < GOLD_MIN_FAQS FAQ entries.
+    faq = await _ensure_faq_count(faq, keyword, market, target_audience, api_key)
+    # ─────────────────────────────────────────────────────────────────────────
 
     closing_prompt = f"""Write closing sections for:
 Title: {title} | Keyword: {keyword}
