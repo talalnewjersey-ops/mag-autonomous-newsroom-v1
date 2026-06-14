@@ -154,24 +154,12 @@ jobs:
           TOPIC_OVERRIDE: ${{ github.event.inputs.topic_override }}
         run: |
           mkdir -p output/agent_01 output/agent_02
-          cat > /tmp/gen_override.py << 'PYEOF'
-import json, os
-topic = os.environ.get('TOPIC_OVERRIDE', '')
-if not topic:
-    exit(0)
-mkt = 'Canada' if 'canada' in topic.lower() else 'USA'
-data = {'topics': [{'keyword': topic, 'title': topic, 'market': mkt,
-    'search_volume': 5000, 'keyword_difficulty': 35, 'cpc': 5.50,
-    'intent': 'commercial', 'opportunity_types': ['seo', 'affiliate'],
-    'affiliate_programs': ['Chase', 'Capital One', 'Discover'],
-    'content_type': 'listicle', 'estimated_word_count': 10000,
-    'revenue_score': 90, 'status': 'topic_override'}]}
-json.dump(data, open('output/agent_01/topics.json', 'w'), indent=2)
-json.dump(data, open('output/agent_02/validated_topics.json', 'w'), indent=2)
-print('Topic override applied:', topic)
-PYEOF
-          python3 /tmp/gen_override.py
-          echo "Override: $TOPIC_OVERRIDE"
+          TOPIC="$TOPIC_OVERRIDE"
+          if [ -n "$TOPIC" ]; then
+            MARKET='USA'
+            echo "$TOPIC" | grep -qi "canada" && MARKET="Canada"
+            python3 -c "import json,sys; topic=sys.argv[1]; mkt=sys.argv[2]; d={'topics':[{'keyword':topic,'title':topic,'market':mkt,'search_volume':5000,'keyword_difficulty':35,'cpc':5.50,'intent':'commercial','opportunity_types':['seo','affiliate'],'affiliate_programs':['Chase','Capital One','Discover'],'content_type':'listicle','estimated_word_count':10000,'revenue_score':90,'status':'topic_override'}]}; json.dump(d,open('output/agent_01/topics.json','w'),indent=2); json.dump(d,open('output/agent_02/validated_topics.json','w'),indent=2); print('Override:',topic)" "$TOPIC" "$MARKET"
+          fi
 
       - name: "Phase 1 — SEO Research (Agent 01)"
         id: seo_research
