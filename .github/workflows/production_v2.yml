@@ -1,19 +1,15 @@
 # ============================================================
-# NEXUS-14 ENTERPRISE v3.0 — Gold Standard Production Workflow
-# MoneyAbroadGuide.com — Gold Standard Financial Education Platform
-# Version: 3.0.2-ENTERPRISE | Fixed: 2026-06-14
-# Fix: Moved "Generate Content Validation Report" BEFORE "Enterprise Quality Gate"
+# NEXUS-14 ENTERPRISE v3.0 — Production Workflow COST-OPTIMIZED
+# MoneyAbroadGuide.com — Canada Newcomer Priority Production
+# Version: 3.1.0-COST-OPT | Updated: 2026-06-14
 #
-# ENTERPRISE STANDARD: 95/100 minimum ALL gates | Gold Standard only
-# GOLD STANDARD: 8500-12000 words | 6 case studies | 20 FAQ | 15 internal links
-#                6 images (featured+5) | 5 schemas | Author box | EEAT
+# COST OPTIMIZATION V5 — THREE-TIER SYSTEM:
+# TIER 1 PILLAR:     4,500-5,000 words | 12 FAQs | 3 case studies
+# TIER 2 STANDARD:   4,000-4,500 words | 10 FAQs | 2 case studies (DEFAULT)
+# TIER 3 OPPORTUNITY:3,500-4,000 words |  8 FAQs | 1-2 case studies
 #
-# SECRETS REQUIRED (minimal set):
-#   ANTHROPIC_API_KEY      — Claude API (article writing, all agents)
-#   GEMINI_API_KEY         — Image generation
-#   WORDPRESS_URL          — Your WordPress site URL
-#   WORDPRESS_USERNAME     — WordPress username
-#   WORDPRESS_APP_PASSWORD — WordPress application password
+# CANADA NEWCOMER PRIORITY: newcomers, immigrants, international students, PR
+# ARTICLE_NUM: injected per loop iteration for unique topic selection
 # ============================================================
 
 name: "NEXUS-14 ENTERPRISE v3.0 — Gold Standard Production"
@@ -55,31 +51,31 @@ env:
   MAX_ARTICLES_PER_BATCH: 3
   MAX_ARTICLES_PER_DAY: 6
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  MIN_WORD_COUNT: 8500
-  TARGET_WORD_COUNT: 10000
-  MIN_IMAGES: 6
-  MIN_FAQ: 20
-  MIN_INTERNAL_LINKS: 15
-  MIN_SOURCES: 10
-  MIN_CASE_STUDIES: 6
-  SEO_SCORE_THRESHOLD: 95
-  EEAT_SCORE_THRESHOLD: 95
-  SYSTEM_VERSION: "ENTERPRISE-V3"
+  # COST-OPT V5: Standard tier defaults (4000-4500w)
+  MIN_WORD_COUNT: 4000
+  TARGET_WORD_COUNT: 4500
+  MAX_WORD_COUNT: 5000
+  MIN_IMAGES: 4
+  MIN_FAQ: 10
+  MIN_INTERNAL_LINKS: 6
+  MIN_SOURCES: 5
+  MIN_CASE_STUDIES: 2
+  SEO_SCORE_THRESHOLD: 90
+  EEAT_SCORE_THRESHOLD: 90
+  SYSTEM_VERSION: "ENTERPRISE-V3.1-COST-OPT"
   QUALITY_FIRST: "true"
   ENTERPRISE_STANDARD: "true"
-  MIN_QUALITY_SCORE: 95
-  MIN_SEO_SCORE: 95
-  MIN_EEAT_SCORE: 95
-  MIN_UX_SCORE: 95
-  MIN_OVERALL_SCORE: 95
+  MIN_QUALITY_SCORE: 90
+  MIN_SEO_SCORE: 90
+  MIN_EEAT_SCORE: 90
+  MIN_UX_SCORE: 90
+  MIN_OVERALL_SCORE: 90
   MAX_AFFILIATE_PARTNERS: 3
-  MIN_SCHEMAS: 5
+  MIN_SCHEMAS: 3
+  CANADA_NEWCOMER_PRIORITY: "true"
 
 jobs:
 
-  # ============================================================
-  # JOB 1: ROUTE BASED ON TRIGGER TIME
-  # ============================================================
   route-trigger:
     name: "Route — Identify Trigger Mode"
     runs-on: ubuntu-latest
@@ -121,11 +117,8 @@ jobs:
             echo "max_articles=3" >> $GITHUB_OUTPUT
           fi
 
-  # ============================================================
-  # JOB 2: PRODUCTION BATCH
-  # ============================================================
   production-batch:
-    name: "Enterprise Production Batch — Max 3 Gold Standard Articles"
+    name: "Production Batch — Max 3 Cost-Optimized Articles"
     runs-on: ubuntu-latest
     needs: route-trigger
     if: |
@@ -133,7 +126,7 @@ jobs:
       needs.route-trigger.outputs.mode == 'batch_2' ||
       needs.route-trigger.outputs.mode == 'end_to_end_test' ||
       needs.route-trigger.outputs.mode == 'rewrite_audit'
-    timeout-minutes: 180
+    timeout-minutes: 120
 
     steps:
       - name: Checkout repository
@@ -150,11 +143,6 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      # ============================================================
-      # P3 FIX: 3-ARTICLE BATCH LOOP
-      # Runs the full pipeline 3 times sequentially.
-      # Each article uses isolated output/article_N/ directory.
-      # ============================================================
       - name: "Batch Loop — Run 3 Articles Sequentially"
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -172,7 +160,6 @@ jobs:
             echo "ARTICLE ${ARTICLE_NUM} OF ${MAX_ARTICLES}"
             echo "=============================================="
 
-            # Isolated output directory per article
             export ARTICLE_DIR="output/article_${ARTICLE_NUM}"
             mkdir -p "${ARTICLE_DIR}/agent_01" "${ARTICLE_DIR}/agent_02" "${ARTICLE_DIR}/agent_03"
             mkdir -p "${ARTICLE_DIR}/agent_04" "${ARTICLE_DIR}/agent_05" "${ARTICLE_DIR}/agent_06"
@@ -181,30 +168,25 @@ jobs:
             mkdir -p "${ARTICLE_DIR}/agent_13" "${ARTICLE_DIR}/agent_15" "${ARTICLE_DIR}/agent_16"
             mkdir -p "${ARTICLE_DIR}/agent_17" "${ARTICLE_DIR}/agent_18"
 
-            # Run pipeline steps for this article
-            # Each step outputs to ARTICLE_DIR instead of global output/
-
             echo "[Article ${ARTICLE_NUM}] Phase 1: SEO Research"
-            python -m agents.agent_01_seo_research \
+            ARTICLE_NUM=${ARTICLE_NUM} python -m agents.agent_01_seo_research \
               --max-topics 1 \
-              --output "${ARTICLE_DIR}/agent_01/topics.json" || { echo "Agent 01 failed for article ${ARTICLE_NUM}"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue; }
+              --output "${ARTICLE_DIR}/agent_01/topics.json" || { echo "Agent 01 failed"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue; }
 
             echo "[Article ${ARTICLE_NUM}] Phase 2: Keyword Validation"
             python -m agents.agent_02_keyword_validation \
               --input "${ARTICLE_DIR}/agent_01/topics.json" \
-              --output "${ARTICLE_DIR}/agent_02/validated_topics.json" || { echo "Agent 02 failed for article ${ARTICLE_NUM}"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue; }
+              --output "${ARTICLE_DIR}/agent_02/validated_topics.json" || { echo "Agent 02 failed"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue; }
 
             echo "[Article ${ARTICLE_NUM}] Phase 2.5: Cannibalization Check"
-            TOPIC=$(cat "${ARTICLE_DIR}/agent_02/validated_topics.json" | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("title",t.get("keyword","expat banking guide")) if isinstance(t,dict) else str(t))')
-            KEYWORDS=$(cat "${ARTICLE_DIR}/agent_02/validated_topics.json" | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; kw=t.get("keyword","") if isinstance(t,dict) else ""; print(kw)')
-            mkdir -p "${ARTICLE_DIR}/agent_17"
+            TOPIC=$(cat "${ARTICLE_DIR}/agent_02/validated_topics.json" | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("title",t.get("keyword","newcomer banking guide")) if isinstance(t,dict) else str(t))')
+            KEYWORDS=$(cat "${ARTICLE_DIR}/agent_02/validated_topics.json" | python3 -c 'import json,sys; d=json.load(sys.stdin); topics=d.get("topics",d) if isinstance(d,dict) else d; t=topics[0] if topics else {}; print(t.get("keyword","") if isinstance(t,dict) else "")')
             python -m agents.agent_17_cannibalization \
-              --topic "${TOPIC}" \
-              --keywords "${KEYWORDS}" \
+              --topic "${TOPIC}" --keywords "${KEYWORDS}" \
               --output "${ARTICLE_DIR}/agent_17/cannibalization_report.json" || true
             BLOCKING=$(cat "${ARTICLE_DIR}/agent_17/cannibalization_report.json" 2>/dev/null | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r.get("blocking",True))' 2>/dev/null || echo "False")
             if [ "${BLOCKING}" = "True" ]; then
-              echo "Article ${ARTICLE_NUM} SKIPPED: Cannibalization check blocked topic"
+              echo "Article ${ARTICLE_NUM} SKIPPED: Cannibalization blocked"
               ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
             fi
 
@@ -217,22 +199,21 @@ jobs:
               --output "${ARTICLE_DIR}/agent_18/revenue_score.json" || true
             SCORE=$(cat "${ARTICLE_DIR}/agent_18/revenue_score.json" 2>/dev/null | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r.get("revenue_score",0))' 2>/dev/null || echo "0")
             if [ "${SCORE}" -lt 60 ] 2>/dev/null; then
-              echo "Article ${ARTICLE_NUM} SKIPPED: Revenue score ${SCORE} < 60 (below minimum)"
+              echo "Article ${ARTICLE_NUM} SKIPPED: Revenue score ${SCORE} < 60"
               ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
             fi
-            ARTICLE_TYPE=$(cat "${ARTICLE_DIR}/agent_18/revenue_score.json" | python3 -c 'import json,sys; r=json.load(sys.stdin); print("PILLAR" if r.get("revenue_score",0) > 85 else "STANDARD")')
+            ARTICLE_TYPE=$(cat "${ARTICLE_DIR}/agent_18/revenue_score.json" | python3 -c 'import json,sys; r=json.load(sys.stdin); s=r.get("revenue_score",0); print("PILLAR" if s > 85 else ("OPPORTUNITY" if s < 70 else "STANDARD"))')
 
             echo "[Article ${ARTICLE_NUM}] Phase 3: Content Planning"
             python -m agents.agent_03_content_planner \
               --input "${ARTICLE_DIR}/agent_02/validated_topics.json" \
               --output "${ARTICLE_DIR}/agent_03/article_outline.json" || { echo "Agent 03 failed"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue; }
 
-            echo "[Article ${ARTICLE_NUM}] Phase 4: Article Writing"
-            python -m agents.agent_04_article_writer \
+            echo "[Article ${ARTICLE_NUM}] Phase 4: Article Writing (TIER: ${ARTICLE_TYPE})"
+            ARTICLE_TYPE=${ARTICLE_TYPE} python -m agents.agent_04_article_writer \
               --input "${ARTICLE_DIR}/agent_03/article_outline.json" \
               --output "${ARTICLE_DIR}/agent_04/article_draft.md" \
-              --min-words ${{ env.MIN_WORD_COUNT }} \
-              --target-words ${{ env.TARGET_WORD_COUNT }} || { echo "Agent 04 failed"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue; }
+              --article-type "${ARTICLE_TYPE}" || { echo "Agent 04 failed"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue; }
 
             echo "[Article ${ARTICLE_NUM}] Phase 5: Fact Checking (BLOCKING GATE)"
             python -m agents.agent_05_fact_checker \
@@ -261,7 +242,7 @@ jobs:
             python -m agents.agent_09_image_prompt_generator \
               --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
               --output "${ARTICLE_DIR}/agent_09/image_prompts.json" \
-              --count 5 || true
+              --count ${{ env.MIN_IMAGES }} || true
 
             echo "[Article ${ARTICLE_NUM}] Phase 10: Image Production"
             python -m agents.agent_10_image_production \
@@ -289,7 +270,7 @@ jobs:
               --images "${ARTICLE_DIR}/agent_10/" \
               --rank-math "${ARTICLE_DIR}/agent_16/publishing_optimizer.json" \
               --output "${ARTICLE_DIR}/agent_11/wordpress_report.json" \
-              --validation-report "${ARTICLE_DIR}/agent_11/wordpress_validation_report.json" || { echo "Article ${ARTICLE_NUM} BLOCKED: WordPress draft not created"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue; }
+              --validation-report "${ARTICLE_DIR}/agent_11/wordpress_validation_report.json" || { echo "Article ${ARTICLE_NUM} BLOCKED: WP draft not created"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue; }
 
             echo "[Article ${ARTICLE_NUM}] Phase 12: Quality Assurance"
             python -m agents.agent_12_quality_assurance \
@@ -336,20 +317,19 @@ jobs:
               --min-quality-score ${{ env.MIN_QUALITY_SCORE }} \
               --enterprise-standard true \
               --output "${ARTICLE_DIR}/quality_gate_result.json" && {
-                ARTICLES_PRODUCED=$((ARTICLES_PRODUCED+1))
-                echo "Article ${ARTICLE_NUM} COMPLETE: READY_TO_PUBLISH"
-              } || {
-                ARTICLES_FAILED=$((ARTICLES_FAILED+1))
-                echo "Article ${ARTICLE_NUM} FAILED quality gate"
-              }
+              ARTICLES_PRODUCED=$((ARTICLES_PRODUCED+1))
+              echo "Article ${ARTICLE_NUM} COMPLETE: READY_TO_PUBLISH"
+            } || {
+              ARTICLES_FAILED=$((ARTICLES_FAILED+1))
+              echo "Article ${ARTICLE_NUM} FAILED quality gate"
+            }
 
-          done  # end article loop
+          done
 
           echo "=============================================="
           echo "BATCH COMPLETE: ${ARTICLES_PRODUCED} produced, ${ARTICLES_FAILED} failed"
           echo "=============================================="
 
-          # Fail the batch if no articles were produced
           if [ "${ARTICLES_PRODUCED}" -eq 0 ]; then
             echo "ERROR: No articles produced in this batch"
             exit 1
@@ -359,22 +339,18 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: "nexus14-enterprise-reports-${{ github.run_id }}"
+          name: "nexus14-cost-opt-reports-${{ github.run_id }}"
           retention-days: 30
           path: |
             output/article_1/
             output/article_2/
             output/article_3/
 
-  # ============================================================
-  # JOB 3: GLOBAL QUALITY AUDIT
-  # ============================================================
   global-audit:
     name: "Global Quality Audit (Agent 13)"
     runs-on: ubuntu-latest
     needs: route-trigger
     if: needs.route-trigger.outputs.mode == 'audit'
-
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -382,27 +358,18 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
-
       - name: Run Chief Editor Global Audit
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
         run: |
-          python -m agents.agent_13_chief_editor \
-            --mode global-audit \
-            --output output/agent_13/global_audit_report.json
-
+          python -m agents.agent_13_chief_editor --mode global-audit --output output/agent_13/global_audit_report.json
       - name: Run Production Director Audit Summary
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          python -m agents.agent_14_production_director \
-            --mode audit \
-            --output output/agent_14/audit_summary.json
+          python -m agents.agent_14_production_director --mode audit --output output/agent_14/audit_summary.json
 
-  # ============================================================
-  # JOB 4: PRODUCTION REPORTS
-  # ============================================================
   production-report:
     name: "Production Report (Agent 14)"
     runs-on: ubuntu-latest
@@ -411,7 +378,6 @@ jobs:
       needs.route-trigger.outputs.mode == 'morning_report' ||
       needs.route-trigger.outputs.mode == 'evening_report' ||
       needs.route-trigger.outputs.mode == 'executive_report'
-
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -419,7 +385,6 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
-
       - name: Generate Production Report
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -427,28 +392,22 @@ jobs:
           python -m agents.agent_14_production_director \
             --mode ${{ needs.route-trigger.outputs.mode }} \
             --output output/agent_14/daily_production_report.html \
-            --system-version ENTERPRISE-V3 \
-            --max-daily 6 \
-            --quality-first true
-
+            --system-version ENTERPRISE-V3.1-COST-OPT \
+            --max-daily 6 --quality-first true
       - name: Upload report artifact
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: "nexus14-enterprise-daily-report-${{ github.run_id }}"
+          name: "nexus14-daily-report-${{ github.run_id }}"
           retention-days: 90
           path: output/agent_14/daily_production_report.html
 
-  # ============================================================
-  # JOB 5: END-TO-END TEST
-  # ============================================================
   end-to-end-test:
     name: "End-to-End Test — Full Production Cycle"
     runs-on: ubuntu-latest
     needs: route-trigger
     if: needs.route-trigger.outputs.mode == 'end_to_end_test'
-    timeout-minutes: 240
-
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -456,7 +415,6 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
-
       - name: Run Full End-to-End Test
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -465,19 +423,16 @@ jobs:
           WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
           WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
         run: |
-          python scripts/end_to_end_test.py \
+          ARTICLE_NUM=1 python scripts/end_to_end_test.py \
             --output output/end_to_end_test_report.html \
-            --system-version ENTERPRISE-V3 \
-            --max-articles 1 \
-            --require-real-wordpress true \
-            --require-real-images true \
-            --require-all-validation-reports true
-
+            --system-version ENTERPRISE-V3.1-COST-OPT \
+            --max-articles 1 --require-real-wordpress true \
+            --require-real-images true --require-all-validation-reports true
       - name: Upload E2E Test Report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: "nexus14-enterprise-e2e-test-${{ github.run_id }}"
+          name: "nexus14-e2e-test-${{ github.run_id }}"
           retention-days: 90
           path: |
             output/end_to_end_test_report.html
