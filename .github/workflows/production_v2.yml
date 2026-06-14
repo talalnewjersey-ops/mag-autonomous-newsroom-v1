@@ -148,6 +148,30 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: "Phase 0 - Topic Override Injection"
+        if: ${{ github.event.inputs.topic_override != '' }}
+        env:
+          TOPIC_OVERRIDE: ${{ github.event.inputs.topic_override }}
+        run: |
+          mkdir -p output/agent_01 output/agent_02
+          python3 -c "
+import json, os
+topic = os.environ.get('TOPIC_OVERRIDE', '')
+if not topic:
+    exit(0)
+mkt = 'Canada' if 'canada' in topic.lower() else 'USA'
+data = {'topics': [{'keyword': topic, 'title': topic, 'market': mkt,
+    'search_volume': 5000, 'keyword_difficulty': 35, 'cpc': 5.50,
+    'intent': 'commercial', 'opportunity_types': ['seo', 'affiliate'],
+    'affiliate_programs': ['Chase', 'Capital One', 'Discover'],
+    'content_type': 'listicle', 'estimated_word_count': 10000,
+    'revenue_score': 90, 'status': 'topic_override'}]}
+json.dump(data, open('output/agent_01/topics.json', 'w'), indent=2)
+json.dump(data, open('output/agent_02/validated_topics.json', 'w'), indent=2)
+print('Topic override applied:', topic)
+"
+          echo "Override topic: $TOPIC_OVERRIDE"
+
       - name: "Phase 1 — SEO Research (Agent 01)"
         id: seo_research
         env:
