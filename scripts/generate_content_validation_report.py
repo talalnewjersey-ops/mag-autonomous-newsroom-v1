@@ -184,7 +184,7 @@ def main():
 
     output_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     log.info(f"Content validation report: {output_path}")
-    log.info(f"Overall pass: {report["overall_pass"]}")
+    log.info(f"Overall pass: {report['overall_pass']}")
 
     summary = report.get("summary", {})
     log.info(f"Words: {summary.get("word_count", 0)} | FAQs: {summary.get("faq_count", 0)} | H2: {summary.get("h2_count", 0)}")
