@@ -145,7 +145,7 @@ async def _plan_outline_standalone(topic: Dict, api_key: str) -> Dict:
         "  \"market\": \"...\"\n"
         "  \"target_audience\": \"...\"\n"
         "  \"search_intent\": \"...\"\n"
-        "  \"hook_data\": {\"statistic\": \"...", \"source_url\": \"...\"  \"question\": \"...\"  }\n"
+        "  \"hook_data\": {\"statistic\": \"...\", \"source_url\": \"...\", \"question\": \"...\"  }\n"
         "  \"sections\": [{\"h2\": \"...\"  \"h3\": [\"...\"]  \"data\": [\"...\"]}]\n"
         "  \"faq\": [\"question 1?\", \"question 2?\", ... 22 questions total]\n"
         "  \"key_takeaways\": [\"...\"]\n"
