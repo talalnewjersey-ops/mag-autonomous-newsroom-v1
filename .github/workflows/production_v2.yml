@@ -149,12 +149,12 @@ jobs:
           pip install -r requirements.txt
 
       - name: "Phase 0 - Topic Override Injection"
-        if: ${{ github.event.inputs.topic_override != '' }}
+        if: github.event.inputs.topic_override != ''
         env:
           TOPIC_OVERRIDE: ${{ github.event.inputs.topic_override }}
         run: |
           mkdir -p output/agent_01 output/agent_02
-          python3 -c "
+          cat > /tmp/gen_override.py << 'PYEOF'
 import json, os
 topic = os.environ.get('TOPIC_OVERRIDE', '')
 if not topic:
@@ -169,8 +169,9 @@ data = {'topics': [{'keyword': topic, 'title': topic, 'market': mkt,
 json.dump(data, open('output/agent_01/topics.json', 'w'), indent=2)
 json.dump(data, open('output/agent_02/validated_topics.json', 'w'), indent=2)
 print('Topic override applied:', topic)
-"
-          echo "Override topic: $TOPIC_OVERRIDE"
+PYEOF
+          python3 /tmp/gen_override.py
+          echo "Override: $TOPIC_OVERRIDE"
 
       - name: "Phase 1 — SEO Research (Agent 01)"
         id: seo_research
@@ -551,8 +552,7 @@ print('Topic override applied:', topic)
             --max-articles 1 \
             --require-real-wordpress true \
             --require-real-images true \
-            --require-all-validation-reports true
-
+fix(workflow): Fix YAML syntax in Phase 0 topic override step
       - name: Upload E2E Test Report
         uses: actions/upload-artifact@v4
         if: always()
