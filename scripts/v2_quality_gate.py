@@ -7,25 +7,30 @@ CRITICAL RULE: Never report success unless all 18 gates pass.
 Never create a draft if quality standards are not met.
 
 NEW IN V3:
-  Gate 16: Cannibalization PASS (Agent 17)
-  Gate 17: Revenue Score >= 60 (Agent 18)
-  Gate 18: Image Quality Validation PASS (Agent 10 enhanced)
-  Updated thresholds for STANDARD vs PILLAR articles
+Gate 16: Cannibalization PASS (Agent 17)
+Gate 17: Revenue Score >= 60 (Agent 18)
+Gate 18: Image Quality Validation PASS (Agent 10 enhanced)
+Updated thresholds for STANDARD vs PILLAR articles
+
+V3.1 FIX: Added --min-quality-score and --enterprise-standard args
+to fix "unrecognized arguments" error (exit code 2) in workflow.
 
 Usage:
-  python scripts/v2_quality_gate.py \\
-    --qa-report output/agent_12/qa_report.json \\
-    --editor-report output/agent_13/editor_report.json \\
-    --image-validation output/agent_10/image_validation_report.json \\
-    --image-quality output/agent_10/image_quality_report.json \\
-    --wordpress-validation output/agent_11/wordpress_validation_report.json \\
-    --affiliate-compliance output/agent_15/affiliate_compliance.json \\
-    --publishing-optimizer output/agent_16/publishing_optimizer.json \\
-    --content-validation output/content_validation_report.json \\
-    --cannibalization-report output/agent_17/cannibalization_report.json \\
-    --revenue-score output/agent_18/revenue_score.json \\
-    --article-type STANDARD \\
-    --output output/quality_gate_result.json
+python scripts/v2_quality_gate.py \\
+--qa-report output/agent_12/qa_report.json \\
+--editor-report output/agent_13/editor_report.json \\
+--image-validation output/agent_10/image_validation_report.json \\
+--image-quality output/agent_10/image_quality_report.json \\
+--wordpress-validation output/agent_11/wordpress_validation_report.json \\
+--affiliate-compliance output/agent_15/affiliate_compliance.json \\
+--publishing-optimizer output/agent_16/publishing_optimizer.json \\
+--content-validation output/content_validation_report.json \\
+--cannibalization-report output/agent_17/cannibalization_report.json \\
+--revenue-score output/agent_18/revenue_score.json \\
+--article-type STANDARD \\
+--min-quality-score 95 \\
+--enterprise-standard true \\
+--output output/quality_gate_result.json
 """
 
 import argparse
@@ -46,12 +51,12 @@ logger = logging.getLogger(__name__)
 # Two-tier: STANDARD and PILLAR
 # ============================================================
 GATES_STANDARD = {
-    "word_count_min": 3500,           # Updated from 5000
+    "word_count_min": 3500,
     "images_min": 5,
     "featured_image_required": True,
-    "faq_min": 8,                     # Updated from 20
+    "faq_min": 8,
     "internal_links_min": 5,
-    "sources_min": 5,                 # Updated from 10
+    "sources_min": 5,
     "case_studies_min": 2,
     "author_required": True,
     "author_bio_required": True,
@@ -117,9 +122,7 @@ def run_quality_gate(args) -> dict:
     cannibalization = load_json_report(getattr(args, 'cannibalization_report', ''), "Cannibalization Report") if getattr(args, 'cannibalization_report', '') else {"_missing": True}
     revenue = load_json_report(getattr(args, 'revenue_score', ''), "Revenue Score") if getattr(args, 'revenue_score', '') else {"_missing": True}
 
-    # -------------------------------------------------------
     # GATE 1: Word Count
-    # -------------------------------------------------------
     word_count = content.get("word_count", qa.get("word_count", 0))
     gate_pass = word_count >= GATES["word_count_min"]
     gate_results["gate_01_word_count"] = {
@@ -132,9 +135,7 @@ def run_quality_gate(args) -> dict:
     if not gate_pass:
         all_failures.append(f"GATE 01 FAIL: Word count {word_count:,} < minimum {GATES['word_count_min']:,} for {article_type}")
 
-    # -------------------------------------------------------
     # GATE 2: Image Count
-    # -------------------------------------------------------
     image_count = image_val.get("images_generated", image_val.get("images_uploaded", 0))
     upload_errors = image_val.get("image_upload_errors", 0)
     gate_pass = image_count >= GATES["images_min"] and upload_errors <= GATES["image_upload_errors_max"]
@@ -148,9 +149,7 @@ def run_quality_gate(args) -> dict:
     if not gate_pass:
         all_failures.append(f"GATE 02 FAIL: Images {image_count} < minimum {GATES['images_min']} or upload errors: {upload_errors}")
 
-    # -------------------------------------------------------
     # GATE 3: Featured Image
-    # -------------------------------------------------------
     has_featured = bool(
         image_val.get("featured_image_uploaded") or
         wp_val.get("featured_image_set") or
@@ -163,9 +162,7 @@ def run_quality_gate(args) -> dict:
     if not has_featured:
         all_failures.append("GATE 03 FAIL: Featured image not uploaded or not set in WordPress")
 
-    # -------------------------------------------------------
     # GATE 4: FAQ Count
-    # -------------------------------------------------------
     faq_count = content.get("faq_count", qa.get("faq_count", 0))
     gate_pass = faq_count >= GATES["faq_min"]
     gate_results["gate_04_faq"] = {
@@ -178,9 +175,7 @@ def run_quality_gate(args) -> dict:
     if not gate_pass:
         all_failures.append(f"GATE 04 FAIL: FAQ count {faq_count} < minimum {GATES['faq_min']} for {article_type}")
 
-    # -------------------------------------------------------
     # GATE 5: Internal Links
-    # -------------------------------------------------------
     internal_links = content.get("internal_links", qa.get("internal_links_count", 0))
     gate_pass = internal_links >= GATES["internal_links_min"]
     gate_results["gate_05_internal_links"] = {
@@ -192,9 +187,7 @@ def run_quality_gate(args) -> dict:
     if not gate_pass:
         all_failures.append(f"GATE 05 FAIL: Internal links {internal_links} < minimum {GATES['internal_links_min']}")
 
-    # -------------------------------------------------------
     # GATE 6: Authoritative Sources
-    # -------------------------------------------------------
     sources_count = content.get("sources_count", qa.get("sources_count", 0))
     gate_pass = sources_count >= GATES["sources_min"]
     gate_results["gate_06_sources"] = {
@@ -207,9 +200,7 @@ def run_quality_gate(args) -> dict:
     if not gate_pass:
         all_failures.append(f"GATE 06 FAIL: Sources {sources_count} < minimum {GATES['sources_min']} for {article_type}")
 
-    # -------------------------------------------------------
     # GATE 7: Case Studies
-    # -------------------------------------------------------
     case_studies = content.get("case_studies_count", qa.get("case_studies", 0))
     gate_pass = case_studies >= GATES["case_studies_min"]
     gate_results["gate_07_case_studies"] = {
@@ -221,9 +212,7 @@ def run_quality_gate(args) -> dict:
     if not gate_pass:
         all_failures.append(f"GATE 07 FAIL: Case studies {case_studies} < minimum {GATES['case_studies_min']}")
 
-    # -------------------------------------------------------
     # GATE 8: Author & Bio
-    # -------------------------------------------------------
     has_author = bool(wp_val.get("author_assigned") or content.get("has_author"))
     has_bio = bool(wp_val.get("author_bio_inserted") or content.get("has_author_bio"))
     gate_results["gate_08_author"] = {
@@ -237,9 +226,7 @@ def run_quality_gate(args) -> dict:
     if not has_bio:
         all_failures.append("GATE 08 FAIL: Author bio not inserted in WordPress")
 
-    # -------------------------------------------------------
     # GATE 9: SEO Score
-    # -------------------------------------------------------
     seo_score = publishing.get("seo_score", qa.get("seo_score", 0))
     gate_pass = seo_score >= GATES["seo_score_min"]
     gate_results["gate_09_seo_score"] = {
@@ -251,9 +238,7 @@ def run_quality_gate(args) -> dict:
     if not gate_pass:
         all_failures.append(f"GATE 09 FAIL: SEO score {seo_score} < threshold {GATES['seo_score_min']}")
 
-    # -------------------------------------------------------
     # GATE 10: EEAT Score
-    # -------------------------------------------------------
     eeat_score = qa.get("eeat_score", 0)
     gate_pass = eeat_score >= GATES["eeat_score_min"]
     gate_results["gate_10_eeat_score"] = {
@@ -265,9 +250,7 @@ def run_quality_gate(args) -> dict:
     if not gate_pass:
         all_failures.append(f"GATE 10 FAIL: EEAT score {eeat_score} < threshold {GATES['eeat_score_min']}")
 
-    # -------------------------------------------------------
     # GATE 11: Affiliate Compliance (Agent 15)
-    # -------------------------------------------------------
     affiliate_pass = affiliate.get("overall_passed", False)
     gate_results["gate_11_affiliate_compliance"] = {
         "gate": "11 - Affiliate Compliance (Agent 15)",
@@ -277,9 +260,7 @@ def run_quality_gate(args) -> dict:
     if not affiliate_pass:
         all_failures.append(f"GATE 11 FAIL: Affiliate compliance failed — {affiliate.get('total_issues', 0)} issues")
 
-    # -------------------------------------------------------
     # GATE 12: Publishing Optimization (Agent 16)
-    # -------------------------------------------------------
     pub_pass = publishing.get("overall_optimization") == "PASS"
     gate_results["gate_12_publishing_optimization"] = {
         "gate": "12 - Publishing Optimization (Agent 16)",
@@ -289,9 +270,7 @@ def run_quality_gate(args) -> dict:
     if not pub_pass:
         all_failures.append("GATE 12 FAIL: Publishing optimization did not pass")
 
-    # -------------------------------------------------------
     # GATE 13: Broken Links
-    # -------------------------------------------------------
     broken_links = qa.get("broken_links_count", 0)
     gate_pass = broken_links <= GATES["broken_links_max"]
     gate_results["gate_13_broken_links"] = {
@@ -303,9 +282,7 @@ def run_quality_gate(args) -> dict:
     if not gate_pass:
         all_failures.append(f"GATE 13 FAIL: {broken_links} broken links detected")
 
-    # -------------------------------------------------------
     # GATE 14: Content Structure
-    # -------------------------------------------------------
     structure_checks = {
         "ebook_opportunities": content.get("ebook_opportunities", 0) >= GATES["ebook_opportunities_min"],
         "affiliate_opportunities": content.get("affiliate_opportunities", 0) >= GATES["affiliate_opportunities_min"],
@@ -321,9 +298,7 @@ def run_quality_gate(args) -> dict:
         for failed in structure_failed:
             all_warnings.append(f"WARNING GATE 14: Content structure check failed: {failed}")
 
-    # -------------------------------------------------------
     # GATE 15: WordPress Draft Validation
-    # -------------------------------------------------------
     draft_exists = bool(wp_val.get("draft_created") or wp_val.get("post_id"))
     gate_results["gate_15_wordpress_draft"] = {
         "gate": "15 - WordPress Draft Exists",
@@ -334,9 +309,7 @@ def run_quality_gate(args) -> dict:
     if not draft_exists:
         all_failures.append("GATE 15 FAIL: WordPress draft was not successfully created")
 
-    # -------------------------------------------------------
-    # GATE 16: Cannibalization PASS (NEW V3 — Agent 17)
-    # -------------------------------------------------------
+    # GATE 16: Cannibalization PASS (Agent 17)
     if cannibalization.get("_missing"):
         cannibalization_pass = False
         all_failures.append("GATE 16 FAIL: Cannibalization report missing (Agent 17 not run)")
@@ -346,7 +319,7 @@ def run_quality_gate(args) -> dict:
         cannibalization_pass = not cannibalization_blocking and cannibalization_decision in GATES["cannibalization_decision_allowed"]
 
     gate_results["gate_16_cannibalization"] = {
-        "gate": "16 - Cannibalization Check PASS (Agent 17) [NEW V3]",
+        "gate": "16 - Cannibalization Check PASS (Agent 17)",
         "passed": cannibalization_pass,
         "decision": cannibalization.get("decision", "MISSING"),
         "blocking": cannibalization.get("blocking", True),
@@ -358,9 +331,7 @@ def run_quality_gate(args) -> dict:
             f"Action: {cannibalization.get('recommended_action', 'N/A')}"
         )
 
-    # -------------------------------------------------------
-    # GATE 17: Revenue Score >= 60 (NEW V3 — Agent 18)
-    # -------------------------------------------------------
+    # GATE 17: Revenue Score >= 60 (Agent 18)
     if revenue.get("_missing"):
         revenue_pass = False
         revenue_score_val = 0
@@ -370,7 +341,7 @@ def run_quality_gate(args) -> dict:
         revenue_pass = revenue_score_val >= GATES["revenue_score_min"]
 
     gate_results["gate_17_revenue_score"] = {
-        "gate": "17 - Revenue Score >= 60 (Agent 18) [NEW V3]",
+        "gate": "17 - Revenue Score >= 60 (Agent 18)",
         "passed": revenue_pass,
         "threshold": GATES["revenue_score_min"],
         "actual": revenue_score_val,
@@ -382,32 +353,21 @@ def run_quality_gate(args) -> dict:
             f"Topic rejected for low revenue potential"
         )
 
-    # -------------------------------------------------------
-    # GATE 18: Image Quality Validation (NEW V3 — Agent 10 enhanced)
-    # -------------------------------------------------------
+    # GATE 18: Image Quality Validation (Agent 10 enhanced)
     if image_qual.get("_missing"):
         image_quality_pass = False
         all_failures.append("GATE 18 FAIL: Image quality report missing (Agent 10 enhanced validation not run)")
     else:
         image_quality_pass = image_qual.get("overall_passed", False)
-        image_quality_checks = image_qual.get("validation_checks", {})
 
     gate_results["gate_18_image_quality"] = {
-        "gate": "18 - Image Quality Validation PASS (Agent 10) [NEW V3]",
+        "gate": "18 - Image Quality Validation PASS (Agent 10)",
         "passed": image_quality_pass,
-        "resolution_check": image_qual.get("resolution_check", "UNKNOWN") if not image_qual.get("_missing") else "MISSING",
-        "readability_check": image_qual.get("readability_check", "UNKNOWN") if not image_qual.get("_missing") else "MISSING",
-        "branding_check": image_qual.get("branding_check", "UNKNOWN") if not image_qual.get("_missing") else "MISSING",
-        "no_ai_artifacts": image_qual.get("no_ai_artifacts", "UNKNOWN") if not image_qual.get("_missing") else "MISSING",
-        "mobile_readable": image_qual.get("mobile_readable", "UNKNOWN") if not image_qual.get("_missing") else "MISSING",
     }
     if not image_quality_pass and not image_qual.get("_missing"):
-        failed_checks = [k for k, v in image_qual.get("validation_checks", {}).items() if not v]
-        all_failures.append(f"GATE 18 FAIL: Image quality validation failed — checks failed: {', '.join(failed_checks)}")
+        all_failures.append("GATE 18 FAIL: Image quality validation failed")
 
-    # -------------------------------------------------------
     # FINAL VERDICT
-    # -------------------------------------------------------
     total_failures = len(all_failures)
     overall_passed = total_failures == 0
     status = "READY_TO_PUBLISH" if overall_passed else "NEEDS_CORRECTION"
@@ -443,14 +403,8 @@ def run_quality_gate(args) -> dict:
             "post_id": wp_val.get("post_id"),
             "draft_url": wp_val.get("draft_url"),
         },
-        "v3_new_gates": {
-            "gate_16_cannibalization": gate_results.get("gate_16_cannibalization", {}).get("passed"),
-            "gate_17_revenue_score": gate_results.get("gate_17_revenue_score", {}).get("passed"),
-            "gate_18_image_quality": gate_results.get("gate_18_image_quality", {}).get("passed"),
-        },
     }
 
-    # Print summary
     logger.info("")
     logger.info(f"ARTICLE TYPE: {article_type}")
     logger.info(f"STATUS: {status}")
@@ -458,7 +412,6 @@ def run_quality_gate(args) -> dict:
     logger.info(f"Failures: {total_failures}")
     logger.info(f"Warnings: {len(all_warnings)}")
     logger.info(f"Revenue Score: {revenue_score_val}/100")
-    logger.info(f"Cannibalization: {cannibalization.get('decision', 'MISSING')}")
 
     if all_failures:
         logger.error("")
@@ -485,16 +438,20 @@ def main():
     parser.add_argument("--qa-report", required=True)
     parser.add_argument("--editor-report", required=True)
     parser.add_argument("--image-validation", required=True)
-    parser.add_argument("--image-quality", default="")                    # NEW V3
+    parser.add_argument("--image-quality", default="")
     parser.add_argument("--wordpress-validation", required=True)
     parser.add_argument("--affiliate-compliance", required=True)
     parser.add_argument("--publishing-optimizer", required=True)
     parser.add_argument("--content-validation", required=True)
-    parser.add_argument("--cannibalization-report", default="")           # NEW V3
-    parser.add_argument("--revenue-score", default="")                    # NEW V3
-    parser.add_argument("--article-type", default="STANDARD",            # NEW V3
-                        choices=["STANDARD", "PILLAR"])
+    parser.add_argument("--cannibalization-report", default="")
+    parser.add_argument("--revenue-score", default="")
+    parser.add_argument("--article-type", default="STANDARD", choices=["STANDARD", "PILLAR"])
     parser.add_argument("--output", required=True)
+    # V3.1 FIX: Added missing arguments passed by production_v2.yml workflow
+    parser.add_argument("--min-quality-score", type=int, default=95,
+                        help="Minimum quality score threshold (informational, thresholds set internally)")
+    parser.add_argument("--enterprise-standard", default="true",
+                        help="Enable enterprise standard mode (informational)")
 
     args = parser.parse_args()
 
