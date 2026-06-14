@@ -1,7 +1,8 @@
 # ============================================================
 # NEXUS-14 ENTERPRISE v3.0 — Gold Standard Production Workflow
 # MoneyAbroadGuide.com — Gold Standard Financial Education Platform
-# Version: 3.0.1-ENTERPRISE | Fixed: 2026-06-12
+# Version: 3.0.2-ENTERPRISE | Fixed: 2026-06-14
+# Fix: Moved "Generate Content Validation Report" BEFORE "Enterprise Quality Gate"
 #
 # ENTERPRISE STANDARD: 95/100 minimum ALL gates | Gold Standard only
 # GOLD STANDARD: 8500-12000 words | 6 case studies | 20 FAQ | 15 internal links
@@ -379,6 +380,13 @@ jobs:
               print('Enterprise Standard: PASSED')
           "
 
+      - name: "Generate Content Validation Report"
+        run: |
+          python scripts/generate_content_validation_report.py \
+            --article output/agent_04/article_draft.md \
+            --outline output/agent_03/article_outline.json \
+            --output output/content_validation_report.json
+
       - name: "Enterprise Quality Gate (95/100)"
         run: |
           python scripts/v2_quality_gate.py \
@@ -396,13 +404,6 @@ jobs:
             --min-quality-score ${{ env.MIN_QUALITY_SCORE }} \
             --enterprise-standard true \
             --output output/quality_gate_result.json
-
-      - name: "Generate Content Validation Report"
-        run: |
-          python scripts/generate_content_validation_report.py \
-            --article output/agent_04/article_draft.md \
-            --outline output/agent_03/article_outline.json \
-            --output output/content_validation_report.json
 
       - name: Upload all reports
         uses: actions/upload-artifact@v4
