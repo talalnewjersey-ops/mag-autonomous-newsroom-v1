@@ -357,7 +357,6 @@ jobs:
           fi
 
       - name: Upload all article reports
-      - name: Upload all article reports
         uses: actions/upload-artifact@v4
         if: always()
         with:
