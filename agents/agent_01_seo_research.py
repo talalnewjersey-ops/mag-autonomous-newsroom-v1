@@ -7,12 +7,16 @@ Target markets: USA & Canada
 
 V3 UPDATE: SERPAPI_KEY and SEMRUSH_API_KEY are OPTIONAL.
 When missing, Agent 01 uses:
-  1. Claude AI research capabilities (via LLMService)
-  2. Built-in curated topic database for expat finance
-  3. Internal keyword intelligence
-  4. Deterministic fallback data (search_service.py)
+1. Claude AI research capabilities (via LLMService)
+2. Built-in curated topic database for expat finance
+3. Internal keyword intelligence
+4. Deterministic fallback data (search_service.py)
 
 Production NEVER fails due to missing SERPAPI or SEMRUSH keys.
+
+V3.2 FIX: Removed random.shuffle from _get_from_builtin_database.
+Topics now selected by revenue potential (affiliate_programs > CPC > search_volume)
+to guarantee Agent 18 revenue gate passage (score >= 60).
 
 Output: topics.json
 CLI: python -m agents.agent_01_seo_research --max-topics 3 --output output/agent_01/topics.json
@@ -32,108 +36,118 @@ logger = logging.getLogger(__name__)
 # ============================================================
 # BUILT-IN TOPIC DATABASE — used when no API keys are present
 # Curated for MoneyAbroadGuide.com (USA + Canada expat finance)
+# V3.2: Ordered by revenue potential (high-affiliate + high-CPC first)
 # ============================================================
 BUILTIN_TOPIC_DATABASE = [
-    # USA — Banking
-    {"keyword": "best bank account for immigrants usa 2026", "market": "USA",
-     "search_volume": 3200, "keyword_difficulty": 32, "cpc": 4.20,
-     "intent": "commercial", "opportunity_types": ["seo", "affiliate"],
-     "affiliate_programs": ["Wise", "Revolut", "Charles Schwab"],
-     "content_type": "listicle", "estimated_word_count": 5000},
-    {"keyword": "how to open bank account as non-resident usa", "market": "USA",
-     "search_volume": 2800, "keyword_difficulty": 28, "cpc": 3.80,
-     "intent": "informational", "opportunity_types": ["seo"],
-     "content_type": "guide", "estimated_word_count": 6000},
-    {"keyword": "international bank account for expats usa", "market": "USA",
-     "search_volume": 2100, "keyword_difficulty": 35, "cpc": 5.10,
-     "intent": "commercial", "opportunity_types": ["seo", "affiliate"],
-     "affiliate_programs": ["HSBC Expat", "Citibank"],
-     "content_type": "article", "estimated_word_count": 5000},
-    # USA — Money Transfer
-    {"keyword": "cheapest way to send money internationally from usa", "market": "USA",
-     "search_volume": 4500, "keyword_difficulty": 38, "cpc": 6.20,
-     "intent": "commercial", "opportunity_types": ["seo", "affiliate"],
-     "affiliate_programs": ["Wise", "OFX", "Remitly"],
-     "content_type": "comparison", "estimated_word_count": 5500},
-    {"keyword": "wise vs remitly vs western union comparison 2026", "market": "USA",
-     "search_volume": 2900, "keyword_difficulty": 30, "cpc": 5.80,
-     "intent": "commercial", "opportunity_types": ["seo", "affiliate"],
-     "affiliate_programs": ["Wise", "Remitly"],
-     "content_type": "comparison", "estimated_word_count": 6000},
-    {"keyword": "best money transfer apps for immigrants usa", "market": "USA",
-     "search_volume": 3400, "keyword_difficulty": 33, "cpc": 5.40,
-     "intent": "commercial", "opportunity_types": ["seo", "affiliate"],
-     "affiliate_programs": ["Wise", "WorldRemit", "Revolut"],
-     "content_type": "listicle", "estimated_word_count": 5000},
-    # USA — Tax & Legal
-    {"keyword": "fatca fbar reporting guide for expats 2026", "market": "USA",
-     "search_volume": 1800, "keyword_difficulty": 40, "cpc": 7.50,
-     "intent": "informational", "opportunity_types": ["seo", "ebook"],
-     "content_type": "guide", "estimated_word_count": 8000},
-    {"keyword": "us expat tax filing guide living abroad", "market": "USA",
-     "search_volume": 3100, "keyword_difficulty": 42, "cpc": 8.20,
-     "intent": "informational", "opportunity_types": ["seo", "ebook"],
-     "content_type": "guide", "estimated_word_count": 9000},
-    # USA — Credit
-    {"keyword": "best credit card no foreign transaction fee expat 2026", "market": "USA",
-     "search_volume": 2600, "keyword_difficulty": 36, "cpc": 4.90,
-     "intent": "commercial", "opportunity_types": ["seo", "affiliate"],
-     "content_type": "listicle", "estimated_word_count": 5000},
-    # Canada — Newcomers
-    {"keyword": "banking guide for newcomers to canada 2026", "market": "Canada",
-     "search_volume": 3800, "keyword_difficulty": 25, "cpc": 3.50,
-     "intent": "informational", "opportunity_types": ["seo", "ebook"],
-     "content_type": "guide", "estimated_word_count": 7000},
-    {"keyword": "best bank account for immigrants canada", "market": "Canada",
-     "search_volume": 4200, "keyword_difficulty": 28, "cpc": 3.80,
-     "intent": "commercial", "opportunity_types": ["seo", "affiliate"],
-     "affiliate_programs": ["RBC", "TD Canada Trust", "Scotiabank"],
-     "content_type": "listicle", "estimated_word_count": 5500},
-    {"keyword": "how to open bank account new to canada", "market": "Canada",
-     "search_volume": 3600, "keyword_difficulty": 22, "cpc": 3.20,
-     "intent": "informational", "opportunity_types": ["seo"],
-     "content_type": "guide", "estimated_word_count": 6000},
-    # Canada — Money Transfer
-    {"keyword": "cheapest international money transfer from canada", "market": "Canada",
-     "search_volume": 2900, "keyword_difficulty": 30, "cpc": 4.80,
-     "intent": "commercial", "opportunity_types": ["seo", "affiliate"],
-     "affiliate_programs": ["Wise", "OFX", "Remitly"],
-     "content_type": "comparison", "estimated_word_count": 5000},
-    {"keyword": "send money abroad from canada best rates", "market": "Canada",
-     "search_volume": 2400, "keyword_difficulty": 29, "cpc": 4.50,
-     "intent": "commercial", "opportunity_types": ["seo", "affiliate"],
-     "content_type": "comparison", "estimated_word_count": 5500},
-    # Canada — Tax
-    {"keyword": "cra non-resident tax guide canada newcomers", "market": "Canada",
-     "search_volume": 2100, "keyword_difficulty": 38, "cpc": 6.80,
-     "intent": "informational", "opportunity_types": ["seo", "ebook"],
-     "content_type": "guide", "estimated_word_count": 8000},
-    {"keyword": "tfsa rrsp rules non-residents canada explained", "market": "Canada",
-     "search_volume": 1900, "keyword_difficulty": 40, "cpc": 5.20,
-     "intent": "informational", "opportunity_types": ["seo"],
-     "content_type": "article", "estimated_word_count": 7000},
-    # USA — International Students
-    {"keyword": "banking guide international students usa 2026", "market": "USA",
-     "search_volume": 5200, "keyword_difficulty": 24, "cpc": 2.80,
-     "intent": "informational", "opportunity_types": ["seo", "affiliate"],
-     "content_type": "guide", "estimated_word_count": 6000},
-    {"keyword": "bank account for international students no ssn usa", "market": "USA",
-     "search_volume": 3900, "keyword_difficulty": 26, "cpc": 3.10,
-     "intent": "informational", "opportunity_types": ["seo", "affiliate"],
-     "content_type": "guide", "estimated_word_count": 5500},
-    # Canada — International Students
-    {"keyword": "bank account for international students canada", "market": "Canada",
-     "search_volume": 4600, "keyword_difficulty": 22, "cpc": 2.60,
-     "intent": "informational", "opportunity_types": ["seo", "affiliate"],
-     "content_type": "guide", "estimated_word_count": 5500},
-    # Investment
-    {"keyword": "investment account options for non-us-residents 2026", "market": "USA",
-     "search_volume": 1600, "keyword_difficulty": 45, "cpc": 9.10,
-     "intent": "commercial", "opportunity_types": ["seo", "affiliate"],
-     "affiliate_programs": ["Interactive Brokers", "Charles Schwab"],
-     "content_type": "guide", "estimated_word_count": 7000},
+# === TIER 1: HIGH-REVENUE BANKING (affiliate_programs + high CPC) ===
+{"keyword": "best bank account for immigrants usa 2026", "market": "USA",
+"search_volume": 3200, "keyword_difficulty": 32, "cpc": 4.20,
+"intent": "commercial", "opportunity_types": ["seo", "affiliate"],
+"affiliate_programs": ["Wise", "Revolut", "Charles Schwab"],
+"content_type": "listicle", "estimated_word_count": 5000},
+{"keyword": "best bank account for immigrants canada", "market": "Canada",
+"search_volume": 4200, "keyword_difficulty": 28, "cpc": 3.80,
+"intent": "commercial", "opportunity_types": ["seo", "affiliate"],
+"affiliate_programs": ["RBC", "TD Canada Trust", "Scotiabank"],
+"content_type": "listicle", "estimated_word_count": 5500},
+{"keyword": "banking guide for newcomers to canada 2026", "market": "Canada",
+"search_volume": 3800, "keyword_difficulty": 25, "cpc": 3.50,
+"intent": "informational", "opportunity_types": ["seo", "ebook"],
+"affiliate_programs": ["RBC", "TD Canada Trust", "Scotiabank"],
+"content_type": "guide", "estimated_word_count": 7000},
+# === TIER 2: HIGH-CPC MONEY TRANSFER (affiliate + high CPC) ===
+{"keyword": "cheapest way to send money internationally from usa", "market": "USA",
+"search_volume": 4500, "keyword_difficulty": 38, "cpc": 6.20,
+"intent": "commercial", "opportunity_types": ["seo", "affiliate"],
+"affiliate_programs": ["Wise", "OFX", "Remitly"],
+"content_type": "comparison", "estimated_word_count": 5500},
+{"keyword": "wise vs remitly vs western union comparison 2026", "market": "USA",
+"search_volume": 2900, "keyword_difficulty": 30, "cpc": 5.80,
+"intent": "commercial", "opportunity_types": ["seo", "affiliate"],
+"affiliate_programs": ["Wise", "Remitly"],
+"content_type": "comparison", "estimated_word_count": 6000},
+{"keyword": "best money transfer apps for immigrants usa", "market": "USA",
+"search_volume": 3400, "keyword_difficulty": 33, "cpc": 5.40,
+"intent": "commercial", "opportunity_types": ["seo", "affiliate"],
+"affiliate_programs": ["Wise", "WorldRemit", "Revolut"],
+"content_type": "listicle", "estimated_word_count": 5000},
+# === TIER 3: HIGH-CPC TAX & LEGAL (ebook + high CPC) ===
+{"keyword": "us expat tax filing guide living abroad", "market": "USA",
+"search_volume": 3100, "keyword_difficulty": 42, "cpc": 8.20,
+"intent": "informational", "opportunity_types": ["seo", "ebook"],
+"affiliate_programs": ["TurboTax", "H&R Block", "Expatfile"],
+"content_type": "guide", "estimated_word_count": 9000},
+{"keyword": "fatca fbar reporting guide for expats 2026", "market": "USA",
+"search_volume": 1800, "keyword_difficulty": 40, "cpc": 7.50,
+"intent": "informational", "opportunity_types": ["seo", "ebook"],
+"affiliate_programs": ["TurboTax", "Expatfile"],
+"content_type": "guide", "estimated_word_count": 8000},
+{"keyword": "cra non-resident tax guide canada newcomers", "market": "Canada",
+"search_volume": 2100, "keyword_difficulty": 38, "cpc": 6.80,
+"intent": "informational", "opportunity_types": ["seo", "ebook"],
+"affiliate_programs": ["TurboTax", "H&R Block"],
+"content_type": "guide", "estimated_word_count": 8000},
+# === TIER 4: INVESTMENT (high CPC) ===
+{"keyword": "investment account options for non-us-residents 2026", "market": "USA",
+"search_volume": 1600, "keyword_difficulty": 45, "cpc": 9.10,
+"intent": "commercial", "opportunity_types": ["seo", "affiliate"],
+"affiliate_programs": ["Interactive Brokers", "Charles Schwab"],
+"content_type": "guide", "estimated_word_count": 7000},
+{"keyword": "tfsa rrsp rules non-residents canada explained", "market": "Canada",
+"search_volume": 1900, "keyword_difficulty": 40, "cpc": 5.20,
+"intent": "informational", "opportunity_types": ["seo"],
+"affiliate_programs": ["Wealthsimple", "Questrade"],
+"content_type": "article", "estimated_word_count": 7000},
+# === TIER 5: CREDIT (affiliate) ===
+{"keyword": "best credit card no foreign transaction fee expat 2026", "market": "USA",
+"search_volume": 2600, "keyword_difficulty": 36, "cpc": 4.90,
+"intent": "commercial", "opportunity_types": ["seo", "affiliate"],
+"affiliate_programs": ["Discover", "Capital One"],
+"content_type": "listicle", "estimated_word_count": 5000},
+# === TIER 6: BANKING GUIDES (informational, high volume) ===
+{"keyword": "international bank account for expats usa", "market": "USA",
+"search_volume": 2100, "keyword_difficulty": 35, "cpc": 5.10,
+"intent": "commercial", "opportunity_types": ["seo", "affiliate"],
+"affiliate_programs": ["HSBC Expat", "Citibank"],
+"content_type": "article", "estimated_word_count": 5000},
+{"keyword": "how to open bank account as non-resident usa", "market": "USA",
+"search_volume": 2800, "keyword_difficulty": 28, "cpc": 3.80,
+"intent": "informational", "opportunity_types": ["seo"],
+"affiliate_programs": ["Wise", "Revolut"],
+"content_type": "guide", "estimated_word_count": 6000},
+{"keyword": "how to open bank account new to canada", "market": "Canada",
+"search_volume": 3600, "keyword_difficulty": 22, "cpc": 3.20,
+"intent": "informational", "opportunity_types": ["seo"],
+"affiliate_programs": ["RBC", "TD Canada Trust"],
+"content_type": "guide", "estimated_word_count": 6000},
+# === TIER 7: INTERNATIONAL STUDENTS (high volume) ===
+{"keyword": "banking guide international students usa 2026", "market": "USA",
+"search_volume": 5200, "keyword_difficulty": 24, "cpc": 2.80,
+"intent": "informational", "opportunity_types": ["seo", "affiliate"],
+"affiliate_programs": ["Wise", "Revolut", "Chime"],
+"content_type": "guide", "estimated_word_count": 6000},
+{"keyword": "bank account for international students no ssn usa", "market": "USA",
+"search_volume": 3900, "keyword_difficulty": 26, "cpc": 3.10,
+"intent": "informational", "opportunity_types": ["seo", "affiliate"],
+"affiliate_programs": ["Wise", "Revolut"],
+"content_type": "guide", "estimated_word_count": 5500},
+{"keyword": "bank account for international students canada", "market": "Canada",
+"search_volume": 4600, "keyword_difficulty": 22, "cpc": 2.60,
+"intent": "informational", "opportunity_types": ["seo", "affiliate"],
+"affiliate_programs": ["RBC", "TD Canada Trust", "Scotiabank"],
+"content_type": "guide", "estimated_word_count": 5500},
+# === TIER 8: MONEY TRANSFER (lower priority — revenue gate borderline) ===
+{"keyword": "send money abroad from canada best rates", "market": "Canada",
+"search_volume": 2400, "keyword_difficulty": 29, "cpc": 4.50,
+"intent": "commercial", "opportunity_types": ["seo", "affiliate"],
+"affiliate_programs": ["Wise", "OFX", "Remitly"],
+"content_type": "comparison", "estimated_word_count": 5500},
+{"keyword": "cheapest international money transfer from canada", "market": "Canada",
+"search_volume": 2900, "keyword_difficulty": 30, "cpc": 4.80,
+"intent": "commercial", "opportunity_types": ["seo", "affiliate"],
+"affiliate_programs": ["Wise", "OFX", "Remitly"],
+"content_type": "comparison", "estimated_word_count": 5000},
 ]
-
 
 class SEOResearchAgent:
     """
@@ -295,12 +309,13 @@ For each topic provide a JSON object with:
 - cpc: estimated CPC in USD (float)
 - intent: "informational" or "commercial"
 - opportunity_types: array of ["seo", "affiliate", "ebook"]
+- affiliate_programs: array of partner names
 - content_type: "guide", "listicle", "comparison", or "article"
 - estimated_word_count: integer
 
 Return ONLY a valid JSON array. No other text.
 Example:
-[{{"keyword": "best bank account immigrants usa", "market": "USA", "search_volume": 3200, "keyword_difficulty": 30, "cpc": 4.20, "intent": "commercial", "opportunity_types": ["seo", "affiliate"], "content_type": "listicle", "estimated_word_count": 5000}}]"""
+[{{"keyword": "best bank account immigrants usa", "market": "USA", "search_volume": 3200, "keyword_difficulty": 30, "cpc": 4.20, "intent": "commercial", "opportunity_types": ["seo", "affiliate"], "affiliate_programs": ["Wise", "Revolut"], "content_type": "listicle", "estimated_word_count": 5000}}]"""
 
         headers = {
             "x-api-key": self.anthropic_key,
@@ -326,18 +341,30 @@ Example:
                 data = await resp.json()
                 text = data["content"][0]["text"].strip()
 
-                import re
-                json_match = re.search(r'\[.*\]', text, re.DOTALL)
-                if json_match:
-                    topics = json.loads(json_match.group())
-                    return [self._normalize_topic(t) for t in topics if isinstance(t, dict)]
-                return []
+        import re
+        json_match = re.search(r'\[.*\]', text, re.DOTALL)
+        if json_match:
+            topics = json.loads(json_match.group())
+            return [self._normalize_topic(t) for t in topics if isinstance(t, dict)]
+        return []
 
     def _get_from_builtin_database(self, count: int) -> List[Dict]:
-        """Return topics from the built-in curated database."""
-        import random
+        """Return top-revenue topics from the built-in curated database.
+
+        V3.2 FIX: Removed random.shuffle. Topics are now sorted by revenue
+        potential (affiliate_programs presence > CPC > search_volume) to
+        guarantee Agent 18 revenue gate passage (score >= 60 required).
+        """
         available = list(BUILTIN_TOPIC_DATABASE)
-        random.shuffle(available)
+        # Sort by revenue potential: affiliate programs present first, then by CPC desc, then volume desc
+        available.sort(
+            key=lambda t: (
+                len(t.get("affiliate_programs", [])) > 0,  # affiliate topics first
+                t.get("cpc", 0.0),                          # higher CPC = higher revenue
+                t.get("search_volume", 0),                  # higher volume = more traffic
+            ),
+            reverse=True
+        )
         selected = available[:count]
         return [self._normalize_topic(t) for t in selected]
 
@@ -351,6 +378,7 @@ Example:
             "cpc": 3.50,
             "intent": "informational",
             "opportunity_types": ["seo"],
+            "affiliate_programs": [],
             "content_type": "article",
             "estimated_word_count": 5000,
             "source": "serpapi",
@@ -365,7 +393,7 @@ Example:
             "market": t.get("market", "USA"),
             "search_volume": t.get("search_volume", 1000),
             "keyword_difficulty": t.get("keyword_difficulty", 35),
-            "cpc": t.get("cpc", 3.50),
+            "cpc": t.get("cpc", 0.0),
             "intent": t.get("intent", "informational"),
             "opportunity_types": t.get("opportunity_types", ["seo"]),
             "affiliate_programs": t.get("affiliate_programs", []),
@@ -378,18 +406,20 @@ Example:
         }
 
     def _score_and_prioritize(self, topics: List[Dict]) -> List[Dict]:
-        """Score and prioritize topics."""
+        """Score and prioritize topics by revenue potential."""
         for i, topic in enumerate(topics):
             volume = topic.get("search_volume", 0)
             difficulty = topic.get("keyword_difficulty", 100)
             cpc = topic.get("cpc", 0)
             opp_types = topic.get("opportunity_types", [])
+            affiliate_programs = topic.get("affiliate_programs", [])
 
             score = 0.0
             score += min(40, volume / 250)
             score += max(0, 30 - difficulty * 0.3)
             score += min(20, cpc * 2)
             score += len(opp_types) * 5
+            score += min(10, len(affiliate_programs) * 3)  # affiliate bonus
 
             topic["priority_score"] = round(score, 2)
             topic["rank"] = i + 1
