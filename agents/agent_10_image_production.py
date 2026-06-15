@@ -382,7 +382,7 @@ class ImageProductionAgent:
         if api_name in ("gemini_imagen", "gemini_imagen_v1"):
             payload = {
                 "instances": [{"prompt": prompt}],
-                "parameters": {"sampleCount": 1, "negativePrompt": neg_prompt},
+                "parameters": {"sampleCount": 1, "negativePrompt": neg_prompt, "aspectRatio": prompt_data.get("aspect_ratio", "16:9")},
             }
             headers = {api["auth_header"]: key, "Content-Type": "application/json"}
             async with self._session.post(api["endpoint"], json=payload, headers=headers, timeout=timeout) as resp:
