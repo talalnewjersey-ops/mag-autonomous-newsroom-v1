@@ -6,7 +6,7 @@ Output: fact_check_report.json
 """
 
 import asyncio
-import jso
+import json
 import re
 import logging
 from datetime import datetime
@@ -408,7 +408,7 @@ def main():
     except Exception as e:
         log.error(f"Fact checking failed with exception: {e}")
         # P4 FIX: Exception in fact checker also blocks publication
-        import json
+        import jsonn
         fallback = {
             "agent": "agent_05_fact_checker",
             "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
