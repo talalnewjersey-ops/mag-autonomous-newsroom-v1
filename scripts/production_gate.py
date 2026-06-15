@@ -55,13 +55,20 @@ def run_gate(args) -> dict:
         gate_a = False
         failures.append("GATE A FAIL: fact_check_report.json missing or invalid")
     else:
-        # Accept if overall_passed is True, OR if there are no FAILED/DISPUTED claims
-        passed = fact.get("overall_passed", fact.get("passed", None))
-        if passed is None:
-            # Infer from source count
-            sources = fact.get("sources_verified", fact.get("sources_count", 0))
-            passed = sources >= 3
-        gate_a = bool(passed)
+        # Check verdict field first (PASS or PASS_WITH_WARNINGS = Gate A pass)
+        verdict = fact.get("verdict", "")
+        if verdict in ("PASS", "PASS_WITH_WARNINGS"):
+            gate_a = True
+        elif verdict == "FAIL":
+            gate_a = False
+        else:
+            # Fallback: check overall_passed or passed fields
+            passed = fact.get("overall_passed", fact.get("passed", None))
+            if passed is None:
+                # Last resort: infer from source count
+                sources = fact.get("sources_verified", fact.get("sources_count", 0))
+                passed = sources >= 3
+            gate_a = bool(passed)
         if not gate_a:
             failures.append(
                 f"GATE A FAIL: Fact checker did not pass -- "
@@ -96,7 +103,7 @@ def run_gate(args) -> dict:
             eeat_score = 0
             failures.append("GATE B FAIL: EEAT report missing or invalid")
         else:
-            eeat_score = eeat.get("eeat_score", eeat.get("overall_score", eeat.get("score", 0)))
+            eeat_score = eeat.get("total_eeat_score", eeat.get("eeat_score", eeat.get("overall_score", eeat.get("score", 0))))
             threshold = getattr(args, "eeat_threshold", 85)
             passed = eeat.get("overall_passed", eeat.get("passed", None))
             if passed is None:
