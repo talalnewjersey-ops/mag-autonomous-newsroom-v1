@@ -1,13 +1,14 @@
 # ============================================================
 # NEXUS-14 PRODUCTION v4.0 -- Reliability-First Pipeline
 # MoneyAbroadGuide.com -- Canada Newcomer Priority Production
-# Version: 4.0.0-PROD-RELIABLE | Updated: 2026-06-14
+# Version: 4.0.1-YAML-FIX | Updated: 2026-06-14
 #
 # KEY CHANGES FROM V3:
 # FIX 1: Agent 18 Revenue Intelligence -- informational only, never blocks
 # FIX 2: Agent 17 Cannibalization -- informational only, never blocks
 # FIX 3: Agent 10 Images -- Gemini ONLY (Nano Banana removed)
 # FIX 4: Quality Gate -- 3 gates only (FactCheck+EEAT+WP Draft)
+# FIX 5 (YAML): Replaced multi-line python3 -c with single-line safe calls
 # Max article: 5000 words | Canada newcomer priority
 # ============================================================
 
@@ -121,154 +122,162 @@ jobs:
 
             # Phase 1: SEO Research [BLOCKING]
             echo "[${ARTICLE_NUM}] Phase 1: SEO Research"
-            ARTICLE_NUM=${ARTICLE_NUM} python -m agents.agent_01_seo_research               --max-topics 1               --output "${ARTICLE_DIR}/agent_01/topics.json" || {
-                echo "Agent 01 FAILED"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
-              }
+            ARTICLE_NUM=${ARTICLE_NUM} python -m agents.agent_01_seo_research \
+              --max-topics 1 --output "${ARTICLE_DIR}/agent_01/topics.json" || {
+              echo "Agent 01 FAILED"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
+            }
 
             # Phase 2: Keyword Validation [BLOCKING]
             echo "[${ARTICLE_NUM}] Phase 2: Keyword Validation"
-            python -m agents.agent_02_keyword_validation               --input "${ARTICLE_DIR}/agent_01/topics.json"               --output "${ARTICLE_DIR}/agent_02/validated_topics.json" || {
-                echo "Agent 02 FAILED"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
-              }
+            python -m agents.agent_02_keyword_validation \
+              --input "${ARTICLE_DIR}/agent_01/topics.json" \
+              --output "${ARTICLE_DIR}/agent_02/validated_topics.json" || {
+              echo "Agent 02 FAILED"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
+            }
 
-            # Extract topic metadata (used by Agents 17 and 18 informational checks)
-            TOPIC=$(python3 -c "
-import json,sys
-try:
-  d=json.load(open('${ARTICLE_DIR}/agent_02/validated_topics.json'))
-  t=d.get('topics',d if isinstance(d,list) else [d])
-  item=t[0] if t else {}
-  print(item.get('title',item.get('keyword','newcomer guide')) if isinstance(item,dict) else str(item))
-except: print('newcomer banking guide')
-" 2>/dev/null)
-            KEYWORDS=$(python3 -c "
-import json,sys
-try:
-  d=json.load(open('${ARTICLE_DIR}/agent_02/validated_topics.json'))
-  t=d.get('topics',d if isinstance(d,list) else [d])
-  item=t[0] if t else {}
-  print(item.get('keyword','') if isinstance(item,dict) else '')
-except: print('')
-" 2>/dev/null)
-            # FIX 1a: Pass real SV/CPC from topic DB (defaults if missing) to Agent 18
-            SV=$(python3 -c "
-import json,sys
-try:
-  d=json.load(open('${ARTICLE_DIR}/agent_02/validated_topics.json'))
-  t=d.get('topics',d if isinstance(d,list) else [d])
-  item=t[0] if t else {}
-  print(int(item.get('search_volume',2000)) if isinstance(item,dict) else 2000)
-except: print(2000)
-" 2>/dev/null || echo 2000)
-            CPC=$(python3 -c "
-import json,sys
-try:
-  d=json.load(open('${ARTICLE_DIR}/agent_02/validated_topics.json'))
-  t=d.get('topics',d if isinstance(d,list) else [d])
-  item=t[0] if t else {}
-  print(float(item.get('cpc',3.50)) if isinstance(item,dict) else 3.50)
-except: print(3.50)
-" 2>/dev/null || echo 3.50)
+            # Extract topic metadata -- single-line python for YAML safety
+            TOPIC=$(python3 -c "import json; d=json.load(open('${ARTICLE_DIR}/agent_02/validated_topics.json')); t=d.get('topics',d if isinstance(d,list) else [d]); item=t[0] if t else {}; print(item.get('title',item.get('keyword','newcomer guide')) if isinstance(item,dict) else str(item))" 2>/dev/null || echo "newcomer banking guide")
+            KEYWORDS=$(python3 -c "import json; d=json.load(open('${ARTICLE_DIR}/agent_02/validated_topics.json')); t=d.get('topics',d if isinstance(d,list) else [d]); item=t[0] if t else {}; print(item.get('keyword','') if isinstance(item,dict) else '')" 2>/dev/null || echo "")
+            # FIX 1a: Pass real SV/CPC from topic DB with defaults to Agent 18
+            SV=$(python3 -c "import json; d=json.load(open('${ARTICLE_DIR}/agent_02/validated_topics.json')); t=d.get('topics',d if isinstance(d,list) else [d]); item=t[0] if t else {}; print(int(item.get('search_volume',2000)) if isinstance(item,dict) else 2000)" 2>/dev/null || echo "2000")
+            CPC=$(python3 -c "import json; d=json.load(open('${ARTICLE_DIR}/agent_02/validated_topics.json')); t=d.get('topics',d if isinstance(d,list) else [d]); item=t[0] if t else {}; print(float(item.get('cpc',3.50)) if isinstance(item,dict) else 3.50)" 2>/dev/null || echo "3.50")
 
             # FIX 2: Agent 17 Cannibalization -- INFORMATIONAL ONLY, never blocks
             echo "[${ARTICLE_NUM}] Phase 2.5: Cannibalization Check (informational)"
-            python -m agents.agent_17_cannibalization               --topic "${TOPIC}" --keywords "${KEYWORDS}"               --output "${ARTICLE_DIR}/agent_17/cannibalization_report.json" || true
-            CANN_DECISION=$(python3 -c "
-import json
-try: r=json.load(open('${ARTICLE_DIR}/agent_17/cannibalization_report.json')); print(r.get('decision','UNKNOWN'))
-except: print('SKIPPED')
-" 2>/dev/null || echo "SKIPPED")
-            echo "[${ARTICLE_NUM}] Cannibalization result: ${CANN_DECISION} -- NOT blocking"
+            python -m agents.agent_17_cannibalization \
+              --topic "${TOPIC}" --keywords "${KEYWORDS}" \
+              --output "${ARTICLE_DIR}/agent_17/cannibalization_report.json" || true
+            CANN_DECISION=$(python3 -c "import json; r=json.load(open('${ARTICLE_DIR}/agent_17/cannibalization_report.json')); print(r.get('decision','UNKNOWN'))" 2>/dev/null || echo "SKIPPED")
+            echo "[${ARTICLE_NUM}] Cannibalization: ${CANN_DECISION} -- NOT blocking"
 
             # FIX 1: Agent 18 Revenue -- INFORMATIONAL ONLY, never blocks
             echo "[${ARTICLE_NUM}] Phase 2.6: Revenue Intelligence (informational)"
-            python -m agents.agent_18_revenue_intelligence               --topic "${TOPIC}" --keywords "${KEYWORDS}"               --search-volume "${SV}" --cpc "${CPC}"               --output "${ARTICLE_DIR}/agent_18/revenue_score.json" || true
-            SCORE=$(python3 -c "
-import json
-try: r=json.load(open('${ARTICLE_DIR}/agent_18/revenue_score.json')); print(r.get('revenue_score',70))
-except: print(70)
-" 2>/dev/null || echo 70)
+            python -m agents.agent_18_revenue_intelligence \
+              --topic "${TOPIC}" --keywords "${KEYWORDS}" \
+              --search-volume "${SV}" --cpc "${CPC}" \
+              --output "${ARTICLE_DIR}/agent_18/revenue_score.json" || true
+            SCORE=$(python3 -c "import json; r=json.load(open('${ARTICLE_DIR}/agent_18/revenue_score.json')); print(r.get('revenue_score',70))" 2>/dev/null || echo "70")
             echo "[${ARTICLE_NUM}] Revenue score: ${SCORE}/100 -- NOT blocking"
 
-            # Determine article tier from revenue score (used for word count targets only)
+            # Determine article tier from revenue score
             ARTICLE_TYPE="STANDARD"
-            if python3 -c "import sys; sys.exit(0 if int('${SCORE}'.split('.')[0])>85 else 1)" 2>/dev/null; then
-              ARTICLE_TYPE="PILLAR"
-            elif python3 -c "import sys; sys.exit(0 if int('${SCORE}'.split('.')[0])<70 else 1)" 2>/dev/null; then
-              ARTICLE_TYPE="OPPORTUNITY"
-            fi
+            if python3 -c "import sys; sys.exit(0 if float('${SCORE}') > 85 else 1)" 2>/dev/null; then ARTICLE_TYPE="PILLAR"; fi
+            if python3 -c "import sys; sys.exit(0 if float('${SCORE}') < 70 else 1)" 2>/dev/null; then ARTICLE_TYPE="OPPORTUNITY"; fi
             echo "[${ARTICLE_NUM}] Article tier: ${ARTICLE_TYPE}"
 
             # Phase 3: Content Planning [BLOCKING]
             echo "[${ARTICLE_NUM}] Phase 3: Content Planning"
-            python -m agents.agent_03_content_planner               --input "${ARTICLE_DIR}/agent_02/validated_topics.json"               --output "${ARTICLE_DIR}/agent_03/article_outline.json" || {
-                echo "Agent 03 FAILED"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
-              }
+            python -m agents.agent_03_content_planner \
+              --input "${ARTICLE_DIR}/agent_02/validated_topics.json" \
+              --output "${ARTICLE_DIR}/agent_03/article_outline.json" || {
+              echo "Agent 03 FAILED"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
+            }
 
             # Phase 4: Article Writing [BLOCKING]
             echo "[${ARTICLE_NUM}] Phase 4: Article Writing (TIER: ${ARTICLE_TYPE})"
-            ARTICLE_TYPE=${ARTICLE_TYPE} python -m agents.agent_04_article_writer               --input "${ARTICLE_DIR}/agent_03/article_outline.json"               --output "${ARTICLE_DIR}/agent_04/article_draft.md"               --article-type "${ARTICLE_TYPE}" || {
-                echo "Agent 04 FAILED"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
-              }
+            ARTICLE_TYPE=${ARTICLE_TYPE} python -m agents.agent_04_article_writer \
+              --input "${ARTICLE_DIR}/agent_03/article_outline.json" \
+              --output "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --article-type "${ARTICLE_TYPE}" || {
+              echo "Agent 04 FAILED"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
+            }
 
-            # Phase 5: Fact Checking [BLOCKING GATE -- GATE A]
-            echo "[${ARTICLE_NUM}] Phase 5: Fact Checking [BLOCKING GATE A]"
-            python -m agents.agent_05_fact_checker               --input "${ARTICLE_DIR}/agent_04/article_draft.md"               --output "${ARTICLE_DIR}/agent_05/fact_check_report.json"               --min-sources ${{ env.FACT_CHECK_MIN_SOURCES }} || {
-                echo "GATE A FAIL: Fact checker blocked article ${ARTICLE_NUM}"
-                ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
-              }
+            # Phase 5: Fact Checking [BLOCKING GATE A]
+            echo "[${ARTICLE_NUM}] Phase 5: Fact Checking [GATE A]"
+            python -m agents.agent_05_fact_checker \
+              --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --output "${ARTICLE_DIR}/agent_05/fact_check_report.json" \
+              --min-sources ${{ env.FACT_CHECK_MIN_SOURCES }} || {
+              echo "GATE A FAIL: Fact checker blocked article ${ARTICLE_NUM}"
+              ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
+            }
 
-            # Phase 6: EEAT Validation [BLOCKING GATE -- GATE B]
-            echo "[${ARTICLE_NUM}] Phase 6: EEAT Validation [BLOCKING GATE B]"
-            python -m agents.agent_06_eeat_validator               --input "${ARTICLE_DIR}/agent_04/article_draft.md"               --output "${ARTICLE_DIR}/agent_06"               --threshold ${{ env.EEAT_SCORE_THRESHOLD }} || {
-                echo "GATE B FAIL: EEAT validator blocked article ${ARTICLE_NUM}"
-                ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
-              }
+            # Phase 6: EEAT Validation [BLOCKING GATE B]
+            echo "[${ARTICLE_NUM}] Phase 6: EEAT Validation [GATE B]"
+            python -m agents.agent_06_eeat_validator \
+              --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --output "${ARTICLE_DIR}/agent_06" \
+              --threshold ${{ env.EEAT_SCORE_THRESHOLD }} || {
+              echo "GATE B FAIL: EEAT blocked article ${ARTICLE_NUM}"
+              ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
+            }
 
             # Phase 7-8: Internal Linking + Affiliate (non-blocking)
-            echo "[${ARTICLE_NUM}] Phase 7-8: Internal Linking + Affiliate (non-blocking)"
-            python -m agents.agent_07_internal_linking               --input "${ARTICLE_DIR}/agent_04/article_draft.md"               --output "${ARTICLE_DIR}/agent_07/internal_links.json"               --min-links ${{ env.MIN_INTERNAL_LINKS }} || true
-            python -m agents.agent_08_affiliate_optimizer               --input "${ARTICLE_DIR}/agent_04/article_draft.md"               --output "${ARTICLE_DIR}/agent_08/affiliate_report.json" || true
+            echo "[${ARTICLE_NUM}] Phase 7-8: Linking + Affiliate (non-blocking)"
+            python -m agents.agent_07_internal_linking \
+              --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --output "${ARTICLE_DIR}/agent_07/internal_links.json" \
+              --min-links ${{ env.MIN_INTERNAL_LINKS }} || true
+            python -m agents.agent_08_affiliate_optimizer \
+              --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --output "${ARTICLE_DIR}/agent_08/affiliate_report.json" || true
 
-            # Phase 9-10: Image Prompts + Image Production (Gemini ONLY -- non-blocking)
+            # Phase 9: Image Prompts (non-blocking)
             echo "[${ARTICLE_NUM}] Phase 9: Image Prompts"
-            python -m agents.agent_09_image_prompt_generator               --input "${ARTICLE_DIR}/agent_04/article_draft.md"               --output "${ARTICLE_DIR}/agent_09/image_prompts.json"               --count ${{ env.MIN_IMAGES }} || true
+            python -m agents.agent_09_image_prompt_generator \
+              --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --output "${ARTICLE_DIR}/agent_09/image_prompts.json" \
+              --count ${{ env.MIN_IMAGES }} || true
 
-            # FIX 3: Gemini ONLY -- Nano Banana and OpenAI removed from image path
+            # FIX 3: Phase 10 -- Gemini ONLY (Nano Banana removed)
             echo "[${ARTICLE_NUM}] Phase 10: Image Production (Gemini ONLY)"
-            python -m agents.agent_10_image_production               --input "${ARTICLE_DIR}/agent_09/image_prompts.json"               --output "${ARTICLE_DIR}/agent_10/"               --validation-report "${ARTICLE_DIR}/agent_10/image_validation_report.json"               --min-images ${{ env.MIN_IMAGES }}               --provider gemini || true
+            python -m agents.agent_10_image_production \
+              --input "${ARTICLE_DIR}/agent_09/image_prompts.json" \
+              --output "${ARTICLE_DIR}/agent_10/" \
+              --validation-report "${ARTICLE_DIR}/agent_10/image_validation_report.json" \
+              --min-images ${{ env.MIN_IMAGES }} \
+              --provider gemini || true
 
             # Phase 10.5: Publishing Optimization (non-blocking)
-            echo "[${ARTICLE_NUM}] Phase 10.5: Publishing Optimization (non-blocking)"
-            python -m agents.agent_16_publishing_optimization               --input "${ARTICLE_DIR}/agent_04/article_draft.md"               --faq-data "${ARTICLE_DIR}/agent_03/article_outline.json"               --image-url "${ARTICLE_DIR}/agent_10/featured_image_url.txt"               --output "${ARTICLE_DIR}/agent_16/publishing_optimizer.json" || true
+            echo "[${ARTICLE_NUM}] Phase 10.5: Publishing Optimization"
+            python -m agents.agent_16_publishing_optimization \
+              --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --faq-data "${ARTICLE_DIR}/agent_03/article_outline.json" \
+              --image-url "${ARTICLE_DIR}/agent_10/featured_image_url.txt" \
+              --output "${ARTICLE_DIR}/agent_16/publishing_optimizer.json" || true
 
-            # Phase 11: WordPress Draft [BLOCKING GATE -- GATE C]
-            echo "[${ARTICLE_NUM}] Phase 11: WordPress Draft [BLOCKING GATE C]"
-            python -m agents.agent_11_wordpress_integration               --article "${ARTICLE_DIR}/agent_04/article_draft.md"               --images "${ARTICLE_DIR}/agent_10/"               --rank-math "${ARTICLE_DIR}/agent_16/publishing_optimizer.json"               --output "${ARTICLE_DIR}/agent_11/wordpress_report.json"               --validation-report "${ARTICLE_DIR}/agent_11/wordpress_validation_report.json" || {
-                echo "GATE C FAIL: WordPress draft not created for article ${ARTICLE_NUM}"
-                ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
-              }
+            # Phase 11: WordPress Draft [BLOCKING GATE C]
+            echo "[${ARTICLE_NUM}] Phase 11: WordPress Draft [GATE C]"
+            python -m agents.agent_11_wordpress_integration \
+              --article "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --images "${ARTICLE_DIR}/agent_10/" \
+              --rank-math "${ARTICLE_DIR}/agent_16/publishing_optimizer.json" \
+              --output "${ARTICLE_DIR}/agent_11/wordpress_report.json" \
+              --validation-report "${ARTICLE_DIR}/agent_11/wordpress_validation_report.json" || {
+              echo "GATE C FAIL: WordPress draft not created for article ${ARTICLE_NUM}"
+              ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
+            }
 
             # FIX 4: Production Gate -- 3 gates only
             echo "[${ARTICLE_NUM}] Production Gate (3-gate minimum)"
-            python scripts/production_gate.py               --fact-check "${ARTICLE_DIR}/agent_05/fact_check_report.json"               --eeat-dir "${ARTICLE_DIR}/agent_06"               --wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_validation_report.json"               --output "${ARTICLE_DIR}/production_gate_result.json" && {
-                ARTICLES_PRODUCED=$((ARTICLES_PRODUCED+1))
-                POST_ID=$(python3 -c "
-import json
-try: r=json.load(open('${ARTICLE_DIR}/agent_11/wordpress_validation_report.json')); print(r.get('post_id','unknown'))
-except: print('unknown')
-" 2>/dev/null || echo unknown)
-                echo "SUCCESS: Article ${ARTICLE_NUM} -- WordPress Draft ID: ${POST_ID}"
-              } || {
-                ARTICLES_FAILED=$((ARTICLES_FAILED+1))
-                echo "Article ${ARTICLE_NUM} FAILED production gate"
-              }
+            python scripts/production_gate.py \
+              --fact-check "${ARTICLE_DIR}/agent_05/fact_check_report.json" \
+              --eeat-dir "${ARTICLE_DIR}/agent_06" \
+              --wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_validation_report.json" \
+              --output "${ARTICLE_DIR}/production_gate_result.json" && {
+              ARTICLES_PRODUCED=$((ARTICLES_PRODUCED+1))
+              POST_ID=$(python3 -c "import json; r=json.load(open('${ARTICLE_DIR}/agent_11/wordpress_validation_report.json')); print(r.get('post_id','unknown'))" 2>/dev/null || echo "unknown")
+              echo "SUCCESS: Article ${ARTICLE_NUM} -- WordPress Draft ID: ${POST_ID}"
+            } || {
+              ARTICLES_FAILED=$((ARTICLES_FAILED+1))
+              echo "Article ${ARTICLE_NUM} FAILED production gate"
+            }
 
             # Phase 12-13: QA + Chief Editor (informational -- never blocks)
             echo "[${ARTICLE_NUM}] Phase 12-13: QA + Chief Editor (informational)"
-            python -m agents.agent_12_quality_assurance               --article "${ARTICLE_DIR}/agent_04/article_draft.md"               --wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_report.json"               --image-validation "${ARTICLE_DIR}/agent_10/image_validation_report.json"               --output "${ARTICLE_DIR}/agent_12/qa_report.json"               --min-words ${{ env.MIN_WORD_COUNT }}               --min-images ${{ env.MIN_IMAGES }}               --min-faq ${{ env.MIN_FAQ }}               --min-links ${{ env.MIN_INTERNAL_LINKS }}               --min-sources ${{ env.MIN_SOURCES }}               --min-case-studies 2               --seo-threshold 85               --eeat-threshold ${{ env.EEAT_SCORE_THRESHOLD }} || true
-
-            python -m agents.agent_13_chief_editor               --qa-report "${ARTICLE_DIR}/agent_12/qa_report.json"               --article "${ARTICLE_DIR}/agent_04/article_draft.md"               --output "${ARTICLE_DIR}/agent_13/editor_report.json" || true
+            python -m agents.agent_12_quality_assurance \
+              --article "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_report.json" \
+              --image-validation "${ARTICLE_DIR}/agent_10/image_validation_report.json" \
+              --output "${ARTICLE_DIR}/agent_12/qa_report.json" \
+              --min-words ${{ env.MIN_WORD_COUNT }} --min-images ${{ env.MIN_IMAGES }} \
+              --min-faq ${{ env.MIN_FAQ }} --min-links ${{ env.MIN_INTERNAL_LINKS }} \
+              --min-sources ${{ env.MIN_SOURCES }} --min-case-studies 2 \
+              --seo-threshold 85 --eeat-threshold ${{ env.EEAT_SCORE_THRESHOLD }} || true
+            python -m agents.agent_13_chief_editor \
+              --qa-report "${ARTICLE_DIR}/agent_12/qa_report.json" \
+              --article "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --output "${ARTICLE_DIR}/agent_13/editor_report.json" || true
 
           done
 
@@ -297,14 +306,17 @@ except: print('unknown')
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11", cache: pip }
+        with:
+          python-version: "3.11"
+          cache: pip
       - run: pip install -r requirements.txt
       - name: Run Global Audit
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
         run: |
-          python -m agents.agent_13_chief_editor --mode global-audit             --output output/agent_13/global_audit_report.json
+          python -m agents.agent_13_chief_editor --mode global-audit \
+            --output output/agent_13/global_audit_report.json
 
   production-report:
     name: "Production Report"
@@ -314,13 +326,19 @@ except: print('unknown')
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11", cache: pip }
+        with:
+          python-version: "3.11"
+          cache: pip
       - run: pip install -r requirements.txt
       - name: Generate Report
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          python -m agents.agent_14_production_director             --mode executive_report             --output output/agent_14/daily_production_report.html             --system-version PRODUCTION-V4.0-RELIABLE             --max-daily 6 --quality-first true
+          python -m agents.agent_14_production_director \
+            --mode executive_report \
+            --output output/agent_14/daily_production_report.html \
+            --system-version PRODUCTION-V4.0-RELIABLE \
+            --max-daily 6 --quality-first true
       - name: Upload report
         uses: actions/upload-artifact@v4
         if: always()
