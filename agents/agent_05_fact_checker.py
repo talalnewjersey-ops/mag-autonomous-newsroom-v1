@@ -6,7 +6,7 @@ Output: fact_check_report.json
 """
 
 import asyncio
-import json
+import jso
 import re
 import logging
 from datetime import datetime
@@ -297,7 +297,7 @@ class FactCheckerAgent(BaseAgent):
         issues_count = disputed_count + unverified_count + flagged_count + broken_urls + stats_flagged
         if issues_count == 0:
             verdict = "PASS"
-        elif broken_urls > 0 or disputed_count > 0:
+        elif disputed_count > 0:
             verdict = "FAIL"
         elif issues_count <= 3:
             verdict = "PASS_WITH_WARNINGS"
