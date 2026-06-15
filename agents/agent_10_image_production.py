@@ -2,7 +2,7 @@
 MoneyAbroadGuide Autonomous Newsroom
 
 Generates images using Gemini Imagen or Nano Banana.
-V3.1: Updated Gemini endpoint to imagen-3.0-generate-002 (GA model). Added imagen-3.0-generate-001 fallback.
+V3.1: Updated Gemini endpoint to imagen-3.0-generate-002 (GAmodel). Added imagen-3.0-generate-001 fallback.
 V3.2: Added _create_placeholder() that generates a real PNG when all API calls fail,
       ensuring at least 5 images are available for WordPress upload.
 V3.3: Optimized PNG generation to use fast bytearray instead of slow Python pixel loop.
@@ -719,7 +719,7 @@ def main():
     parser.add_argument("--output", required=True, help="Output directory")
     parser.add_argument("--validation-report", default=None, help="Path for validation report")
     parser.add_argument("--min-images", type=int, default=5)
-          parser.add_argument("--provider", default="gemini", choices=["gemini", "all"], help="Image provider: gemini=Gemini only (default), all=all providers")
+    parser.add_argument("--provider", default="gemini", choices=["gemini", "all"], help="Image provider: gemini=Gemini only (default), all=all providers")
     args = parser.parse_args()
 
     input_path = Path(args.input)
