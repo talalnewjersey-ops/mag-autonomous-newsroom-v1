@@ -737,12 +737,12 @@ def main():
         "wordpress_username": os.environ.get("WORDPRESS_USERNAME", ""),
         "wordpress_app_password": os.environ.get("WORDPRESS_APP_PASSWORD", ""),
     }
-        # FIX 3: Gemini-only mode -- clear other API keys when provider=gemini
-        if getattr(args, 'provider', 'gemini') == 'gemini':
-                          config['nano_banana_key'] = ''
-                          os.environ.pop('NANO_BANANA_KEY', None)
-                          os.environ.pop('OPENAI_API_KEY', None)
-                          log.info('Provider: Gemini ONLY (Nano Banana + OpenAI removed)')
+    # FIX 3: Gemini-only mode -- clear other API keys when provider=gemini
+    if getattr(args, 'provider', 'gemini') == 'gemini':
+        config['nano_banana_key'] = ''
+        os.environ.pop('NANO_BANANA_KEY', None)
+        os.environ.pop('OPENAI_API_KEY', None)
+        log.info('Provider: Gemini ONLY (Nano Banana + OpenAI removed)')
 
     agent = ImageProductionAgent(config)
 
