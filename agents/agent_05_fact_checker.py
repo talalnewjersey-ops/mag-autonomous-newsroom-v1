@@ -408,7 +408,7 @@ def main():
     except Exception as e:
         log.error(f"Fact checking failed with exception: {e}")
         # P4 FIX: Exception in fact checker also blocks publication
-        import jsonn
+        import json
         fallback = {
             "agent": "agent_05_fact_checker",
             "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
