@@ -719,6 +719,7 @@ def main():
     parser.add_argument("--output", required=True, help="Output directory")
     parser.add_argument("--validation-report", default=None, help="Path for validation report")
     parser.add_argument("--min-images", type=int, default=5)
+          parser.add_argument("--provider", default="gemini", choices=["gemini", "all"], help="Image provider: gemini=Gemini only (default), all=all providers")
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -736,6 +737,12 @@ def main():
         "wordpress_username": os.environ.get("WORDPRESS_USERNAME", ""),
         "wordpress_app_password": os.environ.get("WORDPRESS_APP_PASSWORD", ""),
     }
+        # FIX 3: Gemini-only mode -- clear other API keys when provider=gemini
+        if getattr(args, 'provider', 'gemini') == 'gemini':
+                          config['nano_banana_key'] = ''
+                          os.environ.pop('NANO_BANANA_KEY', None)
+                          os.environ.pop('OPENAI_API_KEY', None)
+                          log.info('Provider: Gemini ONLY (Nano Banana + OpenAI removed)')
 
     agent = ImageProductionAgent(config)
 
