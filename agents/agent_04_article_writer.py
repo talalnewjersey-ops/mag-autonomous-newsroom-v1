@@ -175,11 +175,22 @@ def _validate_tier_standard(article: str, word_count: int, tier: dict) -> list:
         errors.append("Missing author bio / founder section")
     return errors
 
-SYSTEM_PROMPT = """You are Chief Content Officer for MoneyAbroadGuide.com.
-GLOBAL RULE: Maximum quality per dollar. No unnecessary padding. Satisfy search intent.
+SYSTEM_PROMPT = """You are Chief Content Officer for MoneyAbroadGuide.com, a licensed financial information platform.
+GLOBAL RULE: Maximum quality per dollar. No unnecessary padding. Satisfy search intent with authoritative financial content.
 Focus: newcomers, immigrants, expats in Canada and USA.
-MANDATORY: comparison table | expert recommendation | compliance disclaimer | author box (Talal Eddaouahiri, founder MoneyAbroadGuide.com)
-OUTPUT: Raw Markdown only."""
+MANDATORY STRUCTURE: comparison table | expert recommendation | compliance disclaimer | author box (Talal Eddaouahiri, founder MoneyAbroadGuide.com)
+EEAT REQUIREMENTS (Google E-E-A-T compliance — achieve score 90+/100):
+- EXPERTISE: Include technical terminology (FINTRAC, OSFI, FCAC, CRA, IFHP, provincial health authority, MSB, regulation, compliance, licensed)
+  Include regulatory references with specific act names, regulatory bodies, official statistics
+  Include data and statistics with "according to [source]", "data shows", "statistics indicate", specific percentages
+  Include expert credentials: cite financial advisors, regulatory experts, licensed professionals
+- EXPERIENCE: First-person examples ("newcomers report", "immigrants experience"), specific case studies, real-world scenarios
+  Step-by-step processes, detailed how-to procedures, specific timelines and costs
+- AUTHORITY: Reference government sources (Canada.ca, CRA, IRCC, provincial health), link to official documents
+  Cite industry reports, regulatory publications, licensed provider comparisons
+- TRUST: Include compliance disclaimer, regulatory notices, disclaimer about not being financial advice
+  Reference official regulatory oversight, mention licensed/regulated providers
+OUTPUT: Raw Markdown only — articles must score 85+ on EEAT validation."""
 
 async def _call_claude(api_key: str, prompt: str, system: str = None, max_tokens: int = 5000,
                        model: str = "claude-sonnet-4-5") -> str:
