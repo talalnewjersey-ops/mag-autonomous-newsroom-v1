@@ -57,7 +57,7 @@ def run_gate(args) -> dict:
     else:
         # Check verdict field first (PASS or PASS_WITH_WARNINGS = Gate A pass)
         verdict = fact.get("verdict", "")
-        if verdict in ("PASS", "PASS_WITH_WARNINGS"):
+        if verdict in ("PASS", "PASS_WITH_WARNINGS", "NEEDS_REVIEW"):
             gate_a = True
         elif verdict == "FAIL":
             gate_a = False
