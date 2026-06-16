@@ -1,4 +1,4 @@
-"""NEXUS-14 V3.4 Agent 10: Image Production Agent
+"""NEXUS-14 V3.5 Agent 10: Image Production Agent
 MoneyAbroadGuide Autonomous Newsroom
 
 Generates images using Gemini Imagen or Nano Banana.
@@ -7,6 +7,9 @@ V3.2: Added _create_placeholder() that generates a real PNG when all API calls f
       ensuring at least 5 images are available for WordPress upload.
 V3.3: Optimized PNG generation to use fast bytearray instead of slow Python pixel loop.
 V3.4: Fixed image_validation_report.json output, Gate 18 quality thresholds, padding to 5 images.
+V3.5: CRITICAL FIX — Replaced Imagen 3 :predict endpoints (Vertex AI only, returned 404) with
+      Gemini 2.0 Flash generateContent API (Google AI Studio compatible). Fixed payload and
+      response parsing for generateContent format.
 Uploads images to WordPress Media Library (NOT S3).
 
 V3 ARCHITECTURE — IMAGE HOSTING:
@@ -45,15 +48,16 @@ logger = logging.getLogger(__name__)
 # Supported image generation APIs
 IMAGE_APIS = {
     "gemini_imagen": {
-        # Primary: Imagen 3 GA model (updated from imagen-3.0-generate-001 which returned 404)
-        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict",
+        # V3.5 FIX: Gemini 2.0 Flash image generation via generateContent (Google AI Studio compatible)
+        # Replaces Imagen 3 :predict endpoints which require Vertex AI (not AI Studio)
+        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent",
         "auth_header": "x-goog-api-key",
         "max_retries": 3,
         "timeout": 60,
     },
     "gemini_imagen_v1": {
-        # Fallback: Original Imagen 3 endpoint (v1beta)
-        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict",
+        # V3.5 FIX: Gemini 2.0 Flash exp fallback (also AI Studio compatible)
+        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent",
         "auth_header": "x-goog-api-key",
         "max_retries": 2,
         "timeout": 60,
@@ -380,17 +384,28 @@ class ImageProductionAgent:
         timeout = aiohttp.ClientTimeout(total=api["timeout"])
 
         if api_name in ("gemini_imagen", "gemini_imagen_v1"):
+            # V3.5 FIX: Use generateContent API (Google AI Studio compatible)
+            # Replaces Vertex AI :predict payload format that caused HTTP 404
             payload = {
-                "instances": [{"prompt": prompt}],
-                "parameters": {"sampleCount": 1, "negativePrompt": neg_prompt, "aspectRatio": prompt_data.get("aspect_ratio", "16:9")},
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
             }
             headers = {api["auth_header"]: key, "Content-Type": "application/json"}
             async with self._session.post(api["endpoint"], json=payload, headers=headers, timeout=timeout) as resp:
                 if resp.status != 200:
-                    raise Exception(f"Gemini API error: {resp.status}")
+                    error_text = await resp.text()
+                    raise Exception(f"Gemini API error: {resp.status} {error_text[:200]}")
                 data = await resp.json()
-                img_b64 = data["predictions"][0]["bytesBase64Encoded"]
-                return await self._save_base64_image(img_b64, output_dir, img_type, fmt, prompt_data)
+                # generateContent response: candidates[0].content.parts[] — find the IMAGE part
+                parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                img_part = next((p for p in parts if "inlineData" in p), None)
+                if not img_part:
+                    raise Exception(f"Gemini generateContent: no image in response. Parts: {[list(p.keys()) for p in parts]}")
+                img_b64 = img_part["inlineData"]["data"]
+                # Override format from mime type if present
+                mime = img_part["inlineData"].get("mimeType", "image/jpeg")
+                fmt_override = mime.split("/")[-1] if "/" in mime else fmt
+                return await self._save_base64_image(img_b64, output_dir, img_type, fmt_override, prompt_data)
 
         elif api_name == "openai_dalle":
             w, h = (dims.split("x") + ["512", "512"])[:2]
