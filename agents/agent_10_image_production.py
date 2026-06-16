@@ -1,4 +1,4 @@
-"""NEXUS-14 V3.5 Agent 10: Image Production Agent
+"""NEXUS-14 V3.6 Agent 10: Image Production Agent
 MoneyAbroadGuide Autonomous Newsroom
 
 Generates images using Gemini Imagen or Nano Banana.
@@ -10,6 +10,9 @@ V3.4: Fixed image_validation_report.json output, Gate 18 quality thresholds, pad
 V3.5: CRITICAL FIX — Replaced Imagen 3 :predict endpoints (Vertex AI only, returned 404) with
       Gemini 2.0 Flash generateContent API (Google AI Studio compatible). Fixed payload and
       response parsing for generateContent format.
+V3.6: CRITICAL FIX #2 — Corrected model names: gemini-2.0-flash-preview-image-generation does NOT
+      exist on v1beta. Correct model: gemini-2.0-flash-exp-image-generation (v1beta). Also
+      trying gemini-2.0-flash-thinking-exp as fallback.
 Uploads images to WordPress Media Library (NOT S3).
 
 V3 ARCHITECTURE — IMAGE HOSTING:
@@ -48,16 +51,16 @@ logger = logging.getLogger(__name__)
 # Supported image generation APIs
 IMAGE_APIS = {
     "gemini_imagen": {
-        # V3.5 FIX: Gemini 2.0 Flash image generation via generateContent (Google AI Studio compatible)
-        # Replaces Imagen 3 :predict endpoints which require Vertex AI (not AI Studio)
-        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent",
+        # V3.6 FIX: Correct Gemini image generation model name for Google AI Studio
+        # gemini-2.0-flash-exp-image-generation (NOT preview) — supports generateContent with IMAGE responseModality
+        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent",
         "auth_header": "x-goog-api-key",
         "max_retries": 3,
         "timeout": 60,
     },
     "gemini_imagen_v1": {
-        # V3.5 FIX: Gemini 2.0 Flash exp fallback (also AI Studio compatible)
-        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent",
+        # V3.6 FIX: Correct fallback model that supports image output
+        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent",
         "auth_header": "x-goog-api-key",
         "max_retries": 2,
         "timeout": 60,
