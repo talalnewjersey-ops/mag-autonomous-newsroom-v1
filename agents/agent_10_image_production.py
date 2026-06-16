@@ -170,29 +170,10 @@ class ImageProductionAgent:
                 if r["status"] != "SUCCESS":
                     failed.append("table_visual")
 
-        # Guarantee minimum 5 images - add padding placeholders if needed
-        EXTRA_TYPES = ["comparison", "process", "checklist", "visualization", "topic"]
-        all_so_far = self._collect_all(results)
-        extra_idx = 0
-        while len([r for r in all_so_far if r.get("status") == "SUCCESS"]) < min_images and extra_idx < len(EXTRA_TYPES):
-            pad_type = EXTRA_TYPES[extra_idx]
-            extra_idx += 1
-            pad_prompt = {"prompt": f"Professional finance guide {pad_type} graphic", "alt_text": f"{pad_type} image", "caption": f"MoneyAbroadGuide {pad_type}", "description": ""}
-            pad_result = self._create_placeholder(pad_prompt, images_dir, pad_type, "padding")
-            if pad_result["status"] == "SUCCESS" and self._wp_auth and self.wp_media_endpoint:
-                try:
-                    wp_r = await self._upload_to_wordpress(filepath=pad_result["filepath"], alt_text=pad_prompt["alt_text"], title=pad_prompt["caption"])
-                    pad_result["wordpress_media_id"] = wp_r.get("id")
-                    pad_result["wordpress_url"] = wp_r.get("source_url", "")
-                    logger.info(f"Uploaded {pad_type} to WordPress: ID={wp_r.get('id')}")
-                except Exception as e:
-                    logger.warning(f"WordPress upload failed for {pad_type}: {e}")
-            if not results.get("secondary_images"):
-                results["secondary_images"] = []
-            results["secondary_images"].append(pad_result)
-            all_so_far = self._collect_all(results)
-
-        # Build production report
+        # V3.8: Padding placeholder loop DISABLED — every image must be a real Gemini image
+        # If Gemini fails to generate an image, Gate 18 will FAIL the article
+        # No placeholder PNGs, no dummy graphics, no fallback images
+                # Build production report
         report = self._build_report(results, failed, images_dir, start_time)
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         (Path(output_dir) / "image_production_report.json").write_text(
@@ -506,21 +487,24 @@ class ImageProductionAgent:
             filepath.write_bytes(png_data)
             
             file_size = filepath.stat().st_size
-            logger.info(f"Generated placeholder PNG for {img_type}: {filename} ({file_size} bytes)")
-            
+            logger.error(f"Gemini image generation FAILED for {img_type}: {error}")
+            logger.error(f"PLACEHOLDER GENERATION DISABLED — article will FAIL per production rules")
+            # V3.8: Placeholder images DISABLED — every image must be a real Gemini image
+            # If Gemini fails, return FAILED so the article is rejected at Gate 18
             return {
-                "status": "SUCCESS",
+                "status": "FAILED",
                 "type": img_type,
-                "filename": filename,
-                "filepath": str(filepath),
-                "file_size_bytes": file_size,
-                "format": "png",
+                "filename": None,
+                "filepath": None,
+                "file_size_bytes": 0,
+                "format": None,
                 "alt_text": prompt_data.get("alt_text", f"{img_type} image"),
                 "caption": prompt_data.get("caption", f"MoneyAbroadGuide {img_type}"),
                 "description": prompt_data.get("description", ""),
                 "generated_at": datetime.now().isoformat(),
-                "is_placeholder": True,
+                "is_placeholder": False,
                 "api_error": error,
+                "error": f"Gemini image generation failed: {error}",
             }
         except Exception as e:
             logger.error(f"Failed to create placeholder PNG for {img_type}: {e}")
