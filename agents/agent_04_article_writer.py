@@ -13,17 +13,17 @@ from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
-PILLAR_MIN_WORDS = 4500
-PILLAR_TARGET_WORDS = 5000
-PILLAR_MAX_WORDS = 5000
+PILLAR_MIN_WORDS = 3800
+PILLAR_TARGET_WORDS = 4200
+PILLAR_MAX_WORDS = 4200
 PILLAR_MIN_FAQS = 12
 PILLAR_MIN_SOURCES = 6
 PILLAR_MIN_INTERNAL_LINKS = 8
 PILLAR_MIN_CASE_STUDIES = 3
 
-STANDARD_MIN_WORDS = 4000
-STANDARD_TARGET_WORDS = 4500
-STANDARD_MAX_WORDS = 4500
+STANDARD_MIN_WORDS = 3500
+STANDARD_TARGET_WORDS = 4000
+STANDARD_MAX_WORDS = 4000
 STANDARD_MIN_FAQS = 10
 STANDARD_MIN_SOURCES = 4
 STANDARD_MIN_INTERNAL_LINKS = 3
@@ -193,7 +193,7 @@ EEAT REQUIREMENTS (Google E-E-A-T compliance — achieve score 90+/100):
 OUTPUT: Raw Markdown only — articles must score 85+ on EEAT validation."""
 
 async def _call_claude(api_key: str, prompt: str, system: str = None, max_tokens: int = 5000,
-                       model: str = "claude-sonnet-4-5") -> str:
+                       model: str = "claude-haiku-4-5") -> str:
     import urllib.request
     payload_dict = {"model": model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]}
     if system:
@@ -303,7 +303,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
         f"Write FAQ section for: {keyword} ({market}). {target_faqs} questions (minimum {min_faqs}).\n"
         f"### [Question?] format. 80-150w answers. MUST produce at least {min_faqs} ### headings ending with ?",
         SYSTEM_PROMPT, max_tokens=target_faqs * 280)
-    faq = await _ensure_faq_count(faq, keyword, market, target_audience, api_key, min_faqs, target_faqs)
+    # FAQ overflow loop removed - cost control v5.1
 
     closing = await _call_claude(api_key,
         f"Write 3 sections for: {title}\n"
