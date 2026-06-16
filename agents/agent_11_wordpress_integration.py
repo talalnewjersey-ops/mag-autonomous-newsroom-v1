@@ -1,9 +1,8 @@
 """
-NEXUS-14: Agent 11 - WordPress Integration Agent v2.0
-P1 FIX: Removed hardcoded fallback post_id=46809.
-Publication FAILS if WordPress draft is not actually created.
-Gate 15 requires a real new post_id from this run.
-No hardcoded IDs. No silent fallbacks. Hard fail on WP error.
+NEXUS-14: Agent 11 - WordPress Integration Agent v3.0
+FIX: Replaced hardcoded paths with workflow-provided paths via config.
+FIX: Added pre-publish validation gate — blocks empty drafts.
+FIX: Gate C now requires title + content + featured_media, not just post_id.
 """
 
 import asyncio
@@ -20,6 +19,7 @@ from services.storage_service import StorageService
 from services.wordpress_service import WordPressService
 
 logger = logging.getLogger(__name__)
+
 
 class WordPressIntegrationAgent(BaseAgent):
     AGENT_ID = "agent_11"
@@ -38,62 +38,164 @@ class WordPressIntegrationAgent(BaseAgent):
         try:
             article_data = await self._load_article_data()
             images_data = await self._load_images_data()
+
+            # PRE-PUBLISH VALIDATION GATE — block empty drafts
+            title = article_data.get("title", "").strip()
+            content_raw = article_data.get("content", "")
+            content_chars = len(content_raw)
+            content_words = len(content_raw.split()) if content_raw else 0
+
+            if not title or title == "Untitled Article":
+                raise ValueError(f"PRE-PUBLISH GATE FAIL: title is empty or default (got: '{title}')")
+            if content_chars < 5000:
+                raise ValueError(f"PRE-PUBLISH GATE FAIL: content too short — {content_chars} chars < 5000 minimum")
+            if content_words < 4000:
+                raise ValueError(f"PRE-PUBLISH GATE FAIL: word count too low — {content_words} words < 4000 minimum")
+
+            logger.info(f"PRE-PUBLISH GATE PASS: title='{title}' chars={content_chars} words={content_words}")
+
             html_content = await self._convert_to_html(article_data)
             html_with_faq = await self._add_faq_schema(html_content, article_data)
             html_final = await self._add_affiliate_blocks(html_with_faq, article_data)
             uploaded_images = await self._upload_images(images_data)
             html_with_images = await self._insert_images_in_content(html_final, uploaded_images)
             wp_post = await self._create_wordpress_draft(article_data, html_with_images, uploaded_images)
-            await self._set_author(wp_post.get("id"))
-            await self._set_seo_metadata(wp_post.get("id"), article_data)
+
+            post_id = wp_post.get("id")
+            featured_id = uploaded_images[0].get("wp_media_id") if uploaded_images else None
+
+            # GATE C: post_id + title + content + featured_media all required
+            if not post_id:
+                raise ValueError("GATE C FAIL: no post_id returned from WordPress")
+            if not featured_id:
+                raise ValueError(f"GATE C FAIL: featured_media is null — post_id={post_id} will not be counted as produced")
+
+            logger.info(f"GATE C PASS: post_id={post_id} featured_media={featured_id}")
+
+            await self._set_author(post_id)
+            await self._set_seo_metadata(post_id, article_data)
+
             wp_report = {
-                "agent": self.AGENT_NAME, "timestamp": datetime.utcnow().isoformat(),
-                "title": article_data.get("title", ""), "keyword": article_data.get("keyword", ""),
-                "post_id": wp_post.get("id"), "post_url": wp_post.get("link", ""),
-                "post_status": "draft", "has_author": True, "has_author_bio": True,
-                "has_faq": True, "uploaded_images": uploaded_images,
-                "featured_image_id": uploaded_images[0].get("id") if uploaded_images else None,
-                "image_count": len(uploaded_images), "word_count": article_data.get("word_count", 0),
-                "seo_title": article_data.get("seo_title", article_data.get("title", "")),
+                "agent": self.AGENT_NAME,
+                "timestamp": datetime.utcnow().isoformat(),
+                "title": title,
+                "keyword": article_data.get("keyword", ""),
+                "post_id": post_id,
+                "post_url": wp_post.get("link", ""),
+                "post_status": "draft",
+                "has_author": True,
+                "has_author_bio": True,
+                "has_faq": True,
+                "uploaded_images": uploaded_images,
+                "featured_image_id": featured_id,
+                "image_count": len(uploaded_images),
+                "word_count": content_words,
+                "content_chars": content_chars,
+                "seo_title": article_data.get("seo_title", title),
                 "meta_description": article_data.get("meta_description", ""),
-                "hardcoded_fallback_used": False
+                "hardcoded_fallback_used": False,
             }
             output_path = await self.save_output("wordpress_report.json", wp_report)
-            self.log_complete({"post_id": wp_post.get("id")})
+            self.log_complete({"post_id": post_id})
             return wp_report
         except Exception as e:
             self.log_error(e)
             raise
 
     async def _load_article_data(self):
+        """
+        Load article content using the path supplied via config['article_path'].
+        This is set by main() from the --article CLI argument.
+        Falls back to legacy hardcoded paths only if config path is not set.
+        """
         import os
         data = {}
-        for path in ["output/agent_04/article_draft.md", "output/article_draft.md"]:
-            if os.path.exists(path):
-                with open(path) as f:
+
+        # PRIMARY: use path passed by workflow via --article argument
+        article_path = self.config.get("article_path", "")
+
+        # FALLBACK: legacy paths (last resort — should never be needed)
+        candidates = ([article_path] if article_path else []) + [
+            "output/agent_04/article_draft.md",
+            "output/article_draft.md",
+        ]
+
+        loaded_path = None
+        for path in candidates:
+            if path and os.path.exists(path):
+                loaded_path = path
+                with open(path, encoding="utf-8") as f:
                     data["content"] = f.read()
                 data["word_count"] = len(data["content"].split())
+                logger.info(f"Loaded article from: {path} ({len(data['content'])} chars, {data['word_count']} words)")
+                # Extract YAML frontmatter fields
+                tm = re.search(r'^title:s*"?([^"\n]+)"?', data["content"], re.MULTILINE)
+                if tm:
+                    data["title"] = tm.group(1).strip()
+                    logger.info(f"Title extracted: {data['title']}")
+                km = re.search(r'^primary_keyword:s*"?([^"\n]+)"?', data["content"], re.MULTILINE)
+                if km:
+                    data["keyword"] = km.group(1).strip()
                 break
-        for path in ["output/agent_04/article_metadata.json"]:
-            if os.path.exists(path):
-                with open(path) as f:
-                    data.update(json.load(f))
-                break
-        for path in ["output/agent_03/article_outline.json"]:
-            if os.path.exists(path):
-                with open(path) as f:
+
+        if not loaded_path:
+            raise FileNotFoundError(
+                f"Article file not found. Tried: {candidates}. "
+                f"article_path from config='{article_path}'"
+            )
+
+        # Load article_metadata.json from same directory
+        if loaded_path:
+            meta_path = os.path.join(os.path.dirname(loaded_path), "article_metadata.json")
+            if os.path.exists(meta_path):
+                with open(meta_path, encoding="utf-8") as f:
+                    meta = json.load(f)
+                # metadata fields complement but do NOT overwrite already-extracted content
+                for k, v in meta.items():
+                    if k not in data or not data[k]:
+                        data[k] = v
+                logger.info(f"Loaded metadata from: {meta_path}")
+
+        # Load outline from sibling agent_03 directory for title/meta fallback
+        if loaded_path:
+            outline_path = loaded_path.replace(
+                "agent_04/article_draft.md",
+                "agent_03/article_outline.json"
+            )
+            if os.path.exists(outline_path):
+                with open(outline_path, encoding="utf-8") as f:
                     outline = json.load(f)
-                data["title"] = data.get("title") or outline.get("title", "")
-                data["meta_description"] = data.get("meta_description") or outline.get("meta_description", "")
-                break
+                data.setdefault("title", outline.get("title", ""))
+                data.setdefault("meta_description", outline.get("meta_description", ""))
+                data.setdefault("keyword", outline.get("primary_keyword", ""))
+                logger.info(f"Loaded outline from: {outline_path} — title='{data.get('title','')}'")
+
         return data
 
     async def _load_images_data(self):
+        """
+        Load generated images report using the directory supplied via config['images_dir'].
+        This is set by main() from the --images CLI argument.
+        """
         import os
-        p = "output/agent_10/generated_images_report.json"
-        if os.path.exists(p):
-            with open(p) as f:
-                return json.load(f).get("images", [])
+
+        # PRIMARY: use directory passed by workflow via --images argument
+        images_dir = self.config.get("images_dir", "")
+
+        candidates = []
+        if images_dir:
+            candidates.append(os.path.join(images_dir, "generated_images_report.json"))
+        # FALLBACK: legacy path
+        candidates.append("output/agent_10/generated_images_report.json")
+
+        for p in candidates:
+            if os.path.exists(p):
+                with open(p, encoding="utf-8") as f:
+                    images = json.load(f).get("images", [])
+                logger.info(f"Loaded {len(images)} images from: {p}")
+                return images
+
+        logger.warning(f"No images report found. Tried: {candidates}")
         return []
 
     async def _convert_to_html(self, article_data):
@@ -120,22 +222,29 @@ class WordPressIntegrationAgent(BaseAgent):
 
     async def _add_affiliate_blocks(self, html, article_data):
         import os
-        p = "output/agent_08/affiliate_report.json"
-        if not os.path.exists(p):
-            return html
-        try:
-            with open(p) as f:
-                recs = json.load(f).get("recommendations", [])[:3]
-            if recs:
-                aff = '<div class="mag-affiliate-box"><p><em>Affiliate disclosure: We earn a commission at no cost to you.</em></p>'
-                for r in recs:
-                    aff += f'<p><strong>{r.get("name","")}</strong>: {r.get("description","")} <a href="{r.get("url","#")}" rel="nofollow sponsored" target="_blank">Learn More</a></p>'
-                aff += '</div>'
-                pos = html.find('</h2>')
-                if pos > 0:
-                    html = html[:pos+5] + aff + html[pos+5:]
-        except Exception as e:
-            logger.warning(f"Affiliate blocks failed: {e}")
+        images_dir = self.config.get("images_dir", "")
+        article_path = self.config.get("article_path", "")
+        # Derive affiliate path from article directory
+        affiliate_path = ""
+        if article_path:
+            affiliate_path = article_path.replace("agent_04/article_draft.md", "agent_08/affiliate_report.json")
+        candidates = ([affiliate_path] if affiliate_path else []) + ["output/agent_08/affiliate_report.json"]
+        for p in candidates:
+            if p and os.path.exists(p):
+                try:
+                    with open(p) as f:
+                        recs = json.load(f).get("recommendations", [])[:3]
+                    if recs:
+                        aff = '<div class="mag-affiliate-box"><p><em>Affiliate disclosure: We earn a commission at no cost to you.</em></p>'
+                        for r in recs:
+                            aff += f'<p><strong>{r.get("name","")}</strong>: {r.get("description","")} <a href="{r.get("url","#")}" rel="nofollow sponsored" target="_blank">Learn More</a></p>'
+                        aff += '</div>'
+                        pos = html.find('</h2>')
+                        if pos > 0:
+                            html = html[:pos+5] + aff + html[pos+5:]
+                except Exception as e:
+                    logger.warning(f"Affiliate blocks failed: {e}")
+                break
         return html
 
     async def _upload_images(self, images_data):
@@ -145,10 +254,20 @@ class WordPressIntegrationAgent(BaseAgent):
                 import os
                 p = image.get("local_path", "")
                 if os.path.exists(p):
-                    result = await self.wp.upload_image(file_path=p, title=image.get("title", f"Image {i+1}"), alt_text=image.get("alt_text", ""), description=image.get("description", ""))
-                    uploaded.append({**image, "wp_media_id": result.get("id"), "wp_url": result.get("source_url", ""), "uploaded": True})
+                    result = await self.wp.upload_image(
+                        file_path=p,
+                        title=image.get("title", f"Image {i+1}"),
+                        alt_text=image.get("alt_text", ""),
+                        description=image.get("description", ""),
+                    )
+                    wp_id = result.get("id")
+                    logger.info(f"Uploaded image {i+1}: wp_media_id={wp_id}")
+                    uploaded.append({**image, "wp_media_id": wp_id, "wp_url": result.get("source_url", ""), "uploaded": True})
+                else:
+                    logger.warning(f"Image {i+1} local_path not found: {p}")
+                    uploaded.append({**image, "uploaded": False, "error": "local_path not found"})
             except Exception as e:
-                logger.warning(f"Image {i+1} failed: {e}")
+                logger.warning(f"Image {i+1} upload failed: {e}")
                 uploaded.append({**image, "uploaded": False, "error": str(e)})
         return uploaded
 
@@ -160,15 +279,20 @@ class WordPressIntegrationAgent(BaseAgent):
         slug = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-')
         featured_image_id = images[0].get("wp_media_id") if images else None
         post_data = {
-            "title": title, "content": html_content, "status": "draft",
-            "slug": slug[:100], "categories": await self._resolve_category_ids(["expat-banking"]),
-            "featured_media": featured_image_id, "author": 1,
+            "title": title,
+            "content": html_content,
+            "status": "draft",
+            "slug": slug[:100],
+            "categories": await self._resolve_category_ids(["expat-banking"]),
+            "featured_media": featured_image_id,
+            "author": 1,
             "meta": {
                 "_yoast_wpseo_title": article_data.get("seo_title", title),
                 "_yoast_wpseo_metadesc": article_data.get("meta_description", ""),
-                "_yoast_wpseo_focuskw": article_data.get("keyword", "")
-            }
+                "_yoast_wpseo_focuskw": article_data.get("keyword", ""),
+            },
         }
+        logger.info(f"Creating WordPress draft: title='{title}' content_chars={len(html_content)} featured_media={featured_image_id}")
         try:
             return await self.wp.create_post(post_data)
         except Exception as e:
@@ -226,26 +350,26 @@ def _write_failure_reports(output_path, val_path_str, title, keyword, word_count
     from pathlib import Path
     from datetime import datetime
     fail = {
-        "agent": "agent_11_wordpress_integration", "version": "2.0",
+        "agent": "agent_11_wordpress_integration", "version": "3.0",
         "timestamp": datetime.utcnow().isoformat(), "status": "FAILED",
         "title": title, "keyword": keyword, "post_id": None, "post_url": "",
         "draft_url": "", "draft_created": False, "post_status": "not_created",
         "has_author": False, "has_author_bio": False, "word_count": word_count,
         "uploaded_images": [], "image_count": 0, "featured_image_id": None,
         "author_assigned": False, "author_bio_inserted": False,
-        "featured_image_set": False, "hardcoded_fallback_used": False, "error": error_msg
+        "featured_image_set": False, "hardcoded_fallback_used": False, "error": error_msg,
     }
     output_path.write_text(json.dumps(fail, indent=2), encoding="utf-8")
     vp = Path(val_path_str) if val_path_str else output_path.parent / "wordpress_validation_report.json"
     vp.parent.mkdir(parents=True, exist_ok=True)
     vp.write_text(json.dumps({
-        "agent": "agent_11_wordpress_integration", "version": "2.0",
+        "agent": "agent_11_wordpress_integration", "version": "3.0",
         "timestamp": datetime.utcnow().isoformat(), "status": "FAILED",
         "validation_passed": False, "post_created": False, "draft_created": False,
         "post_id": None, "draft_url": "", "author_assigned": False,
         "author_bio_inserted": False, "featured_image_set": False,
         "hardcoded_fallback_used": False, "error": error_msg,
-        "checks": {"wordpress_credentials": False, "new_post_created": False}
+        "checks": {"wordpress_credentials": False, "new_post_created": False},
     }, indent=2), encoding="utf-8")
 
 
@@ -256,7 +380,7 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [AGENT-11] %(levelname)s %(message)s")
     log = logging.getLogger(__name__)
 
-    parser = argparse.ArgumentParser(description="Agent 11 - WordPress Integration v2.0")
+    parser = argparse.ArgumentParser(description="Agent 11 - WordPress Integration v3.0")
     parser.add_argument("--article", required=True)
     parser.add_argument("--images", required=True)
     parser.add_argument("--rank-math", required=False, default="")
@@ -273,82 +397,113 @@ def main():
     wp_pass = os.environ.get("WORDPRESS_APP_PASSWORD", "")
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
 
-    title, keyword, word_count = "Article", "", 0
-    if article_path.exists():
-        content = article_path.read_text(encoding="utf-8")
-        word_count = len(content.split())
-        import re
-        tm = re.search(r'title:\s*"?([^"\n]+)"?', content)
-        if tm: title = tm.group(1).strip()
-        km = re.search(r'primary_keyword:\s*"?([^"\n]+)"?', content)
-        if km: keyword = km.group(1).strip()
-    else:
+    if not article_path.exists():
         log.error(f"Article not found: {article_path}")
         sys.exit(1)
 
     if not wp_url or not wp_user or not wp_pass:
         log.error("BLOCKED: WordPress credentials missing")
-        _write_failure_reports(output_path, args.validation_report, title, keyword, word_count, "MISSING_WP_CREDENTIALS")
+        _write_failure_reports(output_path, args.validation_report, "", "", 0, "MISSING_WP_CREDENTIALS")
         sys.exit(1)
 
-    post_id, post_url, wp_status = None, "", "FAILED"
+    # Read article for pre-flight metadata extraction (used in failure reports)
+    content_raw = article_path.read_text(encoding="utf-8")
+    import re
+    title = ""
+    keyword = ""
+    tm = re.search(r'^title:\s*"?([^"\n]+)"?', content_raw, re.MULTILINE)
+    if tm: title = tm.group(1).strip()
+    km = re.search(r'^primary_keyword:\s*"?([^"\n]+)"?', content_raw, re.MULTILINE)
+    if km: keyword = km.group(1).strip()
+    word_count = len(content_raw.split())
+    content_chars = len(content_raw)
+
+    log.info(f"Article pre-flight: title='{title}' words={word_count} chars={content_chars} path={article_path}")
+
+    post_id, post_url = None, ""
     try:
-        import asyncio
         from services.wordpress_service import WordPressService
         from services.llm_service import LLMService
         from services.storage_service import StorageService
 
         config = {
-            "wordpress_url": wp_url, "wordpress_username": wp_user,
-            "wordpress_app_password": wp_pass, "anthropic_api_key": api_key,
+            "wordpress_url": wp_url,
+            "wordpress_username": wp_user,
+            "wordpress_app_password": wp_pass,
+            "anthropic_api_key": api_key,
             "output_dir": str(output_path.parent),
-            "author": {"name": "Talal Eddaouahiri", "bio": "Founder of MoneyAbroadGuide.com"}
+            "author": {"name": "Talal Eddaouahiri", "bio": "Founder of MoneyAbroadGuide.com"},
+            # v3.0 FIX: pass workflow-provided paths into agent so _load_article_data() uses them
+            "article_path": str(article_path),
+            "images_dir": args.images,
         }
         agent = WordPressIntegrationAgent(
             config,
             LLMService({"anthropic_api_key": api_key, "llm_provider": "anthropic"}),
             StorageService({"output_dir": str(output_path.parent)}),
-            WordPressService(config)
+            WordPressService(config),
         )
         result = asyncio.run(agent.run())
         post_id = result.get("post_id")
         post_url = result.get("post_url", "")
-        wp_status = "COMPLETE" if post_id else "FAILED"
-        log.info(f"WP result: post_id={post_id}")
+        featured_id = result.get("featured_image_id")
+        wp_word_count = result.get("word_count", 0)
+        wp_content_chars = result.get("content_chars", 0)
+
+        log.info(f"WP result: post_id={post_id} featured_media={featured_id} words={wp_word_count} chars={wp_content_chars}")
+
     except Exception as e:
         log.error(f"WP integration failed: {e}")
         _write_failure_reports(output_path, args.validation_report, title, keyword, word_count, str(e))
         sys.exit(1)
 
+    # GATE C v3.0: post_id + title + content + featured_media all required
+    gate_errors = []
     if not post_id:
-        log.error("BLOCKED: No post_id. Gate 15 requires real WordPress draft.")
-        _write_failure_reports(output_path, args.validation_report, title, keyword, word_count, "WP_NO_POST_ID_RETURNED")
+        gate_errors.append("NO_POST_ID")
+    if not title:
+        gate_errors.append("EMPTY_TITLE")
+    if content_chars < 5000:
+        gate_errors.append(f"CONTENT_TOO_SHORT:{content_chars}_chars")
+    if word_count < 4000:
+        gate_errors.append(f"WORD_COUNT_TOO_LOW:{word_count}_words")
+
+    if gate_errors:
+        err = "GATE_C_FAIL: " + " | ".join(gate_errors)
+        log.error(err)
+        _write_failure_reports(output_path, args.validation_report, title, keyword, word_count, err)
         sys.exit(1)
 
+    log.info(f"GATE C PASS: post_id={post_id} title='{title}' chars={content_chars} words={word_count}")
+
     report = {
-        "agent": "agent_11_wordpress_integration", "version": "2.0",
-        "timestamp": datetime.utcnow().isoformat(), "status": wp_status,
-        "title": title, "keyword": keyword, "post_id": post_id, "post_url": post_url,
+        "agent": "agent_11_wordpress_integration", "version": "3.0",
+        "timestamp": datetime.utcnow().isoformat(), "status": "COMPLETE",
+        "title": title, "keyword": keyword,
+        "post_id": post_id, "post_url": post_url,
         "draft_url": post_url, "post_status": "draft", "draft_created": True,
-        "has_author": True, "has_author_bio": True, "has_faq": True,
-        "word_count": word_count, "uploaded_images": [], "image_count": 0,
-        "featured_image_id": None, "seo_title": title,
-        "meta_description": f"Guide to {keyword} for expats.",
-        "author_assigned": True, "author_bio_inserted": True, "featured_image_set": True,
-        "hardcoded_fallback_used": False
+        "word_count": word_count, "content_chars": content_chars,
+        "uploaded_images": [], "image_count": 0, "featured_image_id": None,
+        "seo_title": title, "meta_description": f"Guide to {keyword} for expats.",
+        "hardcoded_fallback_used": False,
     }
     output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
     vp = Path(args.validation_report) if args.validation_report else output_path.parent / "wordpress_validation_report.json"
     vp.parent.mkdir(parents=True, exist_ok=True)
     vp.write_text(json.dumps({
-        "agent": "agent_11_wordpress_integration", "version": "2.0",
-        "timestamp": datetime.utcnow().isoformat(), "status": wp_status,
+        "agent": "agent_11_wordpress_integration", "version": "3.0",
+        "timestamp": datetime.utcnow().isoformat(), "status": "COMPLETE",
         "validation_passed": True, "post_created": True, "draft_created": True,
         "post_id": post_id, "draft_url": post_url,
-        "author_assigned": True, "author_bio_inserted": True, "featured_image_set": True,
         "hardcoded_fallback_used": False,
-        "checks": {"wordpress_credentials": True, "new_post_created": True, "word_count_ok": word_count >= 5000}
+        "checks": {
+            "wordpress_credentials": True,
+            "new_post_created": True,
+            "title_valid": bool(title),
+            "content_length_ok": content_chars >= 5000,
+            "word_count_ok": word_count >= 4000,
+        },
     }, indent=2), encoding="utf-8")
 
     log.info(f"SUCCESS: post_id={post_id} url={post_url}")
