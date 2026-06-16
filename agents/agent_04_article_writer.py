@@ -303,7 +303,8 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
         f"Write FAQ section for: {keyword} ({market}). {target_faqs} questions (minimum {min_faqs}).\n"
         f"### [Question?] format. 80-150w answers. MUST produce at least {min_faqs} ### headings ending with ?",
         SYSTEM_PROMPT, max_tokens=target_faqs * 280)
-    # FAQ overflow loop removed - cost control v5.1
+    # Ensure minimum FAQ count — restore _ensure_faq_count (fixes FAQ validation failure)
+    faq = await _ensure_faq_count(faq, keyword, market, target_audience, api_key, min_faqs, target_faqs)
 
     closing = await _call_claude(api_key,
         f"Write 3 sections for: {title}\n"
