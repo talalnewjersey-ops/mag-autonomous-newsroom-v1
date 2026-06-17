@@ -35,7 +35,7 @@ NANO_KEY     = os.environ.get("NANO_BANANA_API_KEY", "")
 SENDGRID_KEY = os.environ.get("SENDGRID_API_KEY", "")
 WP_URL       = os.environ.get("WORDPRESS_URL", "https://moneyabroadguide.com").rstrip("/")
 WP_USER      = os.environ.get("WORDPRESS_USERNAME", "")
-WP_PASS      = os.environ.get("WORDPRESS_PASSWORD", "")
+WP_PASS      = os.environ.get("WORDPRESS_APP_PASSWORD", "") or os.environ.get("WORDPRESS_PASSWORD", "")
 EMAIL_TO     = os.environ.get("EMAIL_RECIPIENT", "")
 
 WP_CAT_USA    = 17  # Newcomers to the USA (confirmed WP ID)
