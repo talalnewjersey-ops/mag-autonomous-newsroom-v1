@@ -237,6 +237,10 @@ class WordPressIntegrationAgent(BaseAgent):
                     if recs:
                         aff = '<div class="mag-affiliate-box"><p><em>Affiliate disclosure: We earn a commission at no cost to you.</em></p>'
                         for r in recs:
+                            if isinstance(r, str):
+                                r = {"name": r}
+                            if not isinstance(r, dict):
+                                continue
                             aff += f'<p><strong>{r.get("name","")}</strong>: {r.get("description","")} <a href="{r.get("url","#")}" rel="nofollow sponsored" target="_blank">Learn More</a></p>'
                         aff += '</div>'
                         pos = html.find('</h2>')
