@@ -6,7 +6,7 @@ import requests
 
 WP_URL = os.environ.get("WORDPRESS_URL", "https://moneyabroadguide.com").rstrip("/")
 WP_USER = os.environ.get("WORDPRESS_USERNAME", "")
-WP_PASS = os.environ.get("WORDPRESS_PASSWORD", "")
+WP_PASS = os.environ.get("WORDPRESS_APP_PASSWORD", "") or os.environ.get("WORDPRESS_PASSWORD", "")
 
 print("=" * 60)
 print("WORDPRESS DIAGNOSTIC v2")
