@@ -29,38 +29,38 @@ jobs:
     strategy:
       fail-fast: false
       max-parallel: 2
-    matrix:
-      include:
-        - index: USA-01
-          topic: best way to send money from USA to Canada 2026
-          market: usa
-        - index: USA-02
-          topic: cheapest international money transfer services USA 2026
-          market: usa
-        - index: USA-03
-          topic: how to send money abroad from USA fast and cheap 2026
-          market: usa
-        - index: USA-04
-          topic: best bank wire transfer alternatives USA expats 2026
-          market: usa
-        - index: USA-05
-          topic: Wise vs Remitly vs Western Union USA comparison 2026
-          market: usa
-        - index: USA-06
-          topic: how to transfer large amounts of money internationally USA 2026
-          market: usa
-        - index: USA-07
-          topic: best apps to send money internationally from USA 2026
-          market: usa
-        - index: USA-08
-          topic: how to avoid high fees when sending money abroad USA 2026
-          market: usa
-        - index: USA-09
-          topic: sending money to Mexico from USA best services 2026
-          market: usa
-        - index: USA-10
-          topic: OFX vs Wise USA international money transfer review 2026
-          market: usa
+      matrix:
+        include:
+          - index: USA-01
+            topic: best way to send money from USA to Canada 2026
+            market: usa
+          - index: USA-02
+            topic: cheapest international money transfer services USA 2026
+            market: usa
+          - index: USA-03
+            topic: how to send money abroad from USA fast and cheap 2026
+            market: usa
+          - index: USA-04
+            topic: best bank wire transfer alternatives USA expats 2026
+            market: usa
+          - index: USA-05
+            topic: Wise vs Remitly vs Western Union USA comparison 2026
+            market: usa
+          - index: USA-06
+            topic: how to transfer large amounts of money internationally USA 2026
+            market: usa
+          - index: USA-07
+            topic: best apps to send money internationally from USA 2026
+            market: usa
+          - index: USA-08
+            topic: how to avoid high fees when sending money abroad USA 2026
+            market: usa
+          - index: USA-09
+            topic: sending money to Mexico from USA best services 2026
+            market: usa
+          - index: USA-10
+            topic: OFX vs Wise USA international money transfer review 2026
+            market: usa
 
     steps:
       - name: Checkout
@@ -106,38 +106,38 @@ jobs:
     strategy:
       fail-fast: false
       max-parallel: 2
-    matrix:
-      include:
-        - index: CAN-01
-          topic: best way to send money from Canada to USA 2026
-          market: canada
-        - index: CAN-02
-          topic: cheapest money transfer services Canada expats 2026
-          market: canada
-        - index: CAN-03
-          topic: how to send money abroad from Canada fast 2026
-          market: canada
-        - index: CAN-04
-          topic: best international wire transfer from Canada 2026
-          market: canada
-        - index: CAN-05
-          topic: Wise vs Remitly Canada money transfer comparison 2026
-          market: canada
-        - index: CAN-06
-          topic: how to transfer large sums internationally from Canada 2026
-          market: canada
-        - index: CAN-07
-          topic: best apps to send money internationally from Canada 2026
-          market: canada
-        - index: CAN-08
-          topic: how to avoid fees sending money abroad from Canada 2026
-          market: canada
-        - index: CAN-09
-          topic: sending money to Philippines from Canada best services 2026
-          market: canada
-        - index: CAN-10
-          topic: OFX vs Wise Canada international money transfer review 2026
-          market: canada
+      matrix:
+        include:
+          - index: CAN-01
+            topic: best way to send money from Canada to USA 2026
+            market: canada
+          - index: CAN-02
+            topic: cheapest money transfer services Canada expats 2026
+            market: canada
+          - index: CAN-03
+            topic: how to send money abroad from Canada fast 2026
+            market: canada
+          - index: CAN-04
+            topic: best international wire transfer from Canada 2026
+            market: canada
+          - index: CAN-05
+            topic: Wise vs Remitly Canada money transfer comparison 2026
+            market: canada
+          - index: CAN-06
+            topic: how to transfer large sums internationally from Canada 2026
+            market: canada
+          - index: CAN-07
+            topic: best apps to send money internationally from Canada 2026
+            market: canada
+          - index: CAN-08
+            topic: how to avoid fees sending money abroad from Canada 2026
+            market: canada
+          - index: CAN-09
+            topic: sending money to Philippines from Canada best services 2026
+            market: canada
+          - index: CAN-10
+            topic: OFX vs Wise Canada international money transfer review 2026
+            market: canada
 
     steps:
       - name: Checkout
