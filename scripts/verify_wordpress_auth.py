@@ -51,7 +51,7 @@ def separator(title=""):
 # ============================================================
 WP_URL_RAW = os.environ.get("WORDPRESS_URL", "")
 WP_USER    = os.environ.get("WORDPRESS_USERNAME", "")
-WP_PASS    = os.environ.get("WORDPRESS_PASSWORD", "")
+WP_PASS    = os.environ.get("WORDPRESS_APP_PASSWORD", "") or os.environ.get("WORDPRESS_PASSWORD", "")
 
 # Strip trailing slash and /wp-admin suffix if present
 WP_URL_CLEAN = WP_URL_RAW.rstrip("/")
