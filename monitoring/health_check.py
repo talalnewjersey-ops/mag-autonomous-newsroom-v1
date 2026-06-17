@@ -81,12 +81,12 @@ class HealthChecker:
         critical_vars = [
             "OPENAI_API_KEY",
             "WORDPRESS_URL",
-            "SENDGRID_API_KEY",
         ]
         # Optional vars (warn but don't fail)
         optional_vars = [
             "ANTHROPIC_API_KEY",
             "EMAIL_RECIPIENT",
+            "SENDGRID_API_KEY",
         ]
         
         missing_critical = [var for var in critical_vars if not os.environ.get(var)]
