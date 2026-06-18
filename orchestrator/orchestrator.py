@@ -35,19 +35,43 @@ from services.storage_service import StorageService
 
 logger = logging.getLogger("NEXUS14.Orchestrator")
 
-
 def _agent_display_name(agent, agent_id: str) -> str:
     """Return a human-readable agent name, tolerating legacy agents without AGENT_NAME."""
     return getattr(agent, "AGENT_NAME", None) or getattr(agent, "AGENT_ID", None) or type(agent).__name__ or agent_id
 
+def _construct_agent(agent_cls, **candidate_kwargs):
+    """Instantiate an agent passing only the kwargs its __init__ accepts.
+
+    Supports, transparently:
+    * BaseAgent constructors: __init__(self, config, llm_service, storage_service, ...)
+    * Legacy constructors: __init__(self, config=None)
+    * Constructors that accept **kwargs (everything is forwarded)
+
+    Uses inspect.signature() to filter the candidate kwargs down to the
+    names the target constructor actually declares, so passing a superset
+    of services never raises TypeError for agents that ignore them.
+    """
+    try:
+        sig = inspect.signature(agent_cls.__init__)
+    except (ValueError, TypeError):
+        # No introspectable signature: best-effort no-arg construction.
+        return agent_cls()
+
+    params = sig.parameters
+    accepts_var_kw = any(p.kind == p.VAR_KEYWORD for p in params.values())
+    if accepts_var_kw:
+        return agent_cls(**candidate_kwargs)
+
+    accepted = {k: v for k, v in candidate_kwargs.items() if k in params}
+    return agent_cls(**accepted)
 
 async def _invoke_agent(agent, context: Dict) -> Any:
     """Compatibility dispatch supporting BaseAgent and legacy agents.
 
     Handles, in order of preference:
-      * BaseAgent-style:        async def run(self, context=None)
-      * No-arg run:             def run(self) / async def run(self)
-      * Legacy callable agent:  agent(context) or agent()
+    * BaseAgent-style: async def run(self, context=None)
+    * No-arg run: def run(self) / async def run(self)
+    * Legacy callable agent: agent(context) or agent()
     Uses inspect.signature() to decide whether to pass the context argument,
     and awaits the result only when it is awaitable.
     """
@@ -76,7 +100,6 @@ async def _invoke_agent(agent, context: Dict) -> Any:
     if inspect.isawaitable(result):
         result = await result
     return result
-
 
 class Orchestrator:
     """
@@ -122,29 +145,47 @@ class Orchestrator:
         }
 
     def _init_agents(self):
-        """Initialize all 14 agents."""
-        agent_args = {
+        """Initialize all 14 agents.
+
+        Each agent is built via _construct_agent(), which filters the full
+        superset of available services down to the kwargs each constructor
+        actually accepts. This lets BaseAgent agents (config + services) and
+        legacy agents (config only) coexist without TypeError.
+        """
+        services = {
             "config": self.config,
             "llm_service": self.llm,
-            "storage_service": self.storage
+            "storage_service": self.storage,
+            "search_service": self.search,
+            "wordpress_service": self.wordpress,
+            "image_service": self.image_service,
+            "email_service": self.email,
         }
 
-        self.agents = {
-            "01": SEOResearchAgent(**agent_args, search_service=self.search),
-            "02": KeywordValidationAgent(**agent_args),
-            "03": ContentPlannerAgent(**agent_args),
-            "04": ArticleWriterAgent(**agent_args),
-            "05": FactCheckerAgent(**agent_args),
-            "06": EEATValidatorAgent(**agent_args),
-            "07": InternalLinkingAgent(**agent_args),
-            "08": AffiliateOptimizerAgent(**agent_args),
-            "09": ImagePromptGeneratorAgent(**agent_args),
-            "10": ImageProductionAgent(**agent_args, image_service=self.image_service),
-            "11": WordPressIntegrationAgent(**agent_args, wordpress_service=self.wordpress),
-            "12": QualityAssuranceAgent(**agent_args),
-            "13": ChiefEditorAgent(**agent_args, email_service=self.email),
-            "14": ProductionDirectorAgent(**agent_args, email_service=self.email)
+        agent_classes = {
+            "01": SEOResearchAgent,
+            "02": KeywordValidationAgent,
+            "03": ContentPlannerAgent,
+            "04": ArticleWriterAgent,
+            "05": FactCheckerAgent,
+            "06": EEATValidatorAgent,
+            "07": InternalLinkingAgent,
+            "08": AffiliateOptimizerAgent,
+            "09": ImagePromptGeneratorAgent,
+            "10": ImageProductionAgent,
+            "11": WordPressIntegrationAgent,
+            "12": QualityAssuranceAgent,
+            "13": ChiefEditorAgent,
+            "14": ProductionDirectorAgent,
         }
+
+        self.agents = {}
+        for agent_id, agent_cls in agent_classes.items():
+            try:
+                self.agents[agent_id] = _construct_agent(agent_cls, **services)
+            except Exception as e:
+                logger.error(f"Failed to construct Agent {agent_id} ({agent_cls.__name__}): {e}")
+                raise
 
         logger.info(f"Initialized {len(self.agents)} agents")
 
