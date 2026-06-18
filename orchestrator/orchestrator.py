@@ -29,7 +29,6 @@ from agents.agent_14_production_director import ProductionDirectorAgent
 from services.llm_service import LLMService
 from services.search_service import SearchService
 from services.wordpress_service import WordPressService
-from services.image_service import ImageService
 from services.email_service import EmailService
 from services.storage_service import StorageService
 
@@ -125,7 +124,6 @@ class Orchestrator:
         self.llm = LLMService(config)
         self.search = SearchService(config)
         self.wordpress = WordPressService(config)
-        self.image_service = ImageService(config)
         self.email = EmailService(config)
         self.storage = StorageService(config)
 
@@ -158,7 +156,6 @@ class Orchestrator:
             "storage_service": self.storage,
             "search_service": self.search,
             "wordpress_service": self.wordpress,
-            "image_service": self.image_service,
             "email_service": self.email,
         }
 
