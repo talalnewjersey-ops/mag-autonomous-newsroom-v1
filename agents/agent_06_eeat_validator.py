@@ -383,3 +383,77 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ---------------------------------------------------------------------------
+# NEXUS-14 compatibility: BaseAgent wrapper
+# Exposes EEATValidatorAgent so orchestrator can import and run this agent
+# via the standard BaseAgent interface (async run(context)).
+# Falls back silently (functions/CLI still work) if BaseAgent is unavailable.
+# ---------------------------------------------------------------------------
+try:
+    from agents.base_agent import BaseAgent
+
+    class EEATValidatorAgent(BaseAgent):
+        AGENT_ID = "agent_06"
+        AGENT_NAME = "EEAT Validator Agent"
+        VERSION = "3.0.0"
+
+        def __init__(self, config, llm_service=None, storage_service=None, **kwargs):
+            super().__init__(config, llm_service, storage_service, **kwargs)
+            self.threshold = float(config.get("eeat_threshold", 90))
+
+        def _resolve_article_path(self, context):
+            if context:
+                for key in ("article_path", "draft_path", "article_file", "draft_file"):
+                    val = context.get(key)
+                    if val and Path(val).exists():
+                        return str(val)
+                agent_results = [
+                    context.get("agent_04_result"),
+                    context.get("agent_05_result"),
+                ]
+                for res in agent_results:
+                    if isinstance(res, dict):
+                        for key in ("output_path", "article_path", "draft_path"):
+                            val = res.get(key)
+                            if val and Path(val).exists():
+                                return str(val)
+            for candidate in (
+                "output/agent_05/article_fact_checked.md",
+                "output/agent_04/article_draft.md",
+                "output/article_draft.md",
+            ):
+                if Path(candidate).exists():
+                    return candidate
+            return None
+
+        async def run(self, context=None):
+            self.log_start()
+            try:
+                article_path = self._resolve_article_path(context)
+                if not article_path:
+                    raise FileNotFoundError(
+                        "EEATValidatorAgent: no article draft found in context or output dirs"
+                    )
+                report = run_eeat_validation(
+                    article_path,
+                    str(self.output_dir),
+                    threshold=self.threshold,
+                )
+                self.log_complete({
+                    "verdict": report.get("verdict"),
+                    "score": report.get("total_eeat_score"),
+                })
+                return {
+                    "eeat_report": report,
+                    "verdict": report.get("verdict"),
+                    "total_eeat_score": report.get("total_eeat_score"),
+                    "output_path": str(self.output_dir / "eeat_report.json"),
+                }
+            except Exception as e:
+                self.log_error(e)
+                raise
+
+except ImportError:
+    pass
