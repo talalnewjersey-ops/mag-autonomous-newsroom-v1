@@ -4,6 +4,7 @@ Coordinates all 14 agents in the production pipeline.
 """
 
 import asyncio
+import inspect
 import json
 import logging
 from datetime import datetime
@@ -32,30 +33,71 @@ from services.image_service import ImageService
 from services.email_service import EmailService
 from services.storage_service import StorageService
 
-
 logger = logging.getLogger("NEXUS14.Orchestrator")
+
+
+def _agent_display_name(agent, agent_id: str) -> str:
+    """Return a human-readable agent name, tolerating legacy agents without AGENT_NAME."""
+    return getattr(agent, "AGENT_NAME", None) or getattr(agent, "AGENT_ID", None) or type(agent).__name__ or agent_id
+
+
+async def _invoke_agent(agent, context: Dict) -> Any:
+    """Compatibility dispatch supporting BaseAgent and legacy agents.
+
+    Handles, in order of preference:
+      * BaseAgent-style:        async def run(self, context=None)
+      * No-arg run:             def run(self) / async def run(self)
+      * Legacy callable agent:  agent(context) or agent()
+    Uses inspect.signature() to decide whether to pass the context argument,
+    and awaits the result only when it is awaitable.
+    """
+    runner = getattr(agent, "run", None)
+    if runner is None:
+        if callable(agent):
+            runner = agent
+        else:
+            raise AttributeError(
+                f"Agent {type(agent).__name__} exposes no run() method and is not callable"
+            )
+
+    try:
+        sig = inspect.signature(runner)
+        # Count positional params the runner can accept (excluding bound self).
+        accepts_context = any(
+            p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD, p.VAR_POSITIONAL)
+            for name, p in sig.parameters.items()
+        )
+    except (ValueError, TypeError):
+        # Builtins / C-callables without introspectable signatures: assume context-accepting.
+        accepts_context = True
+
+    result = runner(context) if accepts_context else runner()
+
+    if inspect.isawaitable(result):
+        result = await result
+    return result
 
 
 class Orchestrator:
     """
     Main NEXUS-14 Orchestrator
-    
+
     Coordinates all 14 specialized agents through the complete
     content production pipeline from SEO research to WordPress publication.
-    
+
     Pipeline:
     01 SEO Research -> 02 Validation -> 03 Planning -> 04 Writing
     -> 05 Fact Check -> 06 EEAT -> 07 Linking -> 08 Affiliate
     -> 09 Image Prompts -> 10 Images -> 11 WordPress -> 12 QA
     -> 13 Chief Editor -> 14 Production Director
     """
-    
+
     def __init__(self, config: Dict):
         self.config = config
         self.run_id = f"nexus14_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-        
+
         logger.info(f"Initializing NEXUS-14 Orchestrator (Run ID: {self.run_id})")
-        
+
         # Initialize services
         self.llm = LLMService(config)
         self.search = SearchService(config)
@@ -63,10 +105,10 @@ class Orchestrator:
         self.image_service = ImageService(config)
         self.email = EmailService(config)
         self.storage = StorageService(config)
-        
+
         # Initialize agents
         self._init_agents()
-        
+
         # Pipeline state
         self.pipeline_state = {
             "run_id": self.run_id,
@@ -78,7 +120,7 @@ class Orchestrator:
             "articles_validated": [],
             "articles_rejected": []
         }
-    
+
     def _init_agents(self):
         """Initialize all 14 agents."""
         agent_args = {
@@ -86,7 +128,7 @@ class Orchestrator:
             "llm_service": self.llm,
             "storage_service": self.storage
         }
-        
+
         self.agents = {
             "01": SEOResearchAgent(**agent_args, search_service=self.search),
             "02": KeywordValidationAgent(**agent_args),
@@ -103,28 +145,28 @@ class Orchestrator:
             "13": ChiefEditorAgent(**agent_args, email_service=self.email),
             "14": ProductionDirectorAgent(**agent_args, email_service=self.email)
         }
-        
+
         logger.info(f"Initialized {len(self.agents)} agents")
-    
+
     async def run_full_pipeline(self) -> Dict:
         """Run the complete production pipeline."""
         self.pipeline_state["start_time"] = datetime.utcnow().isoformat()
-        
+
         logger.info("=" * 60)
-        logger.info("  NEXUS-14 FULL PIPELINE STARTING")
-        logger.info(f"  Run ID: {self.run_id}")
+        logger.info(" NEXUS-14 FULL PIPELINE STARTING")
+        logger.info(f" Run ID: {self.run_id}")
         logger.info("=" * 60)
-        
+
         try:
             # Stage 1: Research Phase
             context = {}
             context = await self._run_agent("01", context)
             context = await self._run_agent("02", context)
             context = await self._run_agent("03", context)
-            
+
             # Stage 2: Production Phase (for each validated topic)
             validated_topics = context.get("validated_topics", {}).get("topics", [])
-            
+
             for topic in validated_topics[:self.config.get("articles_per_batch", 5)]:
                 try:
                     article_context = {**context, "current_topic": topic}
@@ -133,23 +175,23 @@ class Orchestrator:
                 except Exception as e:
                     logger.error(f"Failed to produce article for '{topic.get('keyword')}': {e}")
                     self.pipeline_state["articles_rejected"].append(topic.get("keyword"))
-            
+
             # Stage 3: Quality & Publishing Phase
             context = await self._run_agent("14", context)
-            
+
             logger.info("=" * 60)
-            logger.info("  NEXUS-14 PIPELINE COMPLETE")
-            logger.info(f"  Articles produced: {len(self.pipeline_state['articles_produced'])}")
-            logger.info(f"  Articles rejected: {len(self.pipeline_state['articles_rejected'])}")
+            logger.info(" NEXUS-14 PIPELINE COMPLETE")
+            logger.info(f" Articles produced: {len(self.pipeline_state['articles_produced'])}")
+            logger.info(f" Articles rejected: {len(self.pipeline_state['articles_rejected'])}")
             logger.info("=" * 60)
-            
+
             return self.pipeline_state
-            
+
         except Exception as e:
             logger.critical(f"Pipeline failed: {e}", exc_info=True)
             self.pipeline_state["error"] = str(e)
             raise
-    
+
     async def _run_article_pipeline(self, context: Dict) -> Dict:
         """Run the article production pipeline for a single topic."""
         # Writing pipeline
@@ -158,22 +200,22 @@ class Orchestrator:
         context = await self._run_agent("06", context)
         context = await self._run_agent("07", context)
         context = await self._run_agent("08", context)
-        
+
         # Media pipeline (parallel with article)
         context = await self._run_agent("09", context)
         context = await self._run_agent("10", context)
-        
+
         # Integration & QA
         context = await self._run_agent("11", context)
         context = await self._run_agent("12", context)
-        
+
         # Editorial decision
         context = await self._run_agent("13", context)
-        
+
         # Check editor decision
         editor_report = context.get("editor_report", {})
         decision = editor_report.get("decision", "NEEDS_CORRECTION")
-        
+
         if decision == "READY_TO_PUBLISH":
             self.pipeline_state["articles_validated"].append(
                 context.get("current_topic", {}).get("keyword")
@@ -182,25 +224,29 @@ class Orchestrator:
             self.pipeline_state["articles_rejected"].append(
                 context.get("current_topic", {}).get("keyword")
             )
-        
+
         return context
-    
+
     async def _run_agent(self, agent_id: str, context: Dict) -> Dict:
-        """Run a specific agent and update context."""
+        """Run a specific agent and update context.
+
+        Uses the _invoke_agent compatibility dispatcher so both BaseAgent
+        agents (async run(context)) and legacy agents are supported.
+        """
         agent = self.agents.get(agent_id)
         if not agent:
             raise ValueError(f"Agent {agent_id} not found")
-        
-        logger.info(f"Running Agent {agent_id}: {agent.AGENT_NAME}")
+
+        logger.info(f"Running Agent {agent_id}: {_agent_display_name(agent, agent_id)}")
         self.pipeline_state["current_agent"] = agent_id
-        
+
         try:
-            result = await agent.run(context)
+            result = await _invoke_agent(agent, context)
             context[f"agent_{agent_id}_result"] = result
             self.pipeline_state["completed_agents"].append(agent_id)
             logger.info(f"Agent {agent_id} completed successfully")
             return context
-            
+
         except Exception as e:
             logger.error(f"Agent {agent_id} failed: {e}", exc_info=True)
             self.pipeline_state["failed_agents"].append({
@@ -209,12 +255,12 @@ class Orchestrator:
                 "timestamp": datetime.utcnow().isoformat()
             })
             raise
-    
+
     async def run_batch(self, batch_id: int) -> Dict:
         """Run a specific production batch."""
         logger.info(f"Running Batch #{batch_id}")
         return await self.run_full_pipeline()
-    
+
     def get_pipeline_state(self) -> Dict:
         """Get current pipeline state."""
         return self.pipeline_state
