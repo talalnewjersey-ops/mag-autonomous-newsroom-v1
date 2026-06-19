@@ -34,6 +34,10 @@ on:
         description: "Max articles (max 3)"
         required: false
         default: "3"
+      topic:
+        description: "Manual topic override (leave empty for automatic Agent 01 selection)"
+        required: false
+        default: ""
 
 env:
   PYTHON_VERSION: "3.11"
@@ -109,6 +113,7 @@ jobs:
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
           WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
           WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          TOPIC_OVERRIDE: ${{ github.event.inputs.topic }}
         run: |
           ARTICLES_PRODUCED=0
           ARTICLES_FAILED=0
@@ -123,7 +128,7 @@ jobs:
             # Phase 1: SEO Research [BLOCKING]
             echo "[${ARTICLE_NUM}] Phase 1: SEO Research"
             ARTICLE_NUM=${ARTICLE_NUM} python -m agents.agent_01_seo_research \
-              --max-topics 1 --output "${ARTICLE_DIR}/agent_01/topics.json" || {
+              --max-topics 1 --topic "${TOPIC_OVERRIDE}" --output "${ARTICLE_DIR}/agent_01/topics.json" || {
               echo "Agent 01 FAILED"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
             }
 
