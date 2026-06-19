@@ -347,6 +347,20 @@ class WordPressIntegrationAgent(BaseAgent):
         uploaded = []
         for i, image in enumerate(images_data):
             try:
+                # NORMALIZE + REUSE: Agent 10 already uploads each image to the
+                # WordPress media library and records the id as wordpress_media_id.
+                # Honor it, map it to wp_media_id, and skip a redundant re-upload.
+                existing_id = image.get("wp_media_id") or image.get("wordpress_media_id")
+                if existing_id:
+                    uploaded.append({
+                        **image,
+                        "wp_media_id": existing_id,
+                        "wp_url": image.get("wp_url") or image.get("wordpress_url", ""),
+                        "uploaded": True,
+                    })
+                    logger.info(f"Reusing existing WP media id={existing_id} for image {i+1}")
+                    continue
+
                 import os
                 p = image.get("local_path", "")
                 if os.path.exists(p):
