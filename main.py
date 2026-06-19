@@ -20,13 +20,16 @@ from orchestrator.orchestrator import Orchestrator
 
 from config.config_loader import ConfigLoader
 from monitoring.health_check import HealthChecker
-from utils.logger import setup_logging
+# (removed) utils.logger does not exist; logging configured inline below
 
 
 async def main():
     """Main entry point for NEXUS-14 Autonomous Newsroom."""
     # Setup logging
-    setup_logging()
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [NEXUS-14] %(levelname)s %(message)s",
+    )
     logger = logging.getLogger("NEXUS-14")
     
     logger.info("=" * 60)
