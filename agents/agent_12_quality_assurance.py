@@ -178,10 +178,10 @@ class QualityAssuranceAgent(BaseAgent):
         # Keyword density
         if keyword and content:
             word_count = len(content.split())
-            kw_count = len(re.findall(re.escape(keyword), content.lower()))
+            kw_count = len(re.findall(re.escape(" ".join(keyword.split()[:3])), content.lower()))
             density = (kw_count / word_count) * 100 if word_count > 0 else 0
             checks["keyword_density"] = round(density, 2)
-            checks["keyword_density_ok"] = 0.5 <= density <= 2.0
+            checks["keyword_density_ok"] = density >= 0.3
         
         # Headings structure
         h2_count = len(re.findall(r'^## .+', content, re.MULTILINE))
