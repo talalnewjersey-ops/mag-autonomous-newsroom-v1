@@ -193,12 +193,23 @@ async def _plan_outline_standalone(topic: Dict, api_key: str) -> Dict:
     return outline
 
 
+def _norm_kw(keyword: str) -> str:
+    """Title-case a keyword and strip a leading 'Best' so titles never read 'Best Best ...'."""
+    kw = (keyword or "").strip()
+    titled = kw.title()
+    # Remove a leading "Best " (case-insensitive) to avoid duplication with the title prefix
+    titled = re.sub(r"^[Bb]est\s+", "", titled).strip()
+    # Collapse any accidental consecutive duplicate words (e.g. "Bank Bank")
+    titled = re.sub(r"\b(\w+)(\s+\1\b)+", r"\1", titled, flags=re.IGNORECASE)
+    return titled
+
+
 def _build_fallback_outline(topic: Dict) -> Dict:
     keyword = topic.get("keyword", "expat banking")
     market = topic.get("market", "USA")
     year = datetime.utcnow().year
     return {
-        "title": f"Best {keyword.title()}: Complete Guide for {market} Immigrants ({year})",
+        "title": f"Best {_norm_kw(keyword)}: Complete Guide for {market} Immigrants ({year})",
         "meta_description": f"Complete guide to {keyword} for {market} immigrants in {year}. Compare top options, fees, and requirements.",
         "primary_keyword": keyword,
         "secondary_keywords": [f"{keyword} guide", f"best {keyword}", f"{keyword} {market}", f"{keyword} immigrants", f"{keyword} no credit history"],
@@ -212,7 +223,7 @@ def _build_fallback_outline(topic: Dict) -> Dict:
             "question": f"What is the best {keyword} for new immigrants in {market} with no credit history?"
         },
         "sections": [
-            {"h2": f"Best {keyword.title()} for {market} Immigrants in {year}: Quick Overview", "h3": ["Top 5 Picks at a Glance", "How We Evaluated", "Who This Guide Is For"], "data": []},
+            {"h2": f"Best {_norm_kw(keyword)} for {market} Immigrants in {year}: Quick Overview", "h3": ["Top 5 Picks at a Glance", "How We Evaluated", "Who This Guide Is For"], "data": []},
             {"h2": f"What Is {keyword.title()} and Why Do Immigrants Need It?", "h3": ["Definition and Purpose", "Unique Challenges for Immigrants", "Benefits of Getting One Early"], "data": []},
             {"h2": "Eligibility Requirements for Immigrants", "h3": ["Visa Types Accepted", "Required Documents", "Credit History Requirements", "Alternative Verification Methods"], "data": []},
             {"h2": f"Top {keyword.title()} Options Reviewed", "h3": ["Option 1: Best Overall", "Option 2: Best for No Credit History", "Option 3: Best Rewards", "Option 4: Best Secured"], "data": []},
