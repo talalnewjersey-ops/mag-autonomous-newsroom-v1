@@ -144,31 +144,21 @@ class ImageProductionAgent:
                 if r["status"] != "SUCCESS":
                     failed.append("featured")
 
-            # Secondary images
+            # Content images — V3.10: process ALL non-featured prompt types from Agent 09
             secondary_results = []
-            for img_prompt in prompts.get("secondary_images", []):
-                img_type = img_prompt.get("type", "secondary")
-                r = await self._generate_and_upload(img_prompt, images_dir, img_type)
-                secondary_results.append(r)
-                if r["status"] != "SUCCESS":
-                    failed.append(img_type)
+            for _key, _val in prompts.items():
+                if _key == "featured_image":
+                    continue
+                _items = _val if isinstance(_val, list) else [_val]
+                for img_prompt in _items:
+                    if not isinstance(img_prompt, dict) or not img_prompt.get("prompt"):
+                        continue
+                    img_type = img_prompt.get("type", _key)
+                    r = await self._generate_and_upload(img_prompt, images_dir, img_type)
+                    secondary_results.append(r)
+                    if r["status"] != "SUCCESS":
+                        failed.append(img_type)
             results["secondary_images"] = secondary_results
-
-            # Infographic
-            infographic = prompts.get("infographic")
-            if infographic:
-                r = await self._generate_and_upload(infographic, images_dir, "infographic")
-                results["infographic"] = r
-                if r["status"] != "SUCCESS":
-                    failed.append("infographic")
-
-            # Table visual
-            table_v = prompts.get("table_visual")
-            if table_v:
-                r = await self._generate_and_upload(table_v, images_dir, "table_visual")
-                results["table_visual"] = r
-                if r["status"] != "SUCCESS":
-                    failed.append("table_visual")
 
         # V3.8: Padding placeholder loop DISABLED — every image must be a real Gemini image
         # If Gemini fails to generate an image, Gate 18 will FAIL the article
@@ -216,6 +206,18 @@ class ImageProductionAgent:
         val_report_path = Path(output_dir) / "image_validation_report.json"
         val_report_path.write_text(json.dumps(validation_data, indent=2, ensure_ascii=False), encoding="utf-8")
 
+        # Write generated_images_report.json for Agent 11 handoff (V3.9 compat)
+        _gen_ordered = []
+        if results.get("featured_image"):
+            _gen_ordered.append(results["featured_image"])
+        _gen_ordered.extend(results.get("secondary_images", []))
+        if results.get("infographic"):
+            _gen_ordered.append(results["infographic"])
+        if results.get("table_visual"):
+            _gen_ordered.append(results["table_visual"])
+        _gen_images = [{"type": r.get("type"), "local_path": r.get("filepath", ""), "filename": r.get("filename", ""), "wp_media_id": r.get("wordpress_media_id"), "wordpress_media_id": r.get("wordpress_media_id"), "wp_url": r.get("wordpress_url", ""), "wordpress_url": r.get("wordpress_url", ""), "alt_text": r.get("alt_text", ""), "caption": r.get("caption", ""), "description": r.get("description", ""), "file_size_bytes": r.get("file_size_bytes", 0)} for r in _gen_ordered if r.get("status") == "SUCCESS"]
+        (Path(output_dir) / "generated_images_report.json").write_text(json.dumps({"agent": "agent_10_image_production", "timestamp": datetime.now().isoformat(), "images": _gen_images}, indent=2, ensure_ascii=False), encoding="utf-8")
+        logger.info(f"generated_images_report.json written with {len(_gen_images)} images for Agent 11 handoff")
         success_cnt = len(success_imgs)
         gate18_str = "PASS" if quality_report["overall_passed"] else "FAIL"
         wp_cnt = len(wp_uploads_list)

@@ -141,6 +141,52 @@ class WordPressService:
                         return users[0]["id"]
                 return self.config.get("wordpress_author_id", 1)
 
+    async def set_post_author(self, post_id: int, author_name: str = "", author_bio: str = "") -> Optional[int]:
+        author_id = await self._get_or_create_author(author_name, author_bio)
+        if not author_id:
+            return None
+        try:
+            await self.update_post(post_id, {"author": author_id})
+        except Exception as e:
+            logger.warning(f"set_post_author: update author failed: {e}")
+        if author_bio:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        f"{self.api_url}/users/{author_id}",
+                        json={"description": author_bio},
+                        headers=self._get_headers(),
+                        timeout=aiohttp.ClientTimeout(total=30),
+                    ) as response:
+                        if response.status not in (200, 201):
+                            logger.warning(f"set_post_author: bio update returned {response.status}")
+            except Exception as e:
+                logger.warning(f"set_post_author: bio update failed: {e}")
+        logger.info(f"set_post_author: post={post_id} author={author_id}")
+        return author_id
+
+    async def set_post_meta(self, post_id: int, meta: Dict) -> bool:
+        clean = {k: v for k, v in (meta or {}).items() if v not in (None, "")}
+        if not clean:
+            return False
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.api_url}/posts/{post_id}",
+                    json={"meta": clean},
+                    headers=self._get_headers(),
+                    timeout=aiohttp.ClientTimeout(total=60),
+                ) as response:
+                    if response.status in (200, 201):
+                        logger.info(f"set_post_meta: post={post_id} keys={list(clean.keys())}")
+                        return True
+                    body = await response.text()
+                    logger.warning(f"set_post_meta: returned {response.status}: {body[:200]}")
+                    return False
+        except Exception as e:
+            logger.warning(f"set_post_meta: failed: {e}")
+            return False
+
     async def get_categories(self) -> List[Dict]:
         async with aiohttp.ClientSession() as session:
             async with session.get(

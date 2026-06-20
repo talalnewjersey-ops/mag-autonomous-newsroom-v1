@@ -17,16 +17,19 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from orchestrator.orchestrator import Orchestrator
-from orchestrator.scheduler import ProductionScheduler
+
 from config.config_loader import ConfigLoader
 from monitoring.health_check import HealthChecker
-from utils.logger import setup_logging
+# (removed) utils.logger does not exist; logging configured inline below
 
 
 async def main():
     """Main entry point for NEXUS-14 Autonomous Newsroom."""
     # Setup logging
-    setup_logging()
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [NEXUS-14] %(levelname)s %(message)s",
+    )
     logger = logging.getLogger("NEXUS-14")
     
     logger.info("=" * 60)
@@ -49,8 +52,8 @@ async def main():
     # Initialize orchestrator
     orchestrator = Orchestrator(config)
     
-    # Initialize scheduler
-    scheduler = ProductionScheduler(orchestrator, config)
+    
+   
     
     # Run based on mode
     mode = config.get("run_mode", "scheduled")
@@ -58,7 +61,7 @@ async def main():
     if mode == "scheduled":
         # Run the full scheduled production system
         logger.info("Running in SCHEDULED mode (06:00 / 09:30 / 16:30 / 18:30)")
-        await scheduler.start()
+        await orchestrator.run_full_pipeline()
     elif mode == "single":
         # Run a single production cycle
         logger.info("Running SINGLE production cycle...")

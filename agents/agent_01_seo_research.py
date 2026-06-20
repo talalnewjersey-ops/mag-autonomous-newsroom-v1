@@ -186,12 +186,52 @@ class SEOResearchAgent:
         self.article_num = int(os.getenv("ARTICLE_NUM", "1"))
         logger.info(f"ARTICLE_NUM={self.article_num} | SERPAPI: {'ON' if self.serpapi_key else 'OFF'} | SEMRUSH: {'ON' if self.semrush_key else 'OFF'}")
 
-    async def run(self, max_topics: int = 1, output_path: str = "output/agent_01/topics.json") -> Dict:
+    async def run(self, max_topics: int = 1, output_path: str = "output/agent_01/topics.json", topic_override: str = "") -> Dict:
         logger.info("=" * 60)
         logger.info(f"NEXUS-14 V3.4 — Agent 01: SEO Research | ARTICLE_NUM={self.article_num}")
         logger.info("=" * 60)
 
         topics = []
+
+        # MANUAL TOPIC OVERRIDE: when a topic is supplied via --topic / TOPIC_OVERRIDE,
+        # bypass live/Claude/DB research entirely and produce exactly one topic record
+        # in the standard schema so Agents 02-18 run unchanged.
+        topic_override = (topic_override or "").strip()
+        if topic_override:
+            logger.info(f"TOPIC OVERRIDE active — using provided topic: {topic_override!r}")
+            override_market = "Canada" if "canada" in topic_override.lower() else "USA"
+            topics = [{
+                "keyword": topic_override,
+                "market": override_market,
+                "search_volume": 5000,
+                "keyword_difficulty": 30,
+                "cpc": 5.0,
+                "intent": "informational",
+                "opportunity_types": ["seo", "affiliate"],
+                "affiliate_programs": [],
+                "content_type": "guide",
+                "estimated_word_count": 5000,
+                "newcomer_priority": True,
+                "manual_override": True,
+            }]
+            topics = self._score_and_prioritize(topics[:max_topics])
+            output = {
+                "agent": self.AGENT_NAME,
+                "timestamp": datetime.utcnow().isoformat(),
+                "version": "V3.4",
+                "research_mode": "manual_override",
+                "article_num": self.article_num,
+                "markets": ["USA", "Canada"],
+                "total_topics": len(topics),
+                "usa_count": len([t for t in topics if t.get("market") == "USA"]),
+                "canada_count": len([t for t in topics if t.get("market") == "Canada"]),
+                "topics": topics,
+            }
+            output_file = Path(output_path)
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
+            logger.info(f"TOPIC OVERRIDE — wrote 1 topic to {output_path}")
+            return output
 
         if self.serpapi_key or self.semrush_key:
             try:
@@ -367,11 +407,13 @@ def main():
     parser.add_argument("--max-topics", type=int, default=1)
     parser.add_argument("--output", type=str, default="output/agent_01/topics.json")
     parser.add_argument("--market", type=str, default="all", choices=["all", "usa", "canada"])
+    parser.add_argument("--topic", type=str, default="", help="Manual topic override; bypasses auto topic selection when set")
     args = parser.parse_args()
+    topic_override = args.topic or os.getenv("TOPIC_OVERRIDE", "")
     from config.config_loader import ConfigLoader
     config = ConfigLoader.load()
     agent = SEOResearchAgent(config=config.get("agents", {}).get("agent_01", {}))
-    result = asyncio.run(agent.run(max_topics=args.max_topics, output_path=args.output))
+    result = asyncio.run(agent.run(max_topics=args.max_topics, output_path=args.output, topic_override=topic_override))
     print(f"[Agent 01] Research complete — {result['total_topics']} topics saved to {args.output}")
 
 

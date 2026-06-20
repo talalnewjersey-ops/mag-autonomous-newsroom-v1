@@ -1,0 +1,30 @@
+name: "NEXUS-14 Agent Init Validation"
+
+# Lightweight smoke test: verifies imports and agent/orchestrator initialization.
+# No secrets required, no network calls, no publishing. Init-only.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "fix/nexus14-agent-compatibility" ]
+
+jobs:
+  init-validation:
+    name: "Import + Init Smoke Test"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run import + initialization smoke test
+        run: python3 scripts/validate_agent_init.py

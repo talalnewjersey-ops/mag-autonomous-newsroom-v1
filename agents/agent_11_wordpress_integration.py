@@ -62,7 +62,7 @@ class WordPressIntegrationAgent(BaseAgent):
             wp_post = await self._create_wordpress_draft(article_data, html_with_images, uploaded_images)
 
             post_id = wp_post.get("id")
-            featured_id = uploaded_images[0].get("wp_media_id") if uploaded_images else None
+            featured_id = (uploaded_images[0].get("wp_media_id") or uploaded_images[0].get("wordpress_media_id")) if uploaded_images else None
 
             # GATE C: post_id + title + content + featured_media all required
             if not post_id:
@@ -198,15 +198,107 @@ class WordPressIntegrationAgent(BaseAgent):
         logger.warning(f"No images report found. Tried: {candidates}")
         return []
 
+    def _render_inline(self, text):
+        """Convert inline markdown (bold, italic, links, code) to HTML."""
+        text = re.sub(r'\[(.+?)\]\((.+?)\)', r'<a href="\2">\1</a>', text)
+        text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+        text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
+        text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<em>\1</em>', text)
+        text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)
+        return text
+
     async def _convert_to_html(self, article_data):
-        content = article_data.get("content", "")
-        html = re.sub(r'^# (.+)$', r'<h1>\1</h1>', content, flags=re.MULTILINE)
-        html = re.sub(r'^## (.+)$', r'<h2>\1</h2>', html, flags=re.MULTILINE)
-        html = re.sub(r'^### (.+)$', r'<h3>\1</h3>', html, flags=re.MULTILINE)
-        html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html)
-        html = re.sub(r'\*(.+?)\*', r'<em>\1</em>', html)
-        html = re.sub(r'\[(.+?)\]\((.+?)\)', r'<a href="\2">\1</a>', html)
-        return html
+        """Block-level markdown -> HTML.
+
+        FIX: previous version only handled headings/bold/italic/links and left
+        prose, lists and blockquotes as raw markdown. This renders paragraphs,
+        ordered/unordered lists, blockquotes, headings h1-h6 and horizontal
+        rules into valid HTML so no raw markdown reaches WordPress.
+        """
+        content = article_data.get("content", "") or ""
+        lines = content.split("\n")
+        html_parts = []
+        i = 0
+        n = len(lines)
+        para = []
+
+        def close_para(buf):
+            if buf:
+                text = self._render_inline(" ".join(buf).strip())
+                if text:
+                    html_parts.append("<p>" + text + "</p>")
+                buf.clear()
+
+        hr_re = re.compile(r'^(-{3,}|\*{3,}|_{3,})[ \t]*$')
+        heading_re = re.compile(r'^(#{1,6})[ \t]+(.+?)[ \t]*#*$')
+        ul_re = re.compile(r'^[-*+][ \t]+')
+        ol_re = re.compile(r'^\d+[.)][ \t]+')
+        html_block_re = re.compile(r'^<(/?)(h[1-6]|div|table|ul|ol|li|p|figure|img|section|blockquote|script|iframe)\b')
+
+        while i < n:
+            line = lines[i]
+            stripped = line.strip()
+
+            if not stripped:
+                close_para(para)
+                i += 1
+                continue
+
+            if hr_re.match(stripped + "$"):
+                close_para(para)
+                html_parts.append("<hr />")
+                i += 1
+                continue
+
+            m = heading_re.match(stripped + "$")
+            if m:
+                close_para(para)
+                level = len(m.group(1))
+                html_parts.append("<h" + str(level) + ">" + self._render_inline(m.group(2)) + "</h" + str(level) + ">")
+                i += 1
+                continue
+
+            if stripped.startswith(">"):
+                close_para(para)
+                quote_lines = []
+                while i < n and lines[i].strip().startswith(">"):
+                    quote_lines.append(re.sub(r'^[ \t]*>[ \t]?', '', lines[i]))
+                    i += 1
+                inner = self._render_inline(" ".join(q.strip() for q in quote_lines).strip())
+                html_parts.append("<blockquote><p>" + inner + "</p></blockquote>")
+                continue
+
+            if ul_re.match(stripped):
+                close_para(para)
+                items = []
+                while i < n and ul_re.match(lines[i].strip()):
+                    item = ul_re.sub('', lines[i].strip())
+                    items.append("<li>" + self._render_inline(item) + "</li>")
+                    i += 1
+                html_parts.append("<ul>" + "".join(items) + "</ul>")
+                continue
+
+            if ol_re.match(stripped):
+                close_para(para)
+                items = []
+                while i < n and ol_re.match(lines[i].strip()):
+                    item = ol_re.sub('', lines[i].strip())
+                    items.append("<li>" + self._render_inline(item) + "</li>")
+                    i += 1
+                html_parts.append("<ol>" + "".join(items) + "</ol>")
+                continue
+
+            if stripped.startswith("<") and html_block_re.match(stripped):
+                close_para(para)
+                html_parts.append(stripped)
+                i += 1
+                continue
+
+            para.append(stripped)
+            i += 1
+
+        close_para(para)
+        return "\n".join(html_parts)
 
     async def _add_faq_schema(self, html, article_data):
         content = article_data.get("content", "")
@@ -255,6 +347,20 @@ class WordPressIntegrationAgent(BaseAgent):
         uploaded = []
         for i, image in enumerate(images_data):
             try:
+                # NORMALIZE + REUSE: Agent 10 already uploads each image to the
+                # WordPress media library and records the id as wordpress_media_id.
+                # Honor it, map it to wp_media_id, and skip a redundant re-upload.
+                existing_id = image.get("wp_media_id") or image.get("wordpress_media_id")
+                if existing_id:
+                    uploaded.append({
+                        **image,
+                        "wp_media_id": existing_id,
+                        "wp_url": image.get("wp_url") or image.get("wordpress_url", ""),
+                        "uploaded": True,
+                    })
+                    logger.info(f"Reusing existing WP media id={existing_id} for image {i+1}")
+                    continue
+
                 import os
                 p = image.get("local_path", "")
                 if os.path.exists(p):
@@ -276,12 +382,64 @@ class WordPressIntegrationAgent(BaseAgent):
         return uploaded
 
     async def _insert_images_in_content(self, html, images):
-        return html
+        """Embed uploaded images into the article body.
+
+        FIX: previous version was a no-op stub (return html) so uploaded images
+        never appeared inside the content. This distributes the in-content
+        images evenly across the <h2> section boundaries as <figure> blocks.
+        The first image is reserved as the WordPress featured image and is NOT
+        embedded again here. If no <h2> anchors exist, images are appended.
+        """
+        if not images:
+            return html
+
+        embeddable = [
+            img for img in images[1:]
+            if img.get("uploaded") and (img.get("wp_url") or img.get("wp_media_id"))
+        ]
+        if not embeddable:
+            return html
+
+        def figure_html(img):
+            url = img.get("wp_url", "")
+            alt = (img.get("alt_text", "") or "").replace('"', "'")
+            caption = img.get("caption", "") or ""
+            media_id = img.get("wp_media_id")
+            cls = "wp-image-" + str(media_id) if media_id else ""
+            cap_html = "<figcaption>" + self._render_inline(caption) + "</figcaption>" if caption else ""
+            return (
+                '<figure class="mag-article-image">'
+                '<img src="' + url + '" alt="' + alt + '" class="' + cls + '" loading="lazy" />'
+                + cap_html + '</figure>'
+            )
+
+        parts = re.split(r'(<h2[^>]*>)', html)
+        if len(parts) <= 1:
+            return html + "\n" + "\n".join(figure_html(im) for im in embeddable)
+
+        result = [parts[0]]
+        img_idx = 0
+        k = 1
+        while k < len(parts):
+            heading = parts[k]
+            body = parts[k + 1] if k + 1 < len(parts) else ""
+            result.append(heading)
+            result.append(body)
+            if img_idx < len(embeddable):
+                result.append("\n" + figure_html(embeddable[img_idx]) + "\n")
+                img_idx += 1
+            k += 2
+
+        while img_idx < len(embeddable):
+            result.append("\n" + figure_html(embeddable[img_idx]) + "\n")
+            img_idx += 1
+
+        return "".join(result)
 
     async def _create_wordpress_draft(self, article_data, html_content, images):
         title = article_data.get("title", "Untitled Article")
         slug = re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-')
-        featured_image_id = images[0].get("wp_media_id") if images else None
+        featured_image_id = (images[0].get("wp_media_id") or images[0].get("wordpress_media_id")) if images else None
         post_data = {
             "title": title,
             "content": html_content,
