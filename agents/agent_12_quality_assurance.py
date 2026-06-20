@@ -126,27 +126,42 @@ class QualityAssuranceAgent(BaseAgent):
         
         data = context.copy()
         
-        # Load article content
-        article_paths = [
-            "output/agent_04/article_draft.md",
-            "output/article_draft.md"
-        ]
+        # Context-first loading: if the caller already supplied article content,
+        # use it directly and never reload from disk.
+        content = data.get("article_content", "")
         
-        for path in article_paths:
-            if os.path.exists(path):
-                with open(path) as f:
-                    content = f.read()
-                data["article_content"] = content
-                data["word_count"] = len(content.split())
-                
-                # Extract title
-                title_match = re.search(r'^# (.+)$', content, re.MULTILINE)
+        if not content:
+            # Fallback loading: resolve the article from the path passed in context
+            # (article_N-aware), falling back to legacy locations only if needed.
+            article_paths = [
+                p for p in [data.get("article_path")] if p
+            ] + [
+                "output/agent_04/article_draft.md",
+                "output/article_draft.md",
+            ]
+            
+            for path in article_paths:
+                if path and os.path.exists(path):
+                    with open(path) as f:
+                        content = f.read()
+                    data["article_content"] = content
+                    break
+        
+        if content:
+            # Word count (only set if not already provided by context)
+            data.setdefault("word_count", len(content.split()))
+            
+            # Title extraction -- support Agent 04 Markdown H1 (# Title) format.
+            if not data.get("title"):
+                title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
                 if title_match:
-                    data["title"] = title_match.group(1)
-                
-                # Check for FAQ
-                data["has_faq"] = bool(re.search(r'## Frequently Asked Questions', content, re.IGNORECASE))
-                break
+                    data["title"] = title_match.group(1).strip()
+            
+            # FAQ detection (only set if not already provided by context)
+            if "has_faq" not in data:
+                data["has_faq"] = bool(
+                    re.search(r'##\s+(?:Frequently Asked Questions|FAQ)', content, re.IGNORECASE)
+                )
         
         # Load metadata
         metadata_path = "output/agent_04/article_metadata.json"
@@ -475,7 +490,7 @@ def main():
             llm_svc = LLMService({"anthropic_api_key": api_key, "llm_provider": "anthropic"})
             storage_svc = StorageService({"output_dir": str(output_path.parent)})
             agent = QualityAssuranceAgent(config, llm_svc, storage_svc)
-            qa_report = asyncio.run(agent.run({"article_content": content, "title": title, "keyword": keyword, "meta_description": meta_description, "word_count": word_count, "faq_count": faq_count, "has_author": True, "has_author_bio": True}))
+            qa_report = asyncio.run(agent.run({"article_content": content, "article_path": str(article_path), "title": title, "keyword": keyword, "meta_description": meta_description, "word_count": word_count, "faq_count": faq_count, "has_author": True, "has_author_bio": True}))
             log.info("QA complete via DI stack")
         except Exception as e:
             log.warning(f"DI QA failed: {e} -- using heuristic QA")
