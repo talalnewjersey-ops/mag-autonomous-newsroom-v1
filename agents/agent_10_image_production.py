@@ -216,6 +216,18 @@ class ImageProductionAgent:
         val_report_path = Path(output_dir) / "image_validation_report.json"
         val_report_path.write_text(json.dumps(validation_data, indent=2, ensure_ascii=False), encoding="utf-8")
 
+        # Write generated_images_report.json for Agent 11 handoff (V3.9 compat)
+        _gen_ordered = []
+        if results.get("featured_image"):
+            _gen_ordered.append(results["featured_image"])
+        _gen_ordered.extend(results.get("secondary_images", []))
+        if results.get("infographic"):
+            _gen_ordered.append(results["infographic"])
+        if results.get("table_visual"):
+            _gen_ordered.append(results["table_visual"])
+        _gen_images = [{"type": r.get("type"), "local_path": r.get("filepath", ""), "filename": r.get("filename", ""), "wp_media_id": r.get("wordpress_media_id"), "wordpress_media_id": r.get("wordpress_media_id"), "wp_url": r.get("wordpress_url", ""), "wordpress_url": r.get("wordpress_url", ""), "alt_text": r.get("alt_text", ""), "caption": r.get("caption", ""), "description": r.get("description", ""), "file_size_bytes": r.get("file_size_bytes", 0)} for r in _gen_ordered if r.get("status") == "SUCCESS"]
+        (Path(output_dir) / "generated_images_report.json").write_text(json.dumps({"agent": "agent_10_image_production", "timestamp": datetime.now().isoformat(), "images": _gen_images}, indent=2, ensure_ascii=False), encoding="utf-8")
+        logger.info(f"generated_images_report.json written with {len(_gen_images)} images for Agent 11 handoff")
         success_cnt = len(success_imgs)
         gate18_str = "PASS" if quality_report["overall_passed"] else "FAIL"
         wp_cnt = len(wp_uploads_list)
