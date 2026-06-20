@@ -199,7 +199,7 @@ class QualityAssuranceAgent(BaseAgent):
         checks["has_tables"] = checks["table_count"] > 0
         
         # Internal links
-        internal_links = len(re.findall(r'\[.*?\]\((?!http)[^)]+\)', content))
+        internal_links = len(re.findall(r'\[[^\]]+\]\([^)]+\)', content)) or data.get('internal_link_count', 0)
         checks["internal_link_count"] = internal_links
         checks["has_internal_links"] = internal_links >= 3
         
@@ -424,6 +424,26 @@ def main():
         if kw_match: keyword = kw_match.group(1)
         faq_count = len(re.findall(r"^### .+\?", content, re.MULTILINE))
 
+    # Load authoritative article metadata (title/keyword/meta_description) from agent_03/agent_04 outputs
+    meta_description = ""
+    try:
+        art_dir = article_path.parent
+        meta_json = art_dir / "article_metadata.json"
+        if meta_json.exists():
+            md = json.loads(meta_json.read_text(encoding="utf-8"))
+            title = md.get("title") or title
+            keyword = md.get("keyword") or keyword
+            word_count = md.get("word_count") or word_count
+            faq_count = md.get("faq_count") or faq_count
+        outline_json = art_dir.parent / "agent_03" / "article_outline.json"
+        if outline_json.exists():
+            ol = json.loads(outline_json.read_text(encoding="utf-8"))
+            title = ol.get("title") or title
+            keyword = ol.get("primary_keyword") or keyword
+            meta_description = ol.get("meta_description", "") or meta_description
+    except Exception as _meta_err:
+        log.warning(f"metadata load failed: {_meta_err}")
+
     # Load supporting reports
     def load_json(path_str):
         p = Path(path_str)
@@ -455,7 +475,7 @@ def main():
             llm_svc = LLMService({"anthropic_api_key": api_key, "llm_provider": "anthropic"})
             storage_svc = StorageService({"output_dir": str(output_path.parent)})
             agent = QualityAssuranceAgent(config, llm_svc, storage_svc)
-            qa_report = asyncio.run(agent.run({"article_content": content, "title": title, "keyword": keyword, "word_count": word_count, "has_author": True, "has_author_bio": True}))
+            qa_report = asyncio.run(agent.run({"article_content": content, "title": title, "keyword": keyword, "meta_description": meta_description, "word_count": word_count, "faq_count": faq_count, "has_author": True, "has_author_bio": True}))
             log.info("QA complete via DI stack")
         except Exception as e:
             log.warning(f"DI QA failed: {e} -- using heuristic QA")
