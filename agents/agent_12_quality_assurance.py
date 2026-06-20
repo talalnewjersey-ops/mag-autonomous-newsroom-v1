@@ -455,7 +455,7 @@ def main():
             llm_svc = LLMService({"anthropic_api_key": api_key, "llm_provider": "anthropic"})
             storage_svc = StorageService({"output_dir": str(output_path.parent)})
             agent = QualityAssuranceAgent(config, llm_svc, storage_svc)
-            qa_report = asyncio.run(agent.run())
+            qa_report = asyncio.run(agent.run({"article_content": content, "title": title, "keyword": keyword, "word_count": word_count, "has_author": True, "has_author_bio": True}))
             log.info("QA complete via DI stack")
         except Exception as e:
             log.warning(f"DI QA failed: {e} -- using heuristic QA")
