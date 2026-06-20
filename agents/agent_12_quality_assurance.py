@@ -100,7 +100,7 @@ class QualityAssuranceAgent(BaseAgent):
                 "critical_issues": self._identify_critical_issues(seo_check, eeat_check, faq_check, image_check, link_check),
                 "recommendations": self._generate_recommendations(seo_check, eeat_check, image_check),
                 
-                "qa_status": "PASSED" if overall_score >= 90 else "NEEDS_REVIEW"
+                "status": "PASS" if overall_score >= 90 else "NEEDS_REVIEW"
             }
             
             output_path = await self.save_output("qa_report.json", qa_report)
