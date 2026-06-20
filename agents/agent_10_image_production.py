@@ -144,31 +144,21 @@ class ImageProductionAgent:
                 if r["status"] != "SUCCESS":
                     failed.append("featured")
 
-            # Secondary images
+            # Content images — V3.10: process ALL non-featured prompt types from Agent 09
             secondary_results = []
-            for img_prompt in prompts.get("secondary_images", []):
-                img_type = img_prompt.get("type", "secondary")
-                r = await self._generate_and_upload(img_prompt, images_dir, img_type)
-                secondary_results.append(r)
-                if r["status"] != "SUCCESS":
-                    failed.append(img_type)
+            for _key, _val in prompts.items():
+                if _key == "featured_image":
+                    continue
+                _items = _val if isinstance(_val, list) else [_val]
+                for img_prompt in _items:
+                    if not isinstance(img_prompt, dict) or not img_prompt.get("prompt"):
+                        continue
+                    img_type = img_prompt.get("type", _key)
+                    r = await self._generate_and_upload(img_prompt, images_dir, img_type)
+                    secondary_results.append(r)
+                    if r["status"] != "SUCCESS":
+                        failed.append(img_type)
             results["secondary_images"] = secondary_results
-
-            # Infographic
-            infographic = prompts.get("infographic")
-            if infographic:
-                r = await self._generate_and_upload(infographic, images_dir, "infographic")
-                results["infographic"] = r
-                if r["status"] != "SUCCESS":
-                    failed.append("infographic")
-
-            # Table visual
-            table_v = prompts.get("table_visual")
-            if table_v:
-                r = await self._generate_and_upload(table_v, images_dir, "table_visual")
-                results["table_visual"] = r
-                if r["status"] != "SUCCESS":
-                    failed.append("table_visual")
 
         # V3.8: Padding placeholder loop DISABLED — every image must be a real Gemini image
         # If Gemini fails to generate an image, Gate 18 will FAIL the article
