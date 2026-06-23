@@ -241,38 +241,58 @@ Return ONLY a JSON array:
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         }
-        payload = {
-            "model": "claude-3-5-haiku-20241022",
-            "max_tokens": 1500,
-            "messages": [{"role": "user", "content": prompt}],
-        }
+
+        # NEXUS-14 P1 FIX: model now read from env with new model family.
+        # Primary + fallback, deduplicated so the same model is never tried twice.
+        primary = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
+        fallback = os.getenv("ANTHROPIC_MODEL_FALLBACK", "claude-sonnet-4-5")
+        models_to_try = list(dict.fromkeys([primary, fallback]))
+        last_error = None
 
         async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://api.anthropic.com/v1/messages",
-                headers=headers,
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=30),
-            ) as resp:
-                if resp.status != 200:
-                    raise Exception(f"Claude API error: {resp.status}")
-                data = await resp.json()
-                text = data["content"][0]["text"].strip()
+            for model_name in models_to_try:
+                payload = {
+                    "model": model_name,
+                    "max_tokens": 1500,
+                    "messages": [{"role": "user", "content": prompt}],
+                }
+                try:
+                    async with session.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers=headers,
+                        json=payload,
+                        timeout=aiohttp.ClientTimeout(total=30),
+                    ) as resp:
+                        if resp.status != 200:
+                            last_error = Exception(f"Claude API error: {resp.status} (model={model_name})")
+                            logger.warning(f"LLM validation model failed model={model_name} status={resp.status}")
+                            continue
+                        data = await resp.json()
+                        text = data["content"][0]["text"].strip()
+                        logger.info(f"LLM validation succeeded model={model_name}")
 
-                json_match = re.search(r'\[.*\]', text, re.DOTALL)
-                if json_match:
-                    llm_scores = json.loads(json_match.group())
-                    score_map = {item["keyword"].lower(): item for item in llm_scores}
-                    for topic in topics:
-                        kw_lower = topic.get("keyword", "").lower()
-                        if kw_lower in score_map:
-                            llm_data = score_map[kw_lower]
-                            topic["llm_score"] = llm_data.get("llm_score", 5)
-                            topic["content_angle"] = llm_data.get("angle", "")
-                            # Blend algorithmic + LLM score
-                            topic["priority_score"] = round(
-                                topic.get("priority_score", 0) * 0.7 + topic["llm_score"] * 10 * 0.3, 2
-                            )
+                        json_match = re.search(r'\[.*\]', text, re.DOTALL)
+                        if json_match:
+                            llm_scores = json.loads(json_match.group())
+                            score_map = {item["keyword"].lower(): item for item in llm_scores}
+                            for topic in topics:
+                                kw_lower = topic.get("keyword", "").lower()
+                                if kw_lower in score_map:
+                                    llm_data = score_map[kw_lower]
+                                    topic["llm_score"] = llm_data.get("llm_score", 5)
+                                    topic["content_angle"] = llm_data.get("angle", "")
+                                    # Blend algorithmic + LLM score
+                                    topic["priority_score"] = round(
+                                        topic.get("priority_score", 0) * 0.7 + topic["llm_score"] * 10 * 0.3, 2
+                                    )
+                        return topics
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"LLM validation request failed model={model_name}: {e}")
+                    continue
+
+        if last_error:
+            raise last_error
         return topics
 
     def _final_score_and_sort(self, topics: List[Dict]) -> List[Dict]:
