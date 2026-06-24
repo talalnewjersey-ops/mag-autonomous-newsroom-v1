@@ -5,12 +5,12 @@ NEXUS-14 — Image Backfill V2 (SAFE MODE)
 Adds ONLY a featured image to already-published posts that have none.
 
 SAFETY GUARANTEES (V2):
-  * NEVER modifies post content (no Gutenberg/Elementor/body rewrite).
-  * NEVER inserts inline images.
-  * Only sets `featured_media` on the post + writes media metadata.
-  * Photographic prompts only — no infographics, charts, diagrams, or text.
-  * Rejects placeholder images (never sets a blank placeholder as featured).
-  * Idempotent: skips any post that already has featured_media.
+* NEVER modifies post content (no Gutenberg/Elementor/body rewrite).
+* NEVER inserts inline images.
+* Only sets `featured_media` on the post + writes media metadata.
+* Photographic prompts only — no infographics, charts, diagrams, or text.
+* Rejects placeholder images (never sets a blank placeholder as featured).
+* Idempotent: skips any post that already has featured_media.
 
 Reuses Agent 10 (ImageProductionAgent) for Gemini/Nano Banana generation
 and WordPress Media Library upload. Does NOT use Agent 09's graphic prompts.
@@ -40,39 +40,36 @@ AUTH = (WP_USER, WP_PASS)
 REST = f"{WP_URL}/wp-json/wp/v2"
 
 PHOTO_STYLE = (
-    "ultra realistic editorial photograph, professional DSLR, natural lighting, "
-    "shallow depth of field, real people, authentic candid moment, documentary style, "
-    "high detail, 16:9 aspect ratio. "
-    "STRICTLY NO text, NO words, NO captions, NO logos, NO watermark, "
-    "NO infographic, NO chart, NO diagram, NO illustration, NO cartoon, NO screenshot."
-    "NO LOGOS. NO BRAND NAMES. NO COMPANY NAMES. NO BANK NAMES. "
-    "NO INTERAC. NO SCOTIABANK. NO RBC. NO TD. NO BMO. "
-    "NO READABLE TEXT. NO SIGNAGE. NO NAMEPLATES. NO COMPUTER SCREENS. "
-    "NO POSTERS. NO DOCUMENTS WITH TEXT. NO LETTERS. NO WORDS. NO WATERMARKS. "
-    "All surfaces must be blank, generic and unbranded."
+"ultra realistic editorial photograph, professional DSLR, natural lighting, "
+"shallow depth of field, real people, authentic candid moment, documentary style, "
+"high detail, 16:9 aspect ratio. "
+"STRICTLY NO text, NO words, NO captions, NO logos, NO watermark, "
+"NO infographic, NO chart, NO diagram, NO illustration, NO cartoon, NO screenshot."
+"NO LOGOS. NO BRAND NAMES. NO COMPANY NAMES. NO BANK NAMES. "
+"NO INTERAC. NO SCOTIABANK. NO RBC. NO TD. NO BMO. "
+"NO READABLE TEXT. NO SIGNAGE. NO NAMEPLATES. NO COMPUTER SCREENS. "
+"NO POSTERS. NO DOCUMENTS WITH TEXT. NO LETTERS. NO WORDS. NO WATERMARKS. "
+"All surfaces must be blank, generic and unbranded."
 )
 
 MARKET_SCENE = {
-    "USA": "real newcomer family in an authentic United States setting — modern American bank branch, "
-           "apartment, or financial advisor meeting; diverse multicultural people; warm natural light",
-    "CANADA": "real newcomer family in an authentic Canadian setting — Toronto or Vancouver bank branch, "
-              "apartment, or advisor meeting; diverse multicultural people; warm natural light",
-    "": "real diverse newcomer family in an authentic North American financial setting; "
-        "candid, welcoming atmosphere; natural light",
+"USA": "real newcomer family in an authentic United States setting — modern American bank branch, "
+"apartment, or financial advisor meeting; diverse multicultural people; warm natural light",
+"CANADA": "real newcomer family in an authentic Canadian setting — Toronto or Vancouver bank branch, "
+"apartment, or advisor meeting; diverse multicultural people; warm natural light",
+"": "real diverse newcomer family in an authentic North American financial setting; "
+"candid, welcoming atmosphere; natural light",
 }
-
 
 def wp_get(path, **params):
     r = requests.get(f"{REST}{path}", params=params, auth=AUTH, timeout=60)
     r.raise_for_status()
     return r.json()
 
-
 def wp_post(path, payload):
     r = requests.post(f"{REST}{path}", json=payload, auth=AUTH, timeout=90)
     r.raise_for_status()
     return r.json()
-
 
 def fetch_published_posts(max_pages=20):
     posts, page = [], 1
@@ -87,10 +84,8 @@ def fetch_published_posts(max_pages=20):
         page += 1
     return posts
 
-
 def needs_featured(post):
     return not post.get("featured_media")
-
 
 def market_of(post, market_filter):
     if not market_filter:
@@ -103,7 +98,6 @@ def market_of(post, market_filter):
     if market_filter.upper() == "USA":
         return is_us or not is_ca
     return True
-
 
 def build_featured_prompt(post, market):
     title = (post.get("title") or {}).get("rendered", "Newcomer finance guide")
@@ -123,7 +117,6 @@ def build_featured_prompt(post, market):
         }
     }
 
-
 def is_placeholder(img):
     fn = (img.get("filename") or "").lower()
     status = (img.get("status") or "").upper()
@@ -135,7 +128,6 @@ def is_placeholder(img):
     if size and size < 20000:
         return True
     return False
-
 
 async def process_post(post, workdir, dry_run, market):
     pid = post["id"]
@@ -190,7 +182,6 @@ async def process_post(post, workdir, dry_run, market):
             "alt": featured.get("alt_text", ""),
             "link": updated.get("link")}
 
-
 async def main_async(args):
     print(f"NEXUS-14 Image Backfill V2 (SAFE) — {datetime.now().isoformat()}")
     print(f"WP: {WP_URL}  dry_run={args.dry_run}  market={args.market or 'ALL'}")
@@ -198,11 +189,15 @@ async def main_async(args):
     posts = fetch_published_posts()
     print(f"Fetched {len(posts)} published posts")
 
-    candidates = [p for p in posts if needs_featured(p)]
-
     if args.article_ids:
         wanted = {int(x) for x in re.split(r"[,\s]+", args.article_ids) if x.strip()}
-        candidates = [p for p in candidates if p["id"] in wanted]
+        # Explicit IDs: process exactly these posts even if they already
+        # have a featured image (allows regeneration/replacement).
+        candidates = [p for p in posts if p["id"] in wanted]
+    else:
+        # No IDs: preserve original behavior — imageless posts only.
+        candidates = [p for p in posts if needs_featured(p)]
+
     if args.category:
         cat = int(args.category)
         candidates = [p for p in candidates if cat in (p.get("categories") or [])]
@@ -244,7 +239,6 @@ async def main_async(args):
     print("\n==== SUMMARY ====")
     print(json.dumps(report["summary"], indent=2))
 
-
 def parse_args():
     ap = argparse.ArgumentParser()
     ap.add_argument("--market", default="")
@@ -254,7 +248,6 @@ def parse_args():
     ap.add_argument("--delay", type=float, default=3.0)
     ap.add_argument("--dry-run", action="store_true")
     return ap.parse_args()
-
 
 if __name__ == "__main__":
     if not (WP_URL and WP_USER and WP_PASS):
