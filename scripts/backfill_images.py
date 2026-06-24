@@ -198,11 +198,14 @@ async def main_async(args):
     posts = fetch_published_posts()
     print(f"Fetched {len(posts)} published posts")
 
-    candidates = [p for p in posts if needs_featured(p)]
-
     if args.article_ids:
         wanted = {int(x) for x in re.split(r"[,\s]+", args.article_ids) if x.strip()}
-        candidates = [p for p in candidates if p["id"] in wanted]
+        # Explicit IDs: process exactly these posts even if they already
+        # have a featured image (allows regeneration/replacement).
+        candidates = [p for p in posts if p["id"] in wanted]
+    else:
+        # No IDs: preserve original behavior — imageless posts only.
+        candidates = [p for p in posts if needs_featured(p)]
     if args.category:
         cat = int(args.category)
         candidates = [p for p in candidates if cat in (p.get("categories") or [])]
