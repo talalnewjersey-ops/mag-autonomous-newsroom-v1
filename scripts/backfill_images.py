@@ -45,6 +45,11 @@ PHOTO_STYLE = (
     "high detail, 16:9 aspect ratio. "
     "STRICTLY NO text, NO words, NO captions, NO logos, NO watermark, "
     "NO infographic, NO chart, NO diagram, NO illustration, NO cartoon, NO screenshot."
+    "NO LOGOS. NO BRAND NAMES. NO COMPANY NAMES. NO BANK NAMES. "
+    "NO INTERAC. NO SCOTIABANK. NO RBC. NO TD. NO BMO. "
+    "NO READABLE TEXT. NO SIGNAGE. NO NAMEPLATES. NO COMPUTER SCREENS. "
+    "NO POSTERS. NO DOCUMENTS WITH TEXT. NO LETTERS. NO WORDS. NO WATERMARKS. "
+    "All surfaces must be blank, generic and unbranded."
 )
 
 MARKET_SCENE = {
