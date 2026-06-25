@@ -10,26 +10,26 @@ agents against deterministic in-memory fixtures and prints + writes a JSON
 report of each gate decision.
 
 WHAT IT EXERCISES (real code paths, no fabrication):
-  * Agent 19  (originality)        -> run_originality_check
-  * Agent 17  (cannibalization)    -> score_conflict + decide (in-memory corpus,
-                                      NO fetch_wordpress_articles, NO network)
-  * Agent 20  (YMYL)               -> run_ymyl_validation
-  * Quality Gate V4                -> run_gate (authoritative, recomputes signals)
+* Agent 19 (originality) -> run_originality_check
+* Agent 17 (cannibalization) -> score_conflict + decide (in-memory corpus,
+  NO fetch_wordpress_articles, NO network)
+* Agent 20 (YMYL) -> run_ymyl_validation
+* Quality Gate V4 -> run_gate (authoritative, recomputes signals)
 
 DETERMINISTIC: forces EMBEDDINGS_PROVIDER=hashing (offline, no API keys).
 WRITES NOTHING to WordPress. Emits output/validation_v4/validation_report.json.
 
 NOTE ON THE QUALITY GATE + RUNTIME GATES:
-  The authoritative gate ALWAYS consults the performance (Agent 22) and
-  competitor (Agent 23) reports. Offline, those reports are absent, so the gate
-  correctly marks them as failed/PENDING. This is the documented honest design:
-  publication is blocked until real Lighthouse / SERP measurements are supplied.
-  Therefore a fully content-clean article is expected to be BLOCKED offline with
-  failed_gates EXACTLY {performance, competitor}; every CONTENT gate must pass.
+The authoritative gate ALWAYS consults the performance (Agent 22) and
+competitor (Agent 23) reports. Offline, those reports are absent, so the gate
+correctly marks them as failed/PENDING. This is the documented honest design:
+publication is blocked until real Lighthouse / SERP measurements are supplied.
+Therefore a fully content-clean article is expected to be BLOCKED offline with
+failed_gates EXACTLY {performance, competitor}; every CONTENT gate must pass.
 
 EXIT CODES
-  0 -> harness ran and every scenario behaved as expected
-  1 -> a scenario did not behave as expected (investigate the report)
+0 -> harness ran and every scenario behaved as expected
+1 -> a scenario did not behave as expected (investigate the report)
 """
 from __future__ import annotations
 
@@ -48,7 +48,6 @@ from agents.agent_19_originality import run_originality_check
 from agents.agent_20_ymyl_validator import run_ymyl_validation
 from agents import agent_17_cannibalization as a17
 import scripts.quality_gate_v4 as qg
-
 
 OUT_DIR = Path("output/validation_v4")
 
@@ -105,7 +104,7 @@ def run_quality_gate_offline(markdown, rendered_html, meta, corpus_md):
 
 
 # --------------------------------------------------------------------------- #
-# Deterministic fixtures.                                                      #
+# Deterministic fixtures.                                                     #
 # --------------------------------------------------------------------------- #
 # CLEAN article: no banned patterns, valid heading hierarchy, >=5 internal
 # moneyabroadguide.com links, an official source, a disclosure.
@@ -131,16 +130,21 @@ CLEAN_ARTICLE = (
     "Pick the cheapest reliable corridor and confirm the rate before you send.\n"
 )
 
+# Under Approach B / B1 the authoritative gate enforces all 8 EEAT keys, so the
+# CLEAN fixture must carry author_credentials + editorial_note too; otherwise
+# the eeat content gate would fail and the article would not be "clean".
 CLEAN_META = {
     "title": "How To Send Money Abroad Cheaply In 2026",
     "slug": "send-money-abroad-cheaply-2026",
     "keywords": ["send money abroad", "transfer fees", "exchange rate"],
     "author": "Talal Eddaouahiri",
+    "author_credentials": "Founder of MoneyAbroadGuide.com",
     "review_date": "2026-06-25",
     "update_date": "2026-06-25",
     "official_references": ["https://www.irs.gov/businesses"],
     "disclosure": True,
     "related_articles": ["https://moneyabroadguide.com/compare"],
+    "editorial_note": "Reviewed by the MoneyAbroadGuide editorial team.",
 }
 
 CLEAN_RENDERED = (
@@ -185,13 +189,13 @@ def main() -> int:
     scenarios.append({
         "scenario": "A_clean_empty_corpus",
         "agent_19": {"score": a19_clean["originality_score"], "passed": a19_clean["passed"],
-                      "regenerate_sections": a19_clean["regenerate_sections"],
-                      "violations": a19_clean["violations"]},
+                     "regenerate_sections": a19_clean["regenerate_sections"],
+                     "violations": a19_clean["violations"]},
         "agent_17": {"decision": a17_clean["decision"], "blocking": a17_clean["blocking"],
-                      "max_composite": a17_clean["max_composite"]},
+                     "max_composite": a17_clean["max_composite"]},
         "agent_20": {"status": a20_clean["status"], "summary": a20_clean["summary"]},
         "quality_gate": {"decision": qg_clean["decision"], "failed_gates": qg_clean["failed_gates"],
-                          "content_gate_failures": clean_content_failures},
+                         "content_gate_failures": clean_content_failures},
     })
 
     # --- Scenario B: CLEAN topic vs near-duplicate corpus.
@@ -200,7 +204,7 @@ def main() -> int:
     scenarios.append({
         "scenario": "B_cannibalization_near_duplicate",
         "agent_17": {"decision": a17_dup["decision"], "blocking": a17_dup["blocking"],
-                      "max_composite": a17_dup["max_composite"], "bands": a17_dup["bands"]},
+                     "max_composite": a17_dup["max_composite"], "bands": a17_dup["bands"]},
     })
 
     # --- Scenario C: BAD article -> Quality Gate must BLOCK on content gates.
@@ -210,9 +214,9 @@ def main() -> int:
     scenarios.append({
         "scenario": "C_bad_article_must_block",
         "agent_19": {"score": a19_bad["originality_score"], "passed": a19_bad["passed"],
-                      "violations": a19_bad["violations"]},
+                     "violations": a19_bad["violations"]},
         "quality_gate": {"decision": qg_bad["decision"], "failed_gates": qg_bad["failed_gates"],
-                          "content_gate_failures": bad_content_failures},
+                         "content_gate_failures": bad_content_failures},
     })
 
     # --- Scenario D: contradicted YMYL value -> Agent 20 must FAIL.
@@ -269,14 +273,14 @@ def main() -> int:
     print("NEXUS-14 V4 OFFLINE VALIDATION HARNESS")
     print("=" * 64)
     print("embeddings_provider:", os.environ.get("EMBEDDINGS_PROVIDER"))
-    print("wordpress_contacted: False    openai_contacted: False")
+    print("wordpress_contacted: False  openai_contacted: False")
     print("runtime gates PENDING offline (by design):", sorted(RUNTIME_GATES))
     print("-" * 64)
     for s in scenarios:
         print("SCENARIO", s["scenario"])
         for k in ("agent_17", "agent_19", "agent_20", "quality_gate"):
             if k in s:
-                print("   ", k, "->", json.dumps(s[k], ensure_ascii=False))
+                print("  ", k, "->", json.dumps(s[k], ensure_ascii=False))
     print("-" * 64)
     for e in expectations:
         print(("[OK] " if e["result"] == "EXPECTED" else "[XX] ") + e["check"])
