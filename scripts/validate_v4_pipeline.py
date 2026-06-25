@@ -19,6 +19,14 @@ WHAT IT EXERCISES (real code paths, no fabrication):
 DETERMINISTIC: forces EMBEDDINGS_PROVIDER=hashing (offline, no API keys).
 WRITES NOTHING to WordPress. Emits output/validation_v4/validation_report.json.
 
+NOTE ON THE QUALITY GATE + RUNTIME GATES:
+  The authoritative gate ALWAYS consults the performance (Agent 22) and
+  competitor (Agent 23) reports. Offline, those reports are absent, so the gate
+  correctly marks them as failed/PENDING. This is the documented honest design:
+  publication is blocked until real Lighthouse / SERP measurements are supplied.
+  Therefore a fully content-clean article is expected to be BLOCKED offline with
+  failed_gates EXACTLY {performance, competitor}; every CONTENT gate must pass.
+
 EXIT CODES
   0 -> harness ran and every scenario behaved as expected
   1 -> a scenario did not behave as expected (investigate the report)
@@ -34,11 +42,8 @@ from datetime import datetime, timezone
 
 # Force the deterministic, offline embeddings backend BEFORE importing agents.
 os.environ.setdefault("EMBEDDINGS_PROVIDER", "hashing")
-# Make sure Agent 17 never blocks on a missing WordPress env in observe terms;
-# we do NOT call its WP fetch path at all (see run_cannibalization_offline).
 
 from services.embeddings_service import get_embeddings_service
-from services.content_similarity import token_set
 from agents.agent_19_originality import run_originality_check
 from agents.agent_20_ymyl_validator import run_ymyl_validation
 from agents import agent_17_cannibalization as a17
@@ -47,12 +52,16 @@ import scripts.quality_gate_v4 as qg
 
 OUT_DIR = Path("output/validation_v4")
 
+# Runtime gates that always fail offline (no Lighthouse / SERP data). This is
+# the documented honest behavior, not a defect.
+RUNTIME_GATES = {"performance", "competitor"}
+
 
 def run_cannibalization_offline(topic, keywords, slug, corpus_posts):
     """Run Agent 17 decision logic against an IN-MEMORY corpus.
 
-    This deliberately bypasses fetch_wordpress_articles() so the harness makes
-    NO network call and NEVER reads/writes WordPress. It uses the real
+    Deliberately bypasses fetch_wordpress_articles() so the harness makes NO
+    network call and NEVER reads/writes WordPress. Uses the real
     score_conflict() + decide() so the decision is genuine V4 logic.
     """
     a17._load_thresholds()
@@ -68,7 +77,6 @@ def run_cannibalization_offline(topic, keywords, slug, corpus_posts):
         "max_composite": round(max_score, 4),
         "corpus_size": len(corpus_posts),
         "bands": {"allow": a17.BAND_ALLOW, "human_review": a17.BAND_HUMAN, "merge": a17.BAND_MERGE},
-        "top_conflict": top,
     }
 
 
@@ -99,20 +107,23 @@ def run_quality_gate_offline(markdown, rendered_html, meta, corpus_md):
 # --------------------------------------------------------------------------- #
 # Deterministic fixtures.                                                      #
 # --------------------------------------------------------------------------- #
+# CLEAN article: no banned patterns, valid heading hierarchy, >=5 internal
+# moneyabroadguide.com links, an official source, a disclosure.
 CLEAN_ARTICLE = (
     "Start with the numbers: sending $1,000 abroad can cost between $4 and $45 "
     "depending on the provider you choose this year.\n\n"
     "## How Transfer Fees Work\n"
     "Providers blend an explicit fee with an exchange-rate margin. "
-    "See our [fee guide](https://moneyabroadguide.com/fees) for the math. "
-    "Read the [comparison](https://moneyabroadguide.com/compare) too.\n\n"
+    "See our [fee guide](https://moneyabroadguide.com/fees) for the math, the "
+    "[comparison](https://moneyabroadguide.com/compare) table, and the "
+    "[corridors](https://moneyabroadguide.com/corridors) overview.\n\n"
     "## Choosing A Service\n"
     "Match the corridor to the provider. The [service list]"
-    "(https://moneyabroadguide.com/services) ranks them. "
-    "Our [reviews](https://moneyabroadguide.com/reviews) go deeper. "
+    "(https://moneyabroadguide.com/services) ranks them and our "
+    "[reviews](https://moneyabroadguide.com/reviews) go deeper. "
     "Affiliate disclosure: we may earn a commission. "
-    "Official guidance: https://www.irs.gov/businesses and "
-    "another internal link https://moneyabroadguide.com/tips .\n\n"
+    "Official guidance: https://www.irs.gov/businesses plus more "
+    "[tips](https://moneyabroadguide.com/tips) here.\n\n"
     "## Frequently Asked Questions\n"
     "### How long does a transfer take?\n"
     "Most arrive within one business day.\n\n"
@@ -138,7 +149,6 @@ CLEAN_RENDERED = (
     "<!-- wp:yoast/faq-block -->"
 )
 
-# A near-duplicate existing post (drives Agent 17 / cannibalization).
 DUP_CORPUS_POSTS = [
     {"id": 101, "slug": "send-money-abroad-cheaply-2026",
      "title": {"rendered": "How To Send Money Abroad Cheaply In 2026"},
@@ -146,7 +156,6 @@ DUP_CORPUS_POSTS = [
      "link": "https://moneyabroadguide.com/?p=101"},
 ]
 
-# A failing article: banned opener + emoji heading + body JSON-LD + missing EEAT.
 BAD_ARTICLE = (
     "In today\u0027s world, sending money is hard.\n\n"
     "## \U0001F680 Getting Started\n"
@@ -166,12 +175,13 @@ def main() -> int:
     scenarios = []
     ok = True
 
-    # --- Scenario A: CLEAN article, empty corpus -> everything should ALLOW/PASS
+    # --- Scenario A: CLEAN article, empty corpus.
     a19_clean = run_originality_check(CLEAN_ARTICLE, [], str(OUT_DIR / "orig_clean.json"))
     a17_clean = run_cannibalization_offline(
         CLEAN_META["title"], CLEAN_META["keywords"], CLEAN_META["slug"], [])
     a20_clean = run_ymyl_validation(CLEAN_ARTICLE, output_path=str(OUT_DIR / "ymyl_clean.json"))
     qg_clean = run_quality_gate_offline(CLEAN_ARTICLE, CLEAN_RENDERED, CLEAN_META, [])
+    clean_content_failures = [g for g in qg_clean["failed_gates"] if g not in RUNTIME_GATES]
     scenarios.append({
         "scenario": "A_clean_empty_corpus",
         "agent_19": {"score": a19_clean["originality_score"], "passed": a19_clean["passed"],
@@ -180,10 +190,11 @@ def main() -> int:
         "agent_17": {"decision": a17_clean["decision"], "blocking": a17_clean["blocking"],
                       "max_composite": a17_clean["max_composite"]},
         "agent_20": {"status": a20_clean["status"], "summary": a20_clean["summary"]},
-        "quality_gate": {"decision": qg_clean["decision"], "failed_gates": qg_clean["failed_gates"]},
+        "quality_gate": {"decision": qg_clean["decision"], "failed_gates": qg_clean["failed_gates"],
+                          "content_gate_failures": clean_content_failures},
     })
 
-    # --- Scenario B: CLEAN article vs near-duplicate corpus -> Agent 17 should NOT be ALLOW
+    # --- Scenario B: CLEAN topic vs near-duplicate corpus.
     a17_dup = run_cannibalization_offline(
         CLEAN_META["title"], CLEAN_META["keywords"], CLEAN_META["slug"], DUP_CORPUS_POSTS)
     scenarios.append({
@@ -192,17 +203,19 @@ def main() -> int:
                       "max_composite": a17_dup["max_composite"], "bands": a17_dup["bands"]},
     })
 
-    # --- Scenario C: BAD article -> Quality Gate must BLOCK with multiple failed gates
+    # --- Scenario C: BAD article -> Quality Gate must BLOCK on content gates.
     qg_bad = run_quality_gate_offline(BAD_ARTICLE, BAD_RENDERED, BAD_META, [])
     a19_bad = run_originality_check(BAD_ARTICLE, [], str(OUT_DIR / "orig_bad.json"))
+    bad_content_failures = [g for g in qg_bad["failed_gates"] if g not in RUNTIME_GATES]
     scenarios.append({
         "scenario": "C_bad_article_must_block",
         "agent_19": {"score": a19_bad["originality_score"], "passed": a19_bad["passed"],
                       "violations": a19_bad["violations"]},
-        "quality_gate": {"decision": qg_bad["decision"], "failed_gates": qg_bad["failed_gates"]},
+        "quality_gate": {"decision": qg_bad["decision"], "failed_gates": qg_bad["failed_gates"],
+                          "content_gate_failures": bad_content_failures},
     })
 
-    # --- Scenario D: contradicted YMYL value -> Agent 20 must FAIL
+    # --- Scenario D: contradicted YMYL value -> Agent 20 must FAIL.
     a20_bad = run_ymyl_validation(
         "The TFSA contribution limit is $99,999 for 2025.",
         output_path=str(OUT_DIR / "ymyl_bad.json"))
@@ -211,7 +224,7 @@ def main() -> int:
         "agent_20": {"status": a20_bad["status"], "summary": a20_bad["summary"]},
     })
 
-    # --- Expectations (the harness asserts the DIRECTION, never invents numbers) ---
+    # --- Expectations (assert DIRECTION / design intent, never invent numbers) ---
     expectations = []
     def expect(name, condition):
         nonlocal ok
@@ -219,25 +232,32 @@ def main() -> int:
         if not condition:
             ok = False
 
-    expect("A: clean article quality gate READY_TO_PUBLISH",
-           qg_clean["decision"] == "READY_TO_PUBLISH")
+    # Clean article: every CONTENT gate passes; only the runtime gates remain,
+    # which correctly block offline (honest PENDING design).
+    expect("A: clean article passes ALL content gates (no content failures)",
+           clean_content_failures == [])
+    expect("A: clean article blocked ONLY by runtime gates offline",
+           set(qg_clean["failed_gates"]) <= RUNTIME_GATES)
+    expect("A: clean originality passed", a19_clean["passed"] is True)
     expect("A: clean cannibalization ALLOW on empty corpus",
            a17_clean["decision"] == "ALLOW")
     expect("A: clean YMYL PASS", a20_clean["status"] == "PASS")
-    expect("B: near-duplicate cannibalization is NOT ALLOW",
-           a17_dup["decision"] != "ALLOW")
+    expect("B: near-duplicate cannibalization is NOT ALLOW and blocking",
+           a17_dup["decision"] != "ALLOW" and a17_dup["blocking"] is True)
     expect("C: bad article quality gate BLOCKED", qg_bad["decision"] == "BLOCKED")
-    expect("C: bad article has >=1 failed gate", len(qg_bad["failed_gates"]) >= 1)
+    expect("C: bad article fails CONTENT gates (schema/eeat/formatting/...)",
+           len(bad_content_failures) >= 1)
     expect("C: bad article originality NOT passed", a19_bad["passed"] is False)
     expect("D: contradicted YMYL value FAIL", a20_bad["status"] == "FAIL")
 
     report = {
         "harness": "validate_v4_pipeline",
-        "version": "1.0",
+        "version": "1.1",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "embeddings_provider": os.environ.get("EMBEDDINGS_PROVIDER"),
         "wordpress_contacted": False,
         "openai_contacted": False,
+        "runtime_gates_pending_offline": sorted(RUNTIME_GATES),
         "scenarios": scenarios,
         "expectations": expectations,
         "all_expected": ok,
@@ -250,6 +270,7 @@ def main() -> int:
     print("=" * 64)
     print("embeddings_provider:", os.environ.get("EMBEDDINGS_PROVIDER"))
     print("wordpress_contacted: False    openai_contacted: False")
+    print("runtime gates PENDING offline (by design):", sorted(RUNTIME_GATES))
     print("-" * 64)
     for s in scenarios:
         print("SCENARIO", s["scenario"])
