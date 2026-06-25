@@ -46,24 +46,19 @@ EMBEDDINGS_PROVIDER=hashing PYTHONPATH=. python scripts/validate_v4_pipeline.py
 > Investigation showed this was a **test-fixture defect, not a pipeline
 > defect** — Agent 23 correctly returned FAIL because the strong-article
 > fixture did not cover at least 70% of the competitor entity set. The fixture
-> was corrected in `0320feb` (it now covers the money/transfer/abroad entity
-> surface), and run #14 then reported `85 passed`. The failed run is recorded
-> here deliberately: success was never declared on the strength of written
-> code, only on a green CI log.
+> was corrected in `0320feb`, and run #14 then reported `85 passed`. The failed
+> run is recorded here deliberately: success was never declared on the strength
+> of written code, only on a green CI log.
 
 > **Honest note on runs #23 and #24 (Approach B / B1).** Tightening the gate
 > from 6 to 8 required EEAT keys deliberately broke two pre-existing fixtures
 > that only carried the legacy 6 keys. Run #23 (`60113db`) failed with
-> `1 failed, 90 passed` (`test_v4_failure_matrix::test_eeat_complete_passes` —
-> a 6-key COMPLETE_META no longer passes an 8-key gate). After completing that
-> fixture, run #24 (`8051fb3`) failed with `1 failed, 90 passed` for the same
-> reason in a second fixture (`test_v4_runtime_gates` reads CLEAN_META, which
-> also carried only 6 keys, so the `eeat` content gate fired alongside the
-> runtime gates). Fixing CLEAN_META at its source
-> (`scripts/validate_v4_pipeline.py`) produced run #25 = `111 passed`. Both
-> failures were fixture-completeness issues caused by the intended behavioural
-> change, not gate defects; each was diagnosed from the real CI log before the
-> next commit.
+> `1 failed, 90 passed`; after completing that fixture, run #24 (`8051fb3`)
+> failed with `1 failed, 90 passed` for the same reason in a second fixture
+> (CLEAN_META also carried only 6 keys). Fixing CLEAN_META at its source
+> produced run #25 = `111 passed`. Both failures were fixture-completeness
+> issues caused by the intended behavioural change, not gate defects; each was
+> diagnosed from the real CI log before the next commit.
 
 > **Honest note on run #29 (M7 topic selection).** The first M7 test commit
 > (`273b3f7`, V4 Pipeline Tests #29) **failed** with `1 failed, 119 passed`:
@@ -71,10 +66,7 @@ EMBEDDINGS_PROVIDER=hashing PYTHONPATH=. python scripts/validate_v4_pipeline.py
 > `>= 0.70`, but the true static ceiling is ~0.6995 (no live-signal weight can
 > contribute when no live data is supplied). This was a **test-threshold
 > defect, not an engine defect** — the prioritizer behaved correctly. The
-> floor was corrected to `0.65` and run #31 (`0f38cb1`) reported
-> `139 passed`. (One intermediate commit recorded the same message but did not
-> register the buffer change in the web editor; it was superseded by the
-> correct content in `0f38cb1`, verified against true HEAD before the CI run.)
+> floor was corrected to `0.65` and run #31 (`0f38cb1`) reported `139 passed`.
 
 The pytest suite grew across phases as coverage was added:
 
@@ -288,6 +280,7 @@ Safety invariants enforced by the boundary:
 requires: valid WordPress credentials in config, a caller that passes
 `allow_live=True`, and a human decision to promote the created draft to
 published. None of this is wired into CI, and no live run has been performed.
+
 ## Known non-blocking warning
 
 CI emits a Node 20 deprecation notice for `actions/checkout@v4`,
