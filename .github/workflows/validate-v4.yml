@@ -1,13 +1,22 @@
 name: V4 Validation Harness
 
-# Manually-triggered OFFLINE validation of the V4 decision core.
-# Runs the real V4 agents (17 / 19 / 20) and the authoritative Quality Gate
-# against deterministic in-memory fixtures using the offline "hashing"
-# embeddings backend. It contacts NO WordPress site and NO OpenAI API, and it
-# does NOT publish, deploy, or run the live schema migration.
+# Manually-triggered (and feature-branch push-triggered) OFFLINE validation of
+# the V4 decision core. Runs the real V4 agents (17 / 19 / 20) and the
+# authoritative Quality Gate against deterministic in-memory fixtures using the
+# offline "hashing" embeddings backend. It contacts NO WordPress site and NO
+# OpenAI API, and does NOT publish, deploy, or run the live schema migration.
+#
+# The push trigger is scoped to the feature branch only so the harness can run
+# in CI without merging anything into main.
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/nexus14-v4-enterprise
+    paths:
+      - "scripts/validate_v4_pipeline.py"
+      - ".github/workflows/validate-v4.yml"
 
 permissions:
   contents: read
