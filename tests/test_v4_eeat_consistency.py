@@ -1,19 +1,24 @@
 """
 NEXUS-14 V4 - tests/test_v4_eeat_consistency.py
 
-CHARACTERIZATION tests for the EEAT consistency debt (Track 2).
+ALIGNMENT tests for the EEAT required-element set (Approach B / B1).
 
-These tests do NOT change any decision logic. They pin the CURRENT, REAL
-behaviour of the two EEAT definitions so that the documented divergence
-between them is explicit and any future drift is caught by CI:
+Track 2 debt RESOLVED: the gate and the enrichment engine now share ONE
+source of truth for the required EEAT elements:
 
-  * scripts/quality_gate_v4.py  -> THRESHOLDS["eeat_required_elements"] (6 keys)
-  * services/eeat_enrichment.py -> REQUIRED_ELEMENTS (8 keys)
+* services/eeat_enrichment.py -> REQUIRED_EEAT_KEYS (authoritative, 8 keys)
+* scripts/quality_gate_v4.py   -> THRESHOLDS["eeat_required_elements"] imports
+  REQUIRED_EEAT_KEYS (no longer a hard-coded 6-key list).
 
-The enrichment module claims to "mirror" the gate list. In reality it is a
-STRICT SUPERSET: it additionally requires `author_credentials` and
-`editorial_note`. That is recorded here as known technical debt; the gate
-remains the authoritative publication decision and is left unchanged.
+These tests pin the NEW behaviour:
+  1. both definitions are identical (no silent divergence possible);
+  2. the canonical list is exactly the 8 keys;
+  3. a meta carrying only the legacy 6 gate keys now FAILS check_eeat
+     (publication behaviour is intentionally stricter under B1);
+  4. build_eeat_fields() / validate_eeat() still behave on the /8 scale.
+
+They WOULD fail if anyone reintroduced a divergent or 6-key gate list,
+which is exactly the regression we want CI to catch.
 """
 
 import importlib
@@ -21,65 +26,104 @@ import importlib
 import pytest
 
 from services.eeat_enrichment import (
+    REQUIRED_EEAT_KEYS,
     REQUIRED_ELEMENTS as ENRICH_REQUIRED,
     build_eeat_fields,
     validate_eeat,
 )
 
 
+def _gate_module():
+    return importlib.import_module("scripts.quality_gate_v4")
+
+
 def _gate_required():
     """Read the gate's required EEAT elements without running argparse/main."""
-    qg = importlib.import_module("scripts.quality_gate_v4")
-    return list(qg.THRESHOLDS["eeat_required_elements"])
+    return list(_gate_module().THRESHOLDS["eeat_required_elements"])
 
 
 # ---------------------------------------------------------------------------
-# 1. Characterize the two lists exactly as they are today.
+# 1. Single source of truth: gate list IS the enrichment list.
 # ---------------------------------------------------------------------------
 
-def test_gate_requires_exactly_six_elements():
-    gate = _gate_required()
-    assert gate == [
-        "author", "review_date", "update_date",
-        "official_references", "disclosure", "related_articles",
-    ]
-    assert len(gate) == 6
+CANONICAL_KEYS = [
+    "author", "author_credentials", "review_date", "update_date",
+    "official_references", "related_articles", "disclosure", "editorial_note",
+]
 
 
-def test_enrichment_requires_exactly_eight_elements():
-    assert ENRICH_REQUIRED == [
-        "author", "author_credentials", "review_date", "update_date",
-        "official_references", "related_articles", "disclosure", "editorial_note",
-    ]
-    assert len(ENRICH_REQUIRED) == 8
+def test_canonical_list_is_exactly_eight_keys():
+    assert REQUIRED_EEAT_KEYS == CANONICAL_KEYS
+    assert len(REQUIRED_EEAT_KEYS) == 8
 
 
-# ---------------------------------------------------------------------------
-# 2. Pin the relationship: gate list is a SUBSET of the enrichment list,
-#    and the divergence is exactly {author_credentials, editorial_note}.
-# ---------------------------------------------------------------------------
-
-def test_gate_elements_are_subset_of_enrichment():
-    gate = set(_gate_required())
-    enrich = set(ENRICH_REQUIRED)
-    assert gate.issubset(enrich)
+def test_enrichment_alias_points_at_canonical_list():
+    # REQUIRED_ELEMENTS is kept as a backwards-compatible alias.
+    assert ENRICH_REQUIRED is REQUIRED_EEAT_KEYS
 
 
-def test_enrichment_extra_elements_are_documented_debt():
-    """The enrichment module enforces TWO elements the gate does not."""
-    extra = set(ENRICH_REQUIRED) - set(_gate_required())
-    assert extra == {"author_credentials", "editorial_note"}
+def test_gate_imports_the_shared_required_keys():
+    gate = _gate_module()
+    # The gate threshold object must BE the shared constant (identity),
+    # proving it imports rather than redeclaring its own list.
+    assert gate.THRESHOLDS["eeat_required_elements"] is REQUIRED_EEAT_KEYS
 
 
-def test_mirror_comment_is_not_literally_accurate():
-    """eeat_enrichment claims to mirror the gate list; pin that it is a
-    strict superset, not an equal set (this is the Track 2 debt)."""
-    assert set(ENRICH_REQUIRED) != set(_gate_required())
-    assert len(ENRICH_REQUIRED) > len(_gate_required())
+def test_gate_and_enrichment_are_identical_no_divergence():
+    assert _gate_required() == list(REQUIRED_EEAT_KEYS)
+    assert set(_gate_required()) == set(ENRICH_REQUIRED)
+
+
+def test_no_extra_or_missing_elements_between_the_two():
+    diff = set(ENRICH_REQUIRED) ^ set(_gate_required())  # symmetric difference
+    assert diff == set()
 
 
 # ---------------------------------------------------------------------------
-# 3. Pin build_eeat_fields(): it must emit every key the GATE requires.
+# 2. New publication behaviour: the gate now enforces all 8 keys.
+#    A meta carrying only the legacy 6 keys must now be BLOCKED.
+# ---------------------------------------------------------------------------
+
+GATE_ONLY_LEGACY_6 = {
+    "author": "Jane Expert",
+    "review_date": "2026-01-10",
+    "update_date": "2026-01-15",
+    "official_references": ["https://www.irs.gov/x"],
+    "disclosure": True,
+    "related_articles": True,
+    # deliberately NO author_credentials, NO editorial_note
+}
+
+
+def test_gate_check_eeat_blocks_legacy_six_key_meta():
+    """Under B1, satisfying only the old 6 keys is no longer enough."""
+    gate = _gate_module()
+    result = gate.check_eeat(GATE_ONLY_LEGACY_6)
+    assert result["passed"] is False
+    assert set(result["missing_elements"]) == {"author_credentials", "editorial_note"}
+
+
+def test_gate_check_eeat_passes_full_eight_key_meta():
+    gate = _gate_module()
+    full = dict(GATE_ONLY_LEGACY_6)
+    full["author_credentials"] = "CFA, 10y cross-border payments"
+    full["editorial_note"] = "Reviewed by the editorial team."
+    result = gate.check_eeat(full)
+    assert result["passed"] is True
+    assert result["missing_elements"] == []
+
+
+def test_build_eeat_fields_output_passes_the_gate():
+    """The enrichment output is shaped to satisfy the (now 8-key) gate."""
+    gate = _gate_module()
+    fields = build_eeat_fields(RICH_ARTICLE, markdown=RICH_BODY)
+    result = gate.check_eeat(fields)
+    assert result["passed"] is True
+    assert result["missing_elements"] == []
+
+
+# ---------------------------------------------------------------------------
+# 3. build_eeat_fields(): emits every canonical key, truthy.
 # ---------------------------------------------------------------------------
 
 RICH_ARTICLE = {
@@ -99,10 +143,10 @@ RICH_BODY = (
 )
 
 
-def test_build_fields_emits_all_gate_keys():
+def test_build_fields_emits_all_canonical_keys():
     fields = build_eeat_fields(RICH_ARTICLE, markdown=RICH_BODY)
-    for key in _gate_required():
-        assert key in fields, f"build_eeat_fields missing gate key: {key}"
+    for key in REQUIRED_EEAT_KEYS:
+        assert key in fields, f"build_eeat_fields missing key: {key}"
         assert fields[key] not in (None, "", False, [], {})
 
 
@@ -122,13 +166,12 @@ def test_build_fields_detects_disclosure_and_related():
 def test_build_fields_defaults_dates_when_absent():
     minimal = {"author": "A", "author_bio": "bio", "editorial_note": "note"}
     fields = build_eeat_fields(minimal, markdown="no links here")
-    # dates fall back to today (ISO string), never empty.
     assert fields["review_date"]
     assert fields["update_date"]
 
 
 # ---------------------------------------------------------------------------
-# 4. Pin validate_eeat(): structural pass/fail + /8 score behaviour.
+# 4. validate_eeat(): structural pass/fail + /8 score behaviour.
 # ---------------------------------------------------------------------------
 
 def test_validate_eeat_passes_on_complete_fields():
@@ -139,20 +182,8 @@ def test_validate_eeat_passes_on_complete_fields():
     assert result["missing_elements"] == []
 
 
-def test_validate_eeat_blocks_when_enrichment_extra_missing():
-    """A meta that satisfies the GATE (6/6) can still FAIL the enrichment
-    validator, because the latter also requires author_credentials +
-    editorial_note. This is the concrete manifestation of the debt."""
-    gate_only = {
-        "author": "Jane Expert",
-        "review_date": "2026-01-10",
-        "update_date": "2026-01-15",
-        "official_references": ["https://www.irs.gov/x"],
-        "disclosure": True,
-        "related_articles": True,
-        # deliberately NO author_credentials, NO editorial_note
-    }
-    result = validate_eeat(gate_only)
+def test_validate_eeat_blocks_when_keys_missing():
+    result = validate_eeat(GATE_ONLY_LEGACY_6)
     assert result["passed"] is False
     assert set(result["missing_elements"]) == {"author_credentials", "editorial_note"}
 
