@@ -2,7 +2,7 @@ name: V4 Pipeline Tests
 
 # Runs the NEXUS-14 V4 regression suite on every push and pull request that
 # touches the branch. The suite is deterministic: it uses the default "hashing"
-# embeddings backend, so no API keys or network access are required.
+# embeddings backend, so no API keys or network access are required at runtime.
 #
 # This workflow makes the branch CI-ready. It does NOT deploy, publish, or run
 # the live schema migration. Runtime-dependent gates (Lighthouse / SERP) are not
@@ -40,10 +40,18 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install test dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pyyaml
+          # Install the project runtime deps so import-heavy agents (which import
+          # requests / aiohttp at module load) can be collected by pytest.
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            pip install requests aiohttp
+          fi
+          # Test tooling (also covers repos whose requirements omit these).
+          pip install pytest pyyaml requests
 
       - name: Run V4 regression suite
         env:
