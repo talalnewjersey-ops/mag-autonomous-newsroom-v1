@@ -102,27 +102,35 @@ def test_perf_report_pending_without_measurement(tmp_path):
 # --------------------------------------------------------------------------- #
 # Agent 23 - competitor                                                         #
 # --------------------------------------------------------------------------- #
-# A strong article that adds many NEW entities vs a thin competitor set, while
-# still covering the competitor entities, and including FAQ/table/example/refs.
+# Agent 23 keeps tokens with len > 4 as "entities". The competitor entity set
+# is therefore {money, transfer, abroad}. For PASS the article must:
+#   * cover >= 70% of competitor entities (so include money/transfer/abroad), AND
+#   * add >= 20% NEW entities (info gain), AND
+#   * not be missing FAQ / table / example / official-reference that the
+#     competitor has (our competitor text has none of those, so nothing missing).
+COMPETITORS_THIN = [
+    {"url": "https://x.test/a", "title": "transfer",
+     "text": "money transfer abroad"},
+]
 STRONG_ARTICLE = (
+    "Money transfer abroad explained.\n\n"
     "Remitly Wise Xoom corridor settlement intermediary compliance treasury "
-    "liquidity hedging arbitrage remittance disbursement reconciliation.\n\n"
+    "liquidity hedging arbitrage remittance disbursement reconciliation "
+    "beneficiary correspondent custodian regulatory jurisdiction.\n\n"
     "## Comparison\n| Provider | Fee |\n| --- | --- |\n| Wise | low |\n\n"
-    "For example, a real-world case study of a USD-CAD transfer.\n\n"
+    "For example, a real-world case study of a transfer.\n\n"
     "Official guidance: https://www.irs.gov/businesses\n\n"
     "## Frequently Asked Questions\n### How long?\nOne day.\n"
 )
-COMPETITORS_THIN = [
-    {"url": "https://x.test/a", "title": "transfer", "text": "money transfer fees abroad"},
-]
 
 
 def test_competitor_pass_with_strong_article(tmp_path):
     rep = run_competitor_check(STRONG_ARTICLE, COMPETITORS_THIN, "send money abroad",
                                str(tmp_path / "comp.json"))
-    assert rep["status"] == "PASS"
+    assert rep["status"] == "PASS", rep
     assert rep["passed"] is True
     assert rep["information_gain"] >= rep["thresholds"]["information_gain_min"]
+    assert rep["entity_coverage"] >= rep["thresholds"]["entity_coverage_min"]
 
 
 def test_competitor_fail_on_low_information_gain(tmp_path):
@@ -181,7 +189,7 @@ def test_clean_article_publishable_with_pass_runtime_reports(tmp_path):
     perf = _write_report(tmp_path, "perf.json", True)
     comp = _write_report(tmp_path, "comp.json", True)
     result = qg.run_gate(_gate_args(tmp_path, perf, comp))
-    assert result["decision"] == "READY_TO_PUBLISH"
+    assert result["decision"] == "READY_TO_PUBLISH", result
     assert result["failed_gates"] == []
 
 
