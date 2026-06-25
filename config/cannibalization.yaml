@@ -1,0 +1,28 @@
+# NEXUS-14 V4 - config/cannibalization.yaml  (M4)
+# Tunable thresholds for Agent 17 (semantic cannibalization engine).
+# If absent, Agent 17 uses the built-in defaults documented below.
+
+# Weighted similarity signals. Must sum to ~1.0 (composite is weight-normalized,
+# so exact 1.0 is not required, but keep them proportional).
+weights:
+  semantic: 0.40      # embedding cosine similarity (title + excerpt)
+  title:    0.20      # normalized title sequence ratio
+  keyword:  0.20      # Jaccard over keyword token sets
+  slug:     0.10      # slug token Jaccard
+  intent:   0.10      # 1.0 if dominant search intent matches, else 0.0
+
+# Composite-overlap decision bands (lower bound inclusive).
+#   composite <  allow         -> ALLOW
+#   allow <= composite < human_review -> HUMAN_REVIEW
+#   human_review <= composite < merge -> MERGE / CANONICAL
+#   composite >= merge         -> BLOCK (near-duplicate)
+bands:
+  allow:        0.55
+  human_review: 0.72
+  merge:        0.85
+
+# Operational notes:
+#   * AGENT17_OBSERVE_ONLY env var defaults to "false" in V4 (blocking enabled).
+#     Set AGENT17_OBSERVE_ONLY=true ONLY in staging to measure without blocking.
+#   * EMBEDDINGS_PROVIDER env var selects the embedding backend
+#     (hashing | openai | voyage). "hashing" is deterministic and offline.
