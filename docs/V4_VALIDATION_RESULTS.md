@@ -37,6 +37,7 @@ EMBEDDINGS_PROVIDER=hashing PYTHONPATH=. python scripts/validate_v4_pipeline.py
 | V4 Pipeline Tests #14 | `0320feb` | `v4-tests.yml` | Success | `85 passed` on Python 3.10 / 3.11 / 3.12 |
 | V4 Pipeline Tests #16 | `0ed63b2` | `v4-tests.yml` | Success | `97 passed` on Python 3.10 / 3.11 / 3.12 |
 | V4 Pipeline Tests #18 | `6e2e829` | `v4-tests.yml` | Success | `106 passed` on Python 3.10 / 3.11 / 3.12 |
+| V4 Pipeline Tests #25 | `4ac942b` | `v4-tests.yml` | Success | `111 passed` on Python 3.10 / 3.11 / 3.12 (Approach B / B1 complete) |
 
 > **Honest note on run #13.** The first commit of the runtime-gate suite
 > (`474821e`, V4 Pipeline Tests #13) **failed** with `1 failed, 61 passed`:
@@ -49,6 +50,20 @@ EMBEDDINGS_PROVIDER=hashing PYTHONPATH=. python scripts/validate_v4_pipeline.py
 > here deliberately: success was never declared on the strength of written
 > code, only on a green CI log.
 
+> **Honest note on runs #23 and #24 (Approach B / B1).** Tightening the gate
+> from 6 to 8 required EEAT keys deliberately broke two pre-existing fixtures
+> that only carried the legacy 6 keys. Run #23 (`60113db`) failed with
+> `1 failed, 90 passed` (`test_v4_failure_matrix::test_eeat_complete_passes` —
+> a 6-key COMPLETE_META no longer passes an 8-key gate). After completing that
+> fixture, run #24 (`8051fb3`) failed with `1 failed, 90 passed` for the same
+> reason in a second fixture (`test_v4_runtime_gates` reads CLEAN_META, which
+> also carried only 6 keys, so the `eeat` content gate fired alongside the
+> runtime gates). Fixing CLEAN_META at its source
+> (`scripts/validate_v4_pipeline.py`) produced run #25 = `111 passed`. Both
+> failures were fixture-completeness issues caused by the intended behavioural
+> change, not gate defects; each was diagnosed from the real CI log before the
+> next commit.
+
 The pytest suite grew across phases as coverage was added:
 
 | Phase | Added | Collected total |
@@ -59,6 +74,7 @@ The pytest suite grew across phases as coverage was added:
 | Option 1 (runtime gates) | `tests/test_v4_runtime_gates.py` | 85 |
 | Option 3 (EEAT consistency) | `tests/test_v4_eeat_consistency.py` | 97 |
 | Option 2 (publish boundary) | `tests/test_v4_orchestrator_publish.py` | 106 |
+| Approach B / B1 (EEAT alignment) | EEAT tests re-pointed to alignment + 8-key fixtures | 111 |
 
 ## Decision matrix — what was verified
 
@@ -102,17 +118,18 @@ existing post -> a non-ALLOW, blocking decision.
 
 | Article | Decision | Content-gate failures | Runtime-gate failures |
 | ------- | -------- | --------------------- | --------------------- |
-| Clean | BLOCKED | none | performance, competitor (PENDING offline) |
+| Clean (8-key EEAT meta) | BLOCKED | none | performance, competitor (PENDING offline) |
 | Bad | BLOCKED | schema, eeat, formatting, accessibility, internal_links, originality | performance, competitor |
 
 ## Failure matrix (certification Phase 3)
 
 Each defect is independently detected by the gate and blocks publication
-(`tests/test_v4_failure_matrix.py`):
+(`tests/test_v4_failure_matrix.py`). Under B1 the per-element EEAT block test is
+parametrized over all **8** required keys:
 
 | Defect | Gate that blocks |
 | ------ | ---------------- |
-| Missing author (any required EEAT element) | `eeat` |
+| Missing any of the 8 required EEAT elements | `eeat` |
 | Duplicate / broken canonical | `canonical_uniqueness` |
 | Body JSON-LD (second schema source) | `schema` |
 | Emoji heading | `formatting` |
@@ -168,25 +185,34 @@ re-introduces the `performance` gate failure. No live Lighthouse run, SERPAPI
 call, WordPress write, or OpenAI call is performed by these tests — they use
 synthetic report fixtures only.
 
-## EEAT consistency (Option 3 — Track 2 debt)
+## EEAT consistency (Option 3 -> Approach B / B1 — RESOLVED)
 
-Two EEAT definitions coexist in the codebase and were previously assumed to be
-identical. They are not, and that divergence is now explicit and pinned by
-`tests/test_v4_eeat_consistency.py` (V4 Pipeline Tests #16, `97 passed`):
+Two EEAT definitions previously coexisted and were assumed identical; they were
+not. **Option 3** first pinned that divergence with characterization tests
+(V4 Pipeline Tests #16). **Approach B / B1** then RESOLVED it by establishing a
+single source of truth and aligning the gate upward to the full 8-key set
+(V4 Pipeline Tests #25, `111 passed`).
 
-- `scripts/quality_gate_v4.py` enforces **6** structural keys: `author`,
-  `review_date`, `update_date`, `official_references`, `disclosure`,
-  `related_articles`.
-- `services/eeat_enrichment.py` enforces a **strict superset of 8** keys: the
-  same six **plus** `author_credentials` and `editorial_note`.
+- `services/eeat_enrichment.py` now exposes `REQUIRED_EEAT_KEYS` (the 8 keys:
+  `author`, `author_credentials`, `review_date`, `update_date`,
+  `official_references`, `related_articles`, `disclosure`, `editorial_note`) as
+  the authoritative list. `REQUIRED_ELEMENTS` is kept as a backwards-compatible
+  alias.
+- `scripts/quality_gate_v4.py` now **imports** `REQUIRED_EEAT_KEYS` instead of
+  hard-coding its own list, so `THRESHOLDS["eeat_required_elements"]` IS the
+  shared constant. The gate and the enrichment engine can no longer diverge.
+- `tests/test_v4_eeat_consistency.py` was converted from characterization
+  (freezing the divergence) to **alignment** tests: it asserts the two lists
+  are identical, that the gate imports the shared constant (identity check),
+  and that a legacy 6-key meta is now correctly BLOCKED by `check_eeat`.
 
-The enrichment module's "mirrors the gate list" comment is therefore not
-literally accurate. The tests characterize this without changing any decision
-logic: the gate remains the authoritative publication decision. Concretely, a
-meta that satisfies the gate (6/6) can still fail `validate_eeat` (which needs
-8/8). This is recorded as known, contained technical debt — the safe
-reconciliation is to align the two lists in a future change, behind its own
-tests.
+**Behavioural change (intended).** Publication is now stricter: an article must
+carry all 8 EEAT elements to clear the gate. In practice `build_eeat_fields()`
+already supplies sensible defaults for `author_credentials` and
+`editorial_note`, so a properly enriched article is unaffected; the tightening
+only blocks metas constructed outside the enrichment path. Two pre-existing
+fixtures (`test_v4_failure_matrix` COMPLETE_META and the harness CLEAN_META)
+were completed to the 8-key set as part of this change.
 
 ## Generation -> WordPress orchestrator (Option 2 — preparation only)
 
@@ -226,5 +252,6 @@ maintenance.
   contract is documented above; only the live measurement acquisition remains.
 - The full generation -> WordPress orchestrator live path is prepared and
   tested in dry-run only; real publishing remains a manual, authorised step.
-- EEAT consistency reconciliation (aligning the 6-key gate list with the 8-key
-  enrichment list) remains deferred as documented, contained technical debt.
+- EEAT consistency reconciliation is now **complete** (Approach B / B1): the
+  gate and enrichment share one 8-key source of truth. No EEAT debt remains
+  deferred.
