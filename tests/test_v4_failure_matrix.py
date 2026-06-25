@@ -8,12 +8,16 @@ the real gate check functions (no mocks) and make NO network / WordPress /
 OpenAI calls (EMBEDDINGS_PROVIDER=hashing).
 
 Scenarios covered:
-  * missing author              -> eeat gate fails
-  * duplicate / broken canonical -> canonical_uniqueness gate fails
-  * body JSON-LD (2nd schema src) -> schema gate fails
-  * emoji heading                -> formatting gate fails
-  * image missing alt text       -> accessibility gate fails
-  * full-gate broken canonical   -> run_gate BLOCKED with canonical failure
+* missing author -> eeat gate fails
+* duplicate / broken canonical -> canonical_uniqueness gate fails
+* body JSON-LD (2nd schema src) -> schema gate fails
+* emoji heading -> formatting gate fails
+* image missing alt text -> accessibility gate fails
+* full-gate broken canonical -> run_gate BLOCKED with canonical failure
+
+EEAT NOTE (Approach B / B1): the gate now enforces all 8 required EEAT keys
+(shared REQUIRED_EEAT_KEYS), so COMPLETE_META below carries the full 8-key set
+and the per-element block test is parametrized over all 8 keys.
 """
 from __future__ import annotations
 
@@ -27,23 +31,25 @@ os.environ.setdefault("EMBEDDINGS_PROVIDER", "hashing")
 
 import scripts.quality_gate_v4 as qg
 
-
 # A meta dict with every required EEAT element present (baseline to mutate).
+# Under B1 the gate requires all 8 keys, so a genuinely COMPLETE meta must
+# include author_credentials and editorial_note in addition to the legacy 6.
 COMPLETE_META = {
     "title": "How To Send Money Abroad Cheaply In 2026",
     "slug": "send-money-abroad-cheaply-2026",
     "keywords": ["send money abroad", "transfer fees"],
     "author": "Talal Eddaouahiri",
+    "author_credentials": "Founder of MoneyAbroadGuide.com",
     "review_date": "2026-06-25",
     "update_date": "2026-06-25",
     "official_references": ["https://www.irs.gov/businesses"],
     "disclosure": True,
     "related_articles": ["https://moneyabroadguide.com/compare"],
+    "editorial_note": "Reviewed by the MoneyAbroadGuide editorial team.",
 }
 
-
 # --------------------------------------------------------------------------- #
-# EEAT - missing author                                                         #
+# EEAT - missing author                                                       #
 # --------------------------------------------------------------------------- #
 def test_eeat_complete_passes():
     assert qg.check_eeat(COMPLETE_META)["passed"] is True
@@ -58,8 +64,8 @@ def test_eeat_missing_author_fails():
 
 
 @pytest.mark.parametrize("missing", [
-    "author", "review_date", "update_date",
-    "official_references", "disclosure", "related_articles",
+    "author", "author_credentials", "review_date", "update_date",
+    "official_references", "related_articles", "disclosure", "editorial_note",
 ])
 def test_eeat_each_required_element_blocks(missing):
     meta = dict(COMPLETE_META)
@@ -70,7 +76,7 @@ def test_eeat_each_required_element_blocks(missing):
 
 
 # --------------------------------------------------------------------------- #
-# Canonical uniqueness - duplicate / broken canonical                           #
+# Canonical uniqueness - duplicate / broken canonical                         #
 # --------------------------------------------------------------------------- #
 def test_canonical_unique_against_unrelated_corpus_passes():
     corpus = [{"title": "best travel backpacks", "slug": "best-travel-backpacks"}]
@@ -94,7 +100,7 @@ def test_canonical_duplicate_title_blocks():
 
 
 # --------------------------------------------------------------------------- #
-# Schema - body JSON-LD is a forbidden second schema source                     #
+# Schema - body JSON-LD is a forbidden second schema source                   #
 # --------------------------------------------------------------------------- #
 def test_schema_yoast_only_passes():
     html = "<p>Body</p><!-- wp:yoast/faq-block -->"
@@ -112,7 +118,7 @@ def test_schema_body_jsonld_blocks():
 
 
 # --------------------------------------------------------------------------- #
-# Formatting - emoji headings are banned                                         #
+# Formatting - emoji headings are banned                                      #
 # --------------------------------------------------------------------------- #
 def test_formatting_clean_headings_pass():
     md = "## How Transfer Fees Work\nText.\n\n## Choosing A Service\nText.\n"
@@ -127,7 +133,7 @@ def test_formatting_emoji_heading_blocks():
 
 
 # --------------------------------------------------------------------------- #
-# Accessibility - every image needs alt text                                    #
+# Accessibility - every image needs alt text                                  #
 # --------------------------------------------------------------------------- #
 def test_accessibility_with_alt_passes():
     html = '<img src="chart.png" alt="fee comparison chart">'
@@ -144,7 +150,7 @@ def test_accessibility_missing_alt_blocks():
 
 
 # --------------------------------------------------------------------------- #
-# Internal links - below the minimum is a block                                 #
+# Internal links - below the minimum is a block                               #
 # --------------------------------------------------------------------------- #
 def test_internal_links_below_minimum_blocks():
     md = "See [one](https://moneyabroadguide.com/a) only.\n"
@@ -154,9 +160,9 @@ def test_internal_links_below_minimum_blocks():
 
 
 # --------------------------------------------------------------------------- #
-# Full-gate integration: a broken-canonical article is BLOCKED end-to-end.      #
-# Drives run_gate directly with a controlled temp corpus whose FILENAME stem    #
-# (which run_gate uses as the corpus title/slug) duplicates the article slug.   #
+# Full-gate integration: a broken-canonical article is BLOCKED end-to-end.    #
+# Drives run_gate directly with a controlled temp corpus whose FILENAME stem  #
+# (which run_gate uses as the corpus title/slug) duplicates the article slug. #
 # --------------------------------------------------------------------------- #
 def _args(tmp_path, markdown, rendered, meta, corpus_files):
     art = tmp_path / "article.md"; art.write_text(markdown, encoding="utf-8")
