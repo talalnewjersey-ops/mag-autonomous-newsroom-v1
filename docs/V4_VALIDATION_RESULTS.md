@@ -34,6 +34,18 @@ EMBEDDINGS_PROVIDER=hashing PYTHONPATH=. python scripts/validate_v4_pipeline.py
 | Validation Harness #2 | `48e1e37` | `validate-v4.yml` | Success | `ALL_EXPECTED: True`; `wordpress_contacted: False`; `openai_contacted: False` |
 | V4 Pipeline Tests #10 | `85d64c2` | `v4-tests.yml` | Success | `55 passed` on Python 3.10 / 3.11 / 3.12 |
 | V4 Pipeline Tests #11 | `e09d104` | `v4-tests.yml` | Success | `73 passed` on Python 3.10 / 3.11 / 3.12 |
+| V4 Pipeline Tests #14 | `0320feb` | `v4-tests.yml` | Success | `85 passed` on Python 3.10 / 3.11 / 3.12 |
+
+> **Honest note on run #13.** The first commit of the runtime-gate suite
+> (`474821e`, V4 Pipeline Tests #13) **failed** with `1 failed, 61 passed`:
+> `test_competitor_pass_with_strong_article` returned FAIL instead of PASS.
+> Investigation showed this was a **test-fixture defect, not a pipeline
+> defect** — Agent 23 correctly returned FAIL because the strong-article
+> fixture did not cover at least 70% of the competitor entity set. The fixture
+> was corrected in `0320feb` (it now covers the money/transfer/abroad entity
+> surface), and run #14 then reported `85 passed`. The failed run is recorded
+> here deliberately: success was never declared on the strength of written
+> code, only on a green CI log.
 
 The pytest suite grew across phases as coverage was added:
 
@@ -42,6 +54,7 @@ The pytest suite grew across phases as coverage was added:
 | Baseline (M10 module suite) | `tests/test_v4_pipeline.py` | 37 |
 | Phase A (decision-core regression) | `tests/test_v4_validation_harness.py` | 55 |
 | Phase B (failure matrix) | `tests/test_v4_failure_matrix.py` | 73 |
+| Option 1 (runtime gates) | `tests/test_v4_runtime_gates.py` | 85 |
 
 ## Decision matrix — what was verified
 
@@ -104,6 +117,53 @@ Each defect is independently detected by the gate and blocks publication
 | Contradicted YMYL value | `ymyl` |
 | Banned AI opener / emoji heading | `originality` |
 
+## Runtime gates — integration point (Option 1)
+
+The runtime gates are the two checks that cannot be satisfied purely offline:
+they need real measurements taken against a rendered, staged page. The V4
+decision core already consumes these measurements through a stable, file-based
+contract, so wiring them in CI is a matter of **supplying the two report
+files** — no decision-core code changes are required. The behaviour of both
+gates (good report -> PASS, bad report -> FAIL/BLOCK, absent report -> honest
+PENDING/BLOCKED) is exercised by `tests/test_v4_runtime_gates.py` with
+synthetic fixtures, proven green in V4 Pipeline Tests #14 (`85 passed`).
+
+### Agent 22 — Performance (Lighthouse)
+
+Agent 22 parses a Lighthouse JSON report and evaluates it against the V4
+thresholds. To activate the gate in staging:
+
+1. Run Lighthouse against the staged URL and write the JSON report, e.g.
+   `lighthouse <url> --output=json --output-path=lighthouse.json`.
+2. Feed it to the validator via `--lighthouse-json lighthouse.json`.
+3. A report below threshold yields a blocking `performance` failure; a report
+   at/above threshold clears the gate; an absent report keeps the gate at the
+   honest **PENDING** state (clean content stays BLOCKED until the real
+   measurement arrives).
+
+### Agent 23 — Competitor / SERP coverage
+
+Agent 23 compares the article against the top competitor results for the
+target query and requires sufficient entity coverage. To activate the gate in
+staging:
+
+1. Collect the live SERP for the target query (e.g. via SERPAPI) and write the
+   competitor corpus to `competitors.json`.
+2. Feed it to the validator via `--competitors-json competitors.json`.
+3. Coverage below the required entity threshold yields a blocking `competitor`
+   failure; sufficient coverage clears the gate; an absent corpus keeps the
+   gate at the honest **PENDING** state.
+
+### End-to-end publish decision
+
+`tests/test_v4_runtime_gates.py` proves the composed behaviour: a content-clean
+article **plus** PASS performance and PASS competitor reports is the only
+combination that reaches `READY_TO_PUBLISH`. The same clean article with either
+runtime report missing remains **BLOCKED**, and a failing performance report
+re-introduces the `performance` gate failure. No live Lighthouse run, SERPAPI
+call, WordPress write, or OpenAI call is performed by these tests — they use
+synthetic report fixtures only.
+
 ## Known non-blocking warning
 
 CI emits a Node 20 deprecation notice for `actions/checkout@v4`,
@@ -114,7 +174,8 @@ maintenance.
 ## Still pending (not validated here, by design)
 
 - Performance gate (Agent 22 / Lighthouse) and competitor gate (Agent 23 /
-  SERP) require real runtime measurements supplied from staging.
+  SERP) require real runtime measurements supplied from staging. The wiring
+  contract is documented above; only the live measurement acquisition remains.
 - The full generation -> WordPress orchestrator is out of scope for this
   offline validation.
 - EEAT consistency reconciliation remains deferred as post-validation
