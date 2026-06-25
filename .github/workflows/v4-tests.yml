@@ -60,7 +60,10 @@ jobs:
           # Ensure the repo root (services/, agents/, scripts/) is importable.
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          pytest tests/test_v4_pipeline.py -v --maxfail=1
+          # Collect the WHOLE tests/ directory so every V4 suite runs:
+          #   * tests/test_v4_pipeline.py            (M10 module suite)
+          #   * tests/test_v4_validation_harness.py  (decision-core regression)
+          pytest tests/ -v --maxfail=1
 
       - name: Smoke-import V4 modules
         env:
