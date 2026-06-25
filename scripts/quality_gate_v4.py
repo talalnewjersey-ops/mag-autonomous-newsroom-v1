@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NEXUS-14 V4 - scripts/quality_gate_v4.py  (M9 — Quality Gate V4)
+NEXUS-14 V4 - scripts/quality_gate_v4.py (M9 — Quality Gate V4)
 
 THE AUTHORITATIVE PUBLICATION DECISION.
 
@@ -10,25 +10,29 @@ only consults agent reports as secondary corroboration. If the gate cannot
 independently verify a required property, that gate FAILS.
 
 INDEPENDENTLY RECALCULATED CHECKS
-  * originality          -> recompute vs published corpus (Agent 19 logic)
-  * schema               -> assert exactly one schema source; zero body JSON-LD
-  * eeat                 -> structural presence of required trust elements
-  * ymyl                 -> re-run YMYL validation (Agent 20 logic)
-  * cannibalization      -> re-run semantic overlap (Agent 17 logic), no observe-only
-  * internal_links       -> count + resolvability
-  * canonical_uniqueness -> slug/title uniqueness vs corpus
-  * readability          -> Flesch reading ease band
-  * formatting           -> no emoji headings, heading hierarchy valid
-  * accessibility        -> all images have alt text
+* originality -> recompute vs published corpus (Agent 19 logic)
+* schema -> assert exactly one schema source; zero body JSON-LD
+* eeat -> structural presence of required trust elements
+* ymyl -> re-run YMYL validation (Agent 20 logic)
+* cannibalization -> re-run semantic overlap (Agent 17 logic), no observe-only
+* internal_links -> count + resolvability
+* canonical_uniqueness -> slug/title uniqueness vs corpus
+* readability -> Flesch reading ease band
+* formatting -> no emoji headings, heading hierarchy valid
+* accessibility -> all images have alt text
 
 Performance + competitor gates are consulted from their agent reports (Agent 22 /
 Agent 23) because they require runtime measurement the gate cannot reproduce
 offline; their PASS/FAIL is required but their metrics are not recomputed here.
 
+EEAT KEYS: the required-element list is imported from services.eeat_enrichment
+(REQUIRED_EEAT_KEYS) so the gate and the enrichment engine share ONE source of
+truth and can never silently diverge. (Approach B / B1: gate aligned to 8 keys.)
+
 PUBLICATION ALLOWED ONLY IF EVERY REQUIRED GATE PASSES.
 
-OUTPUT  output/quality_gate_v4_result.json
-EXIT CODES  0 -> READY_TO_PUBLISH ; 1 -> BLOCKED
+OUTPUT output/quality_gate_v4_result.json
+EXIT CODES 0 -> READY_TO_PUBLISH ; 1 -> BLOCKED
 """
 
 from __future__ import annotations
@@ -49,6 +53,9 @@ from services.content_similarity import (
 )
 from services.embeddings_service import get_embeddings_service
 from services.schema_fields import contains_jsonld
+# Single source of truth for required EEAT elements (shared with the enrichment
+# engine). The gate must NOT hard-code its own list.
+from services.eeat_enrichment import REQUIRED_EEAT_KEYS
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("quality_gate_v4")
@@ -72,18 +79,15 @@ _ALT_RE = re.compile(r'\balt\s*=\s*["\'][^"\']+["\']', re.IGNORECASE)
 _LINK_RE = re.compile(r'\[[^\]]+\]\((https?://[^)]+)\)')
 _MD_LINK_INTERNAL = re.compile(r'\]\((https?://(?:www\.)?moneyabroadguide\.com[^)]*)\)', re.IGNORECASE)
 
-
 # ---- Required thresholds ----------------------------------------------------
 THRESHOLDS = {
     "originality_min": 80.0,
     "internal_links_min": 5,
-    "readability_min": 45.0,       # Flesch reading ease (lower bound)
-    "canonical_title_max": 0.85,   # max title similarity to any corpus title
+    "readability_min": 45.0,        # Flesch reading ease (lower bound)
+    "canonical_title_max": 0.85,    # max title similarity to any corpus title
     "canonical_slug_max": 0.85,
-    "eeat_required_elements": [
-        "author", "review_date", "update_date", "official_references",
-        "disclosure", "related_articles",
-    ],
+    # Imported from services.eeat_enrichment so gate + enrichment never diverge.
+    "eeat_required_elements": REQUIRED_EEAT_KEYS,
 }
 
 
@@ -217,7 +221,7 @@ def check_originality(markdown: str, corpus: List[Dict]) -> Dict:
     if run_originality_check is None:
         return {"name": "originality", "passed": False, "detail": "agent_19 unavailable"}
     rep = run_originality_check(markdown, [{"markdown": c.get("markdown", "")} for c in corpus],
-                               output_path="output/quality_gate_v4/originality_recheck.json")
+                                output_path="output/quality_gate_v4/originality_recheck.json")
     return {
         "name": "originality",
         "passed": rep["passed"] and rep["originality_score"] >= THRESHOLDS["originality_min"],
