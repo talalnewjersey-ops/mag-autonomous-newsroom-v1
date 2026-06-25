@@ -1,0 +1,96 @@
+# NEXUS-14 V4 - config/ymyl_sources.yaml  (M5 — YMYL Validator)
+#
+# Authoritative source registry for Your-Money-Your-Life financial values.
+# Agent 20 binds each extracted datum class to its official source and, where a
+# known reference value + effective date is provided, validates the article's
+# figure against it.
+#
+# IMPORTANT: reference values change yearly. Update "value" and "effective_date"
+# when the governing body publishes new figures, and set verified_on to the date
+# you confirmed them. Agent 20 records both effective_date and verification_date
+# on every validated statement.
+#
+# Schema per entry:
+#   key:
+#     label: human readable
+#     authority: official body
+#     source_url: canonical reference URL
+#     unit: the unit the value is expressed in
+#     value: known reference value (optional; enables exact validation)
+#     effective_date: YYYY-MM-DD the value took effect (optional)
+#     verified_on: YYYY-MM-DD this registry entry was last confirmed (optional)
+#     tolerance: allowed absolute difference when matching article figures
+
+registry:
+  tfsa_contribution_limit_2025:
+    label: "TFSA annual contribution limit (2025)"
+    authority: "Canada Revenue Agency (CRA)"
+    source_url: "https://www.canada.ca/en/revenue-agency/services/tax/individuals/topics/tax-free-savings-account/contributions.html"
+    unit: "CAD"
+    value: 7000
+    effective_date: "2025-01-01"
+    verified_on: "2025-01-15"
+    tolerance: 0
+
+  rrsp_dollar_limit_2025:
+    label: "RRSP dollar limit (2025)"
+    authority: "Canada Revenue Agency (CRA)"
+    source_url: "https://www.canada.ca/en/revenue-agency/services/tax/registered-plans-administrators/pspa/mp-rrsp-dpsp-tfsa-limits-ympe.html"
+    unit: "CAD"
+    value: 32490
+    effective_date: "2025-01-01"
+    verified_on: "2025-01-15"
+    tolerance: 0
+
+  irs_401k_elective_deferral_2025:
+    label: "401(k) elective deferral limit (2025)"
+    authority: "Internal Revenue Service (IRS)"
+    source_url: "https://www.irs.gov/retirement-plans/plan-participant-employee/retirement-topics-401k-and-profit-sharing-plan-contribution-limits"
+    unit: "USD"
+    value: 23500
+    effective_date: "2025-01-01"
+    verified_on: "2025-01-15"
+    tolerance: 0
+
+  irs_ira_contribution_limit_2025:
+    label: "Traditional/Roth IRA contribution limit (2025)"
+    authority: "Internal Revenue Service (IRS)"
+    source_url: "https://www.irs.gov/retirement-plans/plan-participant-employee/retirement-topics-ira-contribution-limits"
+    unit: "USD"
+    value: 7000
+    effective_date: "2025-01-01"
+    verified_on: "2025-01-15"
+    tolerance: 0
+
+  fdic_insurance_limit:
+    label: "FDIC deposit insurance limit per depositor, per bank"
+    authority: "Federal Deposit Insurance Corporation (FDIC)"
+    source_url: "https://www.fdic.gov/resources/deposit-insurance/"
+    unit: "USD"
+    value: 250000
+    effective_date: "2008-10-03"
+    verified_on: "2025-01-15"
+    tolerance: 0
+
+# Datum classes that MUST resolve to a registry-listed authority even when no
+# reference value is known. If Agent 20 extracts one of these and cannot bind an
+# official source, it FAILS the article (unverifiable YMYL claim).
+require_official_source:
+  - apy
+  - interest_rate
+  - transfer_fee
+  - tax_threshold
+  - contribution_limit
+  - immigration_fee
+  - government_regulation
+
+# Authority domains accepted as "official" for source binding.
+official_domains:
+  - irs.gov
+  - canada.ca
+  - fdic.gov
+  - consumerfinance.gov      # CFPB
+  - uscis.gov
+  - federalreserve.gov
+  - osfi-bsif.gc.ca
+  - canada.ca/cra
