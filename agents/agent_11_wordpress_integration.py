@@ -1,8 +1,16 @@
 """
-NEXUS-14: Agent 11 - WordPress Integration Agent v3.0
-FIX: Replaced hardcoded paths with workflow-provided paths via config.
-FIX: Added pre-publish validation gate — blocks empty drafts.
-FIX: Gate C now requires title + content + featured_media, not just post_id.
+NEXUS-14 V4: Agent 11 - WordPress Integration Agent v4.0
+V4 SCHEMA REFACTOR (M1 — Schema Architecture):
+  * Yoast SEO is the SINGLE schema authority. This agent NO LONGER emits JSON-LD.
+  * Removed manual FAQPage JSON-LD body injection (_add_faq_schema -> Yoast FAQ blocks).
+  * Removed ALL Rank Math metadata generation (_rank_math_* keys).
+  * Added a body-schema guard: publishing is blocked if any application/ld+json
+    <script> is found in the rendered post content.
+  * SEO metadata is now built via services.schema_fields (Yoast-only keys).
+Prior V3 fixes retained:
+  * Workflow-provided paths via config.
+  * Pre-publish validation gate — blocks empty drafts.
+  * Gate C requires title + content + featured_media, not just post_id.
 """
 
 import asyncio
@@ -17,6 +25,11 @@ from agents.base_agent import BaseAgent
 from services.llm_service import LLMService
 from services.storage_service import StorageService
 from services.wordpress_service import WordPressService
+from services.schema_fields import (
+    build_schema_fields,
+    assert_no_forbidden_meta,
+    contains_jsonld,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +68,15 @@ class WordPressIntegrationAgent(BaseAgent):
             logger.info(f"PRE-PUBLISH GATE PASS: title='{title}' chars={content_chars} words={content_words}")
 
             html_content = await self._convert_to_html(article_data)
-            html_with_faq = await self._add_faq_schema(html_content, article_data)
+            # V4: Convert FAQ markdown into Yoast FAQ Gutenberg blocks (NO JSON-LD).
+            html_with_faq = await self._convert_faq_to_yoast_blocks(html_content, article_data)
             html_final = await self._add_affiliate_blocks(html_with_faq, article_data)
+            # V4 BODY-SCHEMA GUARD: refuse to publish any body-injected JSON-LD.
+            if contains_jsonld(html_final):
+                raise ValueError(
+                    "BODY-SCHEMA GUARD FAIL: rendered content contains application/ld+json. "
+                    "Schema must be emitted by Yoast only; no body-injected JSON-LD is allowed."
+                )
             uploaded_images = await self._upload_images(images_data)
             html_with_images = await self._insert_images_in_content(html_final, uploaded_images)
             wp_post = await self._create_wordpress_draft(article_data, html_with_images, uploaded_images)
@@ -300,17 +320,61 @@ class WordPressIntegrationAgent(BaseAgent):
         close_para(para)
         return "\n".join(html_parts)
 
-    async def _add_faq_schema(self, html, article_data):
+    async def _convert_faq_to_yoast_blocks(self, html, article_data):
+        """V4: Render FAQ Q/A pairs as Yoast FAQ Gutenberg blocks.
+
+        This replaces the legacy _add_faq_schema() which injected a raw FAQPage
+        JSON-LD <script> into the body. In V4 the FAQ schema is emitted by Yoast
+        from the FAQ block, so there is exactly ONE schema source of truth and no
+        orphaned/duplicate JSON-LD.
+
+        If no FAQ section is found, the HTML is returned unchanged.
+        Note: this method NEVER emits JSON-LD; the body-schema guard in run()
+        enforces that invariant after this step.
+        """
         content = article_data.get("content", "")
-        faq_section = re.search(r'## (?:FAQ|Frequently Asked Questions)(.*?)(?=## [A-Z]|$)', content, re.DOTALL | re.IGNORECASE)
+        faq_section = re.search(
+            r'## (?:FAQ|Frequently Asked Questions)(.*?)(?=## [A-Z]|$)',
+            content, re.DOTALL | re.IGNORECASE,
+        )
         if not faq_section:
             return html
-        qa_pairs = re.findall(r'### (.+?)\n([^#]+?)(?=###|$)', faq_section.group(1), re.DOTALL)
+        qa_pairs = re.findall(
+            r'### (.+?)\n([^#]+?)(?=###|$)', faq_section.group(1), re.DOTALL
+        )
         if not qa_pairs:
             return html
-        faq_items = [{"@type": "Question", "name": q.strip(), "acceptedAnswer": {"@type": "Answer", "text": re.sub(r'<[^>]+>', '', a.strip())[:500]}} for q, a in qa_pairs[:20]]
-        schema = {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": faq_items}
-        return html + f'\n\n<script type="application/ld+json">\n{json.dumps(schema, indent=2)}\n</script>'
+
+        # Build a single Yoast FAQ block (yoast/faq-block) containing all Q/A pairs.
+        # Yoast renders FAQPage schema from this block server-side.
+        items = []
+        for idx, (q, a) in enumerate(qa_pairs[:20]):
+            question = self._escape_html(q.strip())
+            answer = self._escape_html(re.sub(r'<[^>]+>', '', a.strip()))
+            items.append(
+                '<div class="schema-faq-section" id="faq-question-%d">'
+                '<strong class="schema-faq-question">%s</strong>'
+                '<p class="schema-faq-answer">%s</p></div>'
+                % (idx, question, answer)
+            )
+        faq_block = (
+            '\n\n<!-- wp:yoast/faq-block -->\n'
+            '<div class="schema-faq wp-block-yoast-faq-block">'
+            + "".join(items)
+            + '</div>\n<!-- /wp:yoast/faq-block -->\n'
+        )
+        return html + faq_block
+
+    @staticmethod
+    def _escape_html(text):
+        """Minimal HTML escaping for block content."""
+        return (
+            (text or "")
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+        )
 
     async def _add_affiliate_blocks(self, html, article_data):
         import os
@@ -494,19 +558,21 @@ class WordPressIntegrationAgent(BaseAgent):
             logger.warning(f"Set author failed: {e}")
 
     async def _set_seo_metadata(self, post_id, article_data):
+        """V4: Yoast-only SEO metadata. Rank Math keys removed.
+
+        Schema is rendered solely by Yoast from these structured fields.
+        assert_no_forbidden_meta() guarantees no Rank Math (_rank_math_*) key
+        can ever be written from this pipeline.
+        """
         if not post_id:
             return
         try:
-            await self.wp.set_post_meta(post_id, {
-                "_yoast_wpseo_focuskw": article_data.get("keyword", ""),
-                "_yoast_wpseo_title": article_data.get("seo_title", ""),
-                "_yoast_wpseo_metadesc": article_data.get("meta_description", ""),
-                "_rank_math_focus_keyword": article_data.get("keyword", ""),
-                "_rank_math_description": article_data.get("meta_description", ""),
-            })
+            fields = build_schema_fields(article_data)
+            meta = fields.to_yoast_meta()
+            assert_no_forbidden_meta(meta)  # hard guard: no Rank Math keys
+            await self.wp.set_post_meta(post_id, meta)
         except Exception as e:
             logger.warning(f"SEO metadata failed: {e}")
-
 
 def _write_failure_reports(output_path, val_path_str, title, keyword, word_count, error_msg):
     from pathlib import Path
