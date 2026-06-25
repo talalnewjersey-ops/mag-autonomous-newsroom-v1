@@ -35,6 +35,8 @@ EMBEDDINGS_PROVIDER=hashing PYTHONPATH=. python scripts/validate_v4_pipeline.py
 | V4 Pipeline Tests #10 | `85d64c2` | `v4-tests.yml` | Success | `55 passed` on Python 3.10 / 3.11 / 3.12 |
 | V4 Pipeline Tests #11 | `e09d104` | `v4-tests.yml` | Success | `73 passed` on Python 3.10 / 3.11 / 3.12 |
 | V4 Pipeline Tests #14 | `0320feb` | `v4-tests.yml` | Success | `85 passed` on Python 3.10 / 3.11 / 3.12 |
+| V4 Pipeline Tests #16 | `0ed63b2` | `v4-tests.yml` | Success | `97 passed` on Python 3.10 / 3.11 / 3.12 |
+| V4 Pipeline Tests #18 | `6e2e829` | `v4-tests.yml` | Success | `106 passed` on Python 3.10 / 3.11 / 3.12 |
 
 > **Honest note on run #13.** The first commit of the runtime-gate suite
 > (`474821e`, V4 Pipeline Tests #13) **failed** with `1 failed, 61 passed`:
@@ -55,6 +57,8 @@ The pytest suite grew across phases as coverage was added:
 | Phase A (decision-core regression) | `tests/test_v4_validation_harness.py` | 55 |
 | Phase B (failure matrix) | `tests/test_v4_failure_matrix.py` | 73 |
 | Option 1 (runtime gates) | `tests/test_v4_runtime_gates.py` | 85 |
+| Option 3 (EEAT consistency) | `tests/test_v4_eeat_consistency.py` | 97 |
+| Option 2 (publish boundary) | `tests/test_v4_orchestrator_publish.py` | 106 |
 
 ## Decision matrix — what was verified
 
@@ -164,6 +168,50 @@ re-introduces the `performance` gate failure. No live Lighthouse run, SERPAPI
 call, WordPress write, or OpenAI call is performed by these tests — they use
 synthetic report fixtures only.
 
+## EEAT consistency (Option 3 — Track 2 debt)
+
+Two EEAT definitions coexist in the codebase and were previously assumed to be
+identical. They are not, and that divergence is now explicit and pinned by
+`tests/test_v4_eeat_consistency.py` (V4 Pipeline Tests #16, `97 passed`):
+
+- `scripts/quality_gate_v4.py` enforces **6** structural keys: `author`,
+  `review_date`, `update_date`, `official_references`, `disclosure`,
+  `related_articles`.
+- `services/eeat_enrichment.py` enforces a **strict superset of 8** keys: the
+  same six **plus** `author_credentials` and `editorial_note`.
+
+The enrichment module's "mirrors the gate list" comment is therefore not
+literally accurate. The tests characterize this without changing any decision
+logic: the gate remains the authoritative publication decision. Concretely, a
+meta that satisfies the gate (6/6) can still fail `validate_eeat` (which needs
+8/8). This is recorded as known, contained technical debt — the safe
+reconciliation is to align the two lists in a future change, behind its own
+tests.
+
+## Generation -> WordPress orchestrator (Option 2 — preparation only)
+
+The publish boundary is implemented in `orchestrator/publish_decision.py` and
+proven by `tests/test_v4_orchestrator_publish.py` (V4 Pipeline Tests #18,
+`106 passed`) with WordPress **fully mocked**. No real WordPress write, no
+OpenAI call, and no network access occur in these tests.
+
+Safety invariants enforced by the boundary:
+
+1. **Gate-gated.** `decide_publication()` emits `action == "PUBLISH"` only when
+   `quality_gate_v4` returns `READY_TO_PUBLISH`; a BLOCKED gate yields HOLD.
+2. **Dry-run by default.** `execute_plan()` performs no WordPress write unless
+   the caller passes `allow_live=True` explicitly. The default is a pure
+   simulation that contacts nothing.
+3. **Draft-only, non-destructive.** Even in live mode the boundary calls only
+   `WordPressService.create_post()` with `status="draft"`. It never calls
+   `publish_post()` or transitions a post to `publish`: going live remains a
+   separate, manual, human-authorised step.
+
+**Live integration point (NOT executed here).** Turning on real publishing
+requires: valid WordPress credentials in config, a caller that passes
+`allow_live=True`, and a human decision to promote the created draft to
+published. None of this is wired into CI, and no live run has been performed.
+
 ## Known non-blocking warning
 
 CI emits a Node 20 deprecation notice for `actions/checkout@v4`,
@@ -176,7 +224,7 @@ maintenance.
 - Performance gate (Agent 22 / Lighthouse) and competitor gate (Agent 23 /
   SERP) require real runtime measurements supplied from staging. The wiring
   contract is documented above; only the live measurement acquisition remains.
-- The full generation -> WordPress orchestrator is out of scope for this
-  offline validation.
-- EEAT consistency reconciliation remains deferred as post-validation
-  technical debt.
+- The full generation -> WordPress orchestrator live path is prepared and
+  tested in dry-run only; real publishing remains a manual, authorised step.
+- EEAT consistency reconciliation (aligning the 6-key gate list with the 8-key
+  enrichment list) remains deferred as documented, contained technical debt.
