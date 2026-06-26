@@ -530,3 +530,29 @@ NOT collect; this was caught by verifying the collected-item count (stayed 222)
 rather than trusting the green check, then fixed by renaming to
 `test_v4_m14_serialization.py` (count rose to 234). With M14 the offline advisory
 series M10 -> M14 is complete.
+
+
+## M15 — Performance / SERP advisory gate (offline, opt-in)
+
+**What it adds:** `evaluate_performance_gate(lighthouse=None, serp=None, *, enabled=False, thresholds=None)`
+in `orchestrator/orchestrator.py`. It evaluates a Lighthouse report and/or SERP
+data that the **caller has already fetched** and returns a stable advisory
+verdict under schema `nexus14.performance_gate.v1`. Lighthouse category scores
+(performance, accessibility, best-practices, seo) are compared against
+thresholds (default 0.9 each); an optional SERP `rank` is compared against
+`serp_max_rank` (default 10). The overall `passed` flag is advisory only
+(`blocking: False`).
+
+**Why this shape:** this is the offline, fully-testable half of the runtime
+performance/SERP gate referenced above (Agent 22 / Lighthouse, Agent 23 / SERP).
+It does **no network I/O** and makes **no live calls** — the live Lighthouse run
+or SERP API request is wired by the caller (e.g. a CI step backed by GitHub
+Secrets), and only the resulting parsed payloads are passed in. This keeps the
+function pure, deterministic and unit-testable now, while remaining branchable to
+a live source later. Like M10–M14 it is **disabled by default** (`enabled=False`
+returns a no-op), never raises, and never mutates its inputs, so production
+behaviour is unchanged unless a caller explicitly opts in.
+
+**CI evidence:** V4 Pipeline Tests run #79 green on Python 3.10 / 3.11 / 3.12,
+with the collected test count growing **234 -> 249** (all 15 M15 tests PASSED,
+verified against the actual run log rather than the green check alone).
