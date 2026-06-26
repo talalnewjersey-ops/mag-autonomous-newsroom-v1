@@ -491,3 +491,42 @@ the test count growing **211 -> 222** (all M13 tests PASSED). This commit also
 fixed a pre-existing typo in `get_pipeline_state()` (`self.pipeline_stat` ->
 `self.pipeline_state`) that would have raised `AttributeError` at runtime; the
 fix is covered by the still-green regression suite.
+
+
+## M14 — Regeneration report serializer (NEW · closes the advisory series)
+
+M14 is the consumable end of the M10 -> M11 -> M12 -> M13 advisory chain. Two
+pure functions in `orchestrator/orchestrator.py`:
+
+- `serialize_regeneration_report(summary, *, enabled=None, generated_at=None)`
+  turns the M13 summary into a stable, JSON-serializable report dict with a
+  fixed schema (`nexus14.regeneration_report.v1`) and primitive values only:
+  the counters, plus an ordered `sections` list of `{name, count}` sorted by
+  count desc then name.
+- `regeneration_report_to_json(...)` renders that report as a JSON string
+  (`sort_keys=True`), with a defensive fallback to `"{}"`.
+
+**Honest scope (unchanged from M10-M13 philosophy):**
+
+- **Pure functions.** No network, no LLM, no IO, no mutation of the input. They
+  NEVER raise.
+- **Deterministic.** The clock is NOT called internally; `generated_at` is
+  injected by the caller (or left as `None`), so output is reproducible.
+- **Opt-in / no-op by default.** A disabled/missing summary serializes to a
+  well-formed, zero-work report, so production behaviour is unchanged unless a
+  caller explicitly opted M12 in. An `enabled` override is available and wins.
+
+**Tests:** `tests/test_v4_m14_serialization.py` adds **12** deterministic offline
+tests: zero-work on disabled/empty/None, schema + `generated_at` passthrough,
+counter + section population, deterministic section ordering, the `enabled`
+override, malformed-input safety (coercion to 0), JSON round-trip + key sorting,
+JSON helper never raising, input non-mutation, and a full
+planner -> reporter -> serializer -> JSON end-to-end.
+
+**CI evidence:** V4 Pipeline Tests green on Python 3.10 / 3.11 / 3.12 with the
+test count growing **222 -> 234** (all 12 M14 tests PASSED). Note: the test file
+was first committed with a truncated name (`est_v4_m14_...`) which pytest does
+NOT collect; this was caught by verifying the collected-item count (stayed 222)
+rather than trusting the green check, then fixed by renaming to
+`test_v4_m14_serialization.py` (count rose to 234). With M14 the offline advisory
+series M10 -> M14 is complete.
