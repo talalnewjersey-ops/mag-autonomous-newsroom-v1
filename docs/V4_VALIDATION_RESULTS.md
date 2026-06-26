@@ -440,3 +440,20 @@ nothing and never raises.
 > It never gates, never regenerates, and never reaches the network or an LLM.
 
 <!-- end V4 validation results --
+
+
+M12 - Opt-in regeneration planner (deterministic, offline)
+
+M12 turns the M10/M11 advisories already collected during a run into an ORDERED regeneration plan, WITHOUT executing anything. orchestrator/orchestrator.py exposes a pure helper plan_regeneration(pipeline_state, *, enabled=False, max_articles=None). It recomputes nothing: it only reads pipeline_state["m10_advisories"] and the advisory fields M10 already produced (quality_passed / consistency_passed / regenerate_sections), and emits a plan of which articles (and which sections) to regenerate, weakest drafts first.
+
+Design constraints honoured: DISABLED BY DEFAULT (enabled=False) so production behaviour is strictly unchanged unless a caller opts in; pure function (no network, no LLM, no IO, no mutation of input); NEVER raises; non-blocking ("blocking": False). Actually executing the plan still requires the gated Anthropic writer (agent_04_writer_v4) - M12 only DECIDES and POINTS, complementing (not duplicating) the originality (agent_19), YMYL/registry (agent_20) and network fact-check (agent_05) layers.
+
+Code: orchestrator/orchestrator.py (commit 152cdd3) - plan_regeneration helper.
+
+Tests: tests/test_v4_m12_regeneration.py (commit c621896) - 8 offline tests.
+
+Real CI: V4 Pipeline Tests, 211 passed on Python 3.10 / 3.11 / 3.12 (8 new offline tests added on top of the previous 203). Test count grew 203 -> 211.
+
+CI maintenance - Node 24 GitHub Actions bump (RESOLVED)
+
+The previously-tracked Node 20 deprecation notice has been resolved. Every workflow that used the affected actions was bumped to a major version that runs on Node 24: actions/checkout@v4 -> @v5, actions/setup-python@v5 -> @v6, actions/upload-artifact@v4 -> @v5, and actions/download-artifact@v4 -> @v5. The 13 workflows updated were: v4-tests.yml, validate-v4.yml, production.yml, production_v2.yml, nexus14-enterprise-enforcement.yml, nexus14-agent-init-validation.yml, produce_20_articles.yml, backfill_images.yml, draft_image_report.yml, patch_images.yml, social_video_pipeline.yml, test_single_article.yml and wp_diagnostic.yml. The V4 Pipeline Tests suite re-ran green on the bumped checkout@v5 / setup-python@v6 actions (211 passed on Python 3.10 / 3.11 / 3.12), confirming the Node 24 toolchain works. No decision-core or test code changed as part of this maintenance.
