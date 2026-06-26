@@ -31,6 +31,37 @@ except Exception:  # pragma: no cover - defensive import guard
     _m10_assess_quality = None
     _m10_assess_consistency = None
     _m10_combine = None
+
+
+def summarize_advisories(pipeline_state):
+    """Pure, offline summary of the M10 advisory records collected during a run.
+
+    Reads pipeline_state['m10_advisories'] (a list of per-article records) and
+    returns small counts for reporting. Never raises and never mutates input.
+    """
+    advisories = []
+    try:
+        advisories = list((pipeline_state or {}).get('m10_advisories') or [])
+    except Exception:  # pragma: no cover - defensive
+        advisories = []
+    total = len(advisories)
+    quality_flagged = 0
+    consistency_flagged = 0
+    with_regen = 0
+    for rec in advisories:
+        adv = (rec or {}).get('advisory') or {}
+        if adv.get('quality_passed') is False:
+            quality_flagged += 1
+        if adv.get('consistency_passed') is False:
+            consistency_flagged += 1
+        if adv.get('regenerate_sections'):
+            with_regen += 1
+    return {
+        'total': total,
+        'quality_flagged': quality_flagged,
+        'consistency_flagged': consistency_flagged,
+        'with_regenerate_sections': with_regen,
+    }
 from agents.agent_03_content_planner import ContentPlannerAgent
 from agents.agent_04_article_writer import ArticleWriterAgent
 from agents.agent_05_fact_checker import FactCheckerAgent
@@ -157,7 +188,8 @@ class Orchestrator:
             "failed_agents": [],
             "articles_produced": [],
             "articles_validated": [],
-            "articles_rejected": []
+            "articles_rejected": [],
+            "m10_advisories": []
         }
 
     def _init_agents(self):
@@ -317,6 +349,19 @@ class Orchestrator:
                 context.get("current_topic", {}).get("keyword")
             )
 
+        # M11: surface the M10 advisory in the run result (reporting only).
+        # Non-blocking: a missing report or any error simply records nothing.
+        try:
+            _adv = context.get("m10_quality_consistency")
+            if _adv is not None:
+                self.pipeline_state["m10_advisories"].append({
+                    "keyword": context.get("current_topic", {}).get("keyword"),
+                    "decision": decision,
+                    "advisory": _adv,
+                })
+        except Exception:  # pragma: no cover - reporting only: never block
+            logger.info("M11 advisory reporting skipped (non-fatal)")
+
         return context
 
     async def _run_agent(self, agent_id: str, context: Dict) -> Dict:
@@ -356,4 +401,4 @@ class Orchestrator:
     def get_pipeline_state(self) -> Dict:
         """Get current pipeline state."""
         return self.pipeline_stat
-# end of orchestrator (M7 prioritizer + M10 advisory quality/consistency gate)
+# end of orchestrator (M7 prioritizer + M10 advisory gate + M11 advisory reporting)
