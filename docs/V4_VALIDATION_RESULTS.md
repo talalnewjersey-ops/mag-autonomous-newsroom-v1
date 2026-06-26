@@ -39,6 +39,7 @@ EMBEDDINGS_PROVIDER=hashing PYTHONPATH=. python scripts/validate_v4_pipeline.py
 | V4 Pipeline Tests #18 | `6e2e829` | `v4-tests.yml` | Success | `106 passed` on Python 3.10 / 3.11 / 3.12 |
 | V4 Pipeline Tests #25 | `4ac942b` | `v4-tests.yml` | Success | `111 passed` on Python 3.10 / 3.11 / 3.12 (Approach B / B1 complete) |
 | V4 Pipeline Tests #31 | `0f38cb1` | `v4-tests.yml` | Success | `139 passed` on Python 3.10 / 3.11 / 3.12 (M7 topic selection) |
+| V4 Pipeline Tests #38 | `cbc1ab5` | `v4-tests.yml` | Success | `152 passed` on Python 3.10 / 3.11 / 3.12 (M7 prioritizer wired into orchestrator) |
 
 > **Honest note on run #13.** The first commit of the runtime-gate suite
 > (`474821e`, V4 Pipeline Tests #13) **failed** with `1 failed, 61 passed`:
@@ -288,6 +289,37 @@ CI emits a Node 20 deprecation notice for `actions/checkout@v4`,
 Node 24). This does not affect test results and is tracked as low-priority
 maintenance.
 
+## Topic prioritizer wired into the orchestrator (M7 integration)
+
+The deterministic newcomer US/CA topic prioritizer is now connected to the
+production pipeline. `services/topic_selection.py` maps the validated-topic
+dicts produced in Stage 1 onto the auditable editorial scores from the
+taxonomy, and `orchestrator/orchestrator.py` reorders the validated topics
+by that score (highest newcomer value first) before the production loop
+slices `articles_per_batch`. The wiring is defensive: the import is guarded
+and a runtime error in the prioritizer is logged and skipped, so production
+never blocks on the selection layer. Unknown topics are never dropped; they
+keep their original order and follow the taxonomy-matched ones.
+
+Honest data boundary (unchanged): ranking uses STATIC editorial scores only.
+No live search volume, trend, click, impression or affiliate metrics are
+fabricated. Live signals remain documented integration points contributing
+nothing when absent.
+
+Verified by real CI: `tests/test_v4_topic_selection.py` (12 offline cases)
+plus the existing suite, run #38 (`cbc1ab5`) = `152 passed` on Python
+3.10 / 3.11 / 3.12. Test count grew 139 -> 152.
+
+> **Honest note on runs #36 and #37.** The first two attempts at this work
+> **failed** in real CI and were not hidden. Run #36 (`f05b367`) failed at
+> collection with `SyntaxError: ( was never closed` because a closing paren
+> was dropped from a test assertion during the web-editor edit. Run #37
+> (`802bac7`) then failed with `NameError: name ordere is not defined` in
+> `services/topic_selection.py` because the trailing `d` of `return ordered`
+> was similarly truncated. Both were transcription defects (not logic
+> defects); each was diagnosed from the real CI log and fixed, and run #38
+> is the green result.
+
 ## Still pending (not validated here, by design)
 
 - Performance gate (Agent 22 / Lighthouse) and competitor gate (Agent 23 /
@@ -302,3 +334,4 @@ maintenance.
   real search / trend / affiliate-demand signals and the generation-entrypoint
   wiring remain follow-up integration points awaiting an authorised data
   source.
+<!-- end V4 validation results --
