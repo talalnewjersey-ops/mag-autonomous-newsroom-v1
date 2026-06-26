@@ -55,7 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Verify enterprise standard file exists
         run: |
@@ -104,10 +104,10 @@ jobs:
     needs: validate-enterprise-standard
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -144,7 +144,7 @@ jobs:
     needs: validate-enterprise-standard
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Enforce quality thresholds
         run: |
@@ -182,7 +182,7 @@ jobs:
     needs: validate-enterprise-standard
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Validate SEO framework (Section 5)
         run: |
@@ -209,7 +209,7 @@ jobs:
     needs: validate-enterprise-standard
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Validate image requirements (Section 7)
         run: |
@@ -240,7 +240,7 @@ jobs:
     needs: validate-enterprise-standard
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Validate affiliate rules (Section 8)
         run: |
@@ -260,7 +260,7 @@ jobs:
     needs: validate-enterprise-standard
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Check daily production targets
         run: |
