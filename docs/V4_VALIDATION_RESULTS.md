@@ -42,6 +42,7 @@ EMBEDDINGS_PROVIDER=hashing PYTHONPATH=. python scripts/validate_v4_pipeline.py
 | V4 Pipeline Tests #38 | `cbc1ab5` | `v4-tests.yml` | Success | `152 passed` on Python 3.10 / 3.11 / 3.12 (M7 prioritizer wired into orchestrator) |
 | V4 Pipeline Tests #43 | `63b7d1c` | `v4-tests.yml` | Success | `168 passed` on Python 3.10 / 3.11 / 3.12 (M8 content-quality gate + writer hook) |
 | V4 Pipeline Tests #47 | `3419bbb` | `v4-tests.yml` | Success | `185 passed` on Python 3.10 / 3.11 / 3.12 (M9 internal-consistency gate + combiner) |
+| V4 Pipeline Tests #50 | `af495b8` | `v4-tests.yml` | Success | `196 passed` on Python 3.10 / 3.11 / 3.12 (M10 orchestrator advisory integration) |
 
 > **Honest note on run #13.** The first commit of the runtime-gate suite
 > (`474821e`, V4 Pipeline Tests #13) **failed** with `1 failed, 61 passed`:
@@ -394,5 +395,28 @@ top of the previous 168) on Python 3.10 / 3.11 / 3.12.
 > on the core noun phrase (last significant words, filler stripped), and run #47
 > then reported `185 passed`. The failed run is recorded here deliberately:
 > success was never declared on the strength of written code alone.
+
+## M10 - Orchestrator advisory integration (quality + consistency)
+
+M10 wires the M8 content-quality gate and the M9 internal-consistency gate
+directly into the production orchestrator (`orchestrator/orchestrator.py`),
+immediately after Agent 04 produces a draft. The hook is **non-blocking and
+advisory only**: it scores the fresh draft offline (no network, no LLM, no IO),
+stores a report under `context["m10_quality_consistency"]` (quality/consistency
+scores, a de-duplicated union of `regenerate_sections`, and `"blocking": False`),
+and never raises. A missing gate module degrades gracefully via a defensive
+top-level import guard, mirroring the existing M7 prioritizer bridge.
+
+Design constraints honoured: draft-only, never blocks publication, no fabricated
+signals, and the gate complements (does not duplicate) the originality (agent_19),
+YMYL/external-registry (agent_20) and network fact-check (agent_05) layers.
+
+- Code: `orchestrator/orchestrator.py` (commit `b362225`) - import guard + advisory block after Agent 04.
+- Tests: `tests/test_v4_m10_integration.py` (commit `af495b8`) - 11 offline tests.
+- Real CI: V4 Pipeline Tests run #50 (`af495b8`), `196 passed in 1.03s`, Python 3.10 / 3.11 / 3.12.
+
+> The advisory report is intentionally **not** a publication blocker: production
+> behaviour is unchanged when the gates flag a draft. It exists to annotate the
+> pipeline context for downstream reporting and future opt-in regeneration.
 
 <!-- end V4 validation results --
