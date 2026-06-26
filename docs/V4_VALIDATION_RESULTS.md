@@ -43,6 +43,7 @@ EMBEDDINGS_PROVIDER=hashing PYTHONPATH=. python scripts/validate_v4_pipeline.py
 | V4 Pipeline Tests #43 | `63b7d1c` | `v4-tests.yml` | Success | `168 passed` on Python 3.10 / 3.11 / 3.12 (M8 content-quality gate + writer hook) |
 | V4 Pipeline Tests #47 | `3419bbb` | `v4-tests.yml` | Success | `185 passed` on Python 3.10 / 3.11 / 3.12 (M9 internal-consistency gate + combiner) |
 | V4 Pipeline Tests #50 | `af495b8` | `v4-tests.yml` | Success | `196 passed` on Python 3.10 / 3.11 / 3.12 (M10 orchestrator advisory integration) |
+| V4 Pipeline Tests #53 | `7bd079e` | `v4-tests.yml` | Success | `203 passed` on Python 3.10 / 3.11 / 3.12 (M11 advisory reporting in run result) |
 
 > **Honest note on run #13.** The first commit of the runtime-gate suite
 > (`474821e`, V4 Pipeline Tests #13) **failed** with `1 failed, 61 passed`:
@@ -418,5 +419,24 @@ YMYL/external-registry (agent_20) and network fact-check (agent_05) layers.
 > The advisory report is intentionally **not** a publication blocker: production
 > behaviour is unchanged when the gates flag a draft. It exists to annotate the
 > pipeline context for downstream reporting and future opt-in regeneration.
+
+## M11 - Advisory reporting in the run result
+
+M11 surfaces the M10 advisory in the final pipeline result so a run can be
+audited after the fact, **without changing publication behaviour**. After the
+chief editor decision, the orchestrator appends a per-article record
+(`keyword`, `decision`, and the M10 `advisory`) to `pipeline_state["m10_advisories"]`.
+The append is wrapped in `try/except` and is a no-op when the M10 report is
+absent, so it never blocks a run. A pure helper `summarize_advisories(state)`
+returns small counts (total drafts, quality-flagged, consistency-flagged,
+and how many carried `regenerate_sections`) for reporting - it recomputes
+nothing and never raises.
+
+- Code: `orchestrator/orchestrator.py` (commit `cf606fc`) - `m10_advisories` state key, per-article append, `summarize_advisories` helper.
+- Tests: `tests/test_v4_m11_reporting.py` (commit `7bd079e`) - 7 offline tests.
+- Real CI: V4 Pipeline Tests run #53 (`7bd079e`), `203 passed in 1.99s`, Python 3.10 / 3.11 / 3.12.
+
+> M11 is reporting only: it observes and records what M10 already computed.
+> It never gates, never regenerates, and never reaches the network or an LLM.
 
 <!-- end V4 validation results --
