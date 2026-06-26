@@ -127,4 +127,5 @@ def prioritize_validated_topics(
         if limit <= 0:
             return []
         return ordered[:limit]
-    return ordere
+    return ordered
+# end of M7 topic-selection bridg
