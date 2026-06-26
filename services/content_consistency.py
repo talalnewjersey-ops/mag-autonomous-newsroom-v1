@@ -72,8 +72,19 @@ def _to_number(raw: str):
         return None
 
 
+# Filler words stripped so a metric label matches regardless of leading words
+# ("the application fee" == "later the application fee" -> "application fee").
+_LABEL_STOPWORDS = frozenset((
+    "the", "a", "an", "this", "that", "later", "then", "also", "is", "of",
+    "for", "to", "and", "but", "here", "there", "now", "your", "my", "its",
+))
+
+
 def _norm_label(label: str) -> str:
-    return re.sub(r"\s+", " ", label.strip().lower())
+    words = re.sub(r"\s+", " ", label.strip().lower()).split(" ")
+    words = [w for w in words if w and w not in _LABEL_STOPWORDS]
+    # Keep the last (up to) 3 significant words: the noun phrase next to the $.
+    return " ".join(words[-3:])
 
 
 def find_numeric_clashes(text: str) -> List[Dict]:
