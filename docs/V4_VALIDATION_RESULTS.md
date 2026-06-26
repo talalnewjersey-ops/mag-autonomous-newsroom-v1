@@ -41,6 +41,7 @@ EMBEDDINGS_PROVIDER=hashing PYTHONPATH=. python scripts/validate_v4_pipeline.py
 | V4 Pipeline Tests #31 | `0f38cb1` | `v4-tests.yml` | Success | `139 passed` on Python 3.10 / 3.11 / 3.12 (M7 topic selection) |
 | V4 Pipeline Tests #38 | `cbc1ab5` | `v4-tests.yml` | Success | `152 passed` on Python 3.10 / 3.11 / 3.12 (M7 prioritizer wired into orchestrator) |
 | V4 Pipeline Tests #43 | `63b7d1c` | `v4-tests.yml` | Success | `168 passed` on Python 3.10 / 3.11 / 3.12 (M8 content-quality gate + writer hook) |
+| V4 Pipeline Tests #47 | `3419bbb` | `v4-tests.yml` | Success | `185 passed` on Python 3.10 / 3.11 / 3.12 (M9 internal-consistency gate + combiner) |
 
 > **Honest note on run #13.** The first commit of the runtime-gate suite
 > (`474821e`, V4 Pipeline Tests #13) **failed** with `1 failed, 61 passed`:
@@ -362,5 +363,36 @@ tests added on top of the previous 152) on Python 3.10 / 3.11 / 3.12.
 > `fix(writer-v4)` restoring a closing parenthesis that the web-editor injection
 > dropped from the file-final COMMENT line (never any executable code). The
 > trailing-comment guard kept the truncation harmless; CI run #43 passed.
+
+## M9 - Internal-consistency gate (deterministic, offline)
+
+`services/content_consistency.py` checks whether an article contradicts ITSELF,
+using only the text - no network, no LLM, no external truth-checking and no
+fabricated data. It complements the other gates rather than duplicating them:
+agent_19 covers originality vs the corpus, M8 covers newcomer quality, and
+agent_20 (YMYL) checks figures against an external authoritative registry. M9
+instead flags four self-contradiction / hygiene classes: numeric/currency
+clashes (the same labelled metric stated with two values), unsupported absolute
+claims with no nearby citation marker, dangling "Section N" references with no
+matching heading, and implausible "as of YYYY" years. It returns a 0-100 score,
+per-class findings, and regenerate_sections in the shared writer vocabulary.
+
+A small `combine_checks(*checks)` helper composes the M8 quality gate and the M9
+consistency gate into one `quality_check` callable for `run_writer_v4_loop`
+(union of sections, order-preserving, de-duplicated). A raising or missing check
+contributes nothing, so production is never blocked.
+
+Honest scope: M9 verifies internal coherence only. It makes NO claim about the
+real world; external verification stays with agent_05 (gated, network) and
+agent_20. CI run #47 (`3419bbb`) reported `185 passed` (17 new offline tests on
+top of the previous 168) on Python 3.10 / 3.11 / 3.12.
+
+> **Honest note on M9 run #46.** The first M9 test run **failed** with
+> `1 failed, 1 passed`: `test_numeric_clash_detected` showed the clash detector
+> missed "the application fee $500" vs "later the application fee $750" because
+> the leading word made the two labels differ. The detector was corrected to key
+> on the core noun phrase (last significant words, filler stripped), and run #47
+> then reported `185 passed`. The failed run is recorded here deliberately:
+> success was never declared on the strength of written code alone.
 
 <!-- end V4 validation results --
