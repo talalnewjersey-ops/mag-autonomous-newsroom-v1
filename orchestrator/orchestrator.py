@@ -522,3 +522,87 @@ def summarize_regeneration_plan(plan, *, enabled=None):
         )[0][0]
     return summary
 # end of M13 regeneration plan reporter
+
+
+def serialize_regeneration_report(summary, *, enabled=None, generated_at=None):
+    """M14: pure, offline serialization of an M13 regeneration summary.
+
+    Takes the dict returned by summarize_regeneration_plan() and produces a
+    stable, JSON-serializable report dict with a fixed schema and primitive
+    values only. This is the consumable end of the M10 -> M11 -> M12 -> M13
+    advisory chain: a payload a human or an external system can read/store.
+
+    HONEST SCOPE: pure function. No network, no LLM, no IO, no mutation of the
+    input. It NEVER raises. Determinism is preserved by NOT calling the clock
+    internally: the optional 'generated_at' timestamp is injected by the caller
+    (any value, or None). If the optional 'enabled' override is provided it wins;
+    otherwise the summary's own 'enabled' flag is reported. A disabled/missing
+    summary serializes to a well-formed, zero-work report, so production
+    behaviour is unchanged unless a caller explicitly opted M12 in.
+    """
+    report = {
+        "schema": "nexus14.regeneration_report.v1",
+        "enabled": False,
+        "generated_at": generated_at,
+        "articles_to_regenerate": 0,
+        "total_sections": 0,
+        "quality_flagged": 0,
+        "consistency_flagged": 0,
+        "both_flagged": 0,
+        "top_section": None,
+        "sections": [],
+    }
+    try:
+        summary = summary or {}
+    except Exception:  # pragma: no cover - defensive
+        return report
+    if not hasattr(summary, "get"):
+        return report
+
+    summary_enabled = bool(summary.get("enabled"))
+    report["enabled"] = bool(enabled) if enabled is not None else summary_enabled
+
+    if not report["enabled"]:
+        return report
+
+    def _int(value):
+        try:
+            return int(value)
+        except Exception:  # pragma: no cover - defensive
+            return 0
+
+    report["articles_to_regenerate"] = _int(summary.get("articles_to_regenerate"))
+    report["total_sections"] = _int(summary.get("total_sections"))
+    report["quality_flagged"] = _int(summary.get("quality_flagged"))
+    report["consistency_flagged"] = _int(summary.get("consistency_flagged"))
+    report["both_flagged"] = _int(summary.get("both_flagged"))
+    report["top_section"] = summary.get("top_section")
+
+    counts = {}
+    try:
+        counts = dict(summary.get("section_counts") or {})
+    except Exception:  # pragma: no cover - defensive
+        counts = {}
+    # Stable, primitive list of {name, count}, sorted by count desc then name.
+    report["sections"] = [
+        {"name": name, "count": _int(count)}
+        for name, count in sorted(counts.items(), key=lambda kv: (-_int(kv[1]), str(kv[0])))
+    ]
+    return report
+
+
+def regeneration_report_to_json(summary, *, enabled=None, generated_at=None, indent=None):
+    """M14 helper: serialize_regeneration_report(...) rendered as a JSON string.
+
+    Pure and offline. NEVER raises: on any serialization error it falls back to
+    an empty JSON object string. Determinism is preserved (sorted keys; caller
+    supplies generated_at).
+    """
+    try:
+        report = serialize_regeneration_report(
+            summary, enabled=enabled, generated_at=generated_at
+        )
+        return json.dumps(report, sort_keys=True, indent=indent, default=str)
+    except Exception:  # pragma: no cover - defensive: never raise
+        return "{}"
+# end of M14 regeneration report serializer
