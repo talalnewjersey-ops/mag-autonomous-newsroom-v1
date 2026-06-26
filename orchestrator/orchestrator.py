@@ -717,3 +717,127 @@ def evaluate_performance_gate(lighthouse=None, serp=None, *, enabled=False, thre
     gate["passed"] = (not failed) and (serp_passed is not False)
     return gate
 # end of M15 performance/SERP advisory gate
+
+
+def _wp_slugify(title):
+    """Deterministic slug helper for M16: lowercase, non-alphanumerics to '-',
+    trimmed, capped at 100 chars. Mirrors the live agent's slug rule. Pure."""
+    import re as _re
+    try:
+        slug = _re.sub(r"[^a-z0-9]+", "-", str(title or "").lower()).strip("-")
+        return slug[:100]
+    except Exception:  # pragma: no cover - defensive
+        return ""
+
+
+def build_wordpress_payload(article, *, enabled=False, status="draft", featured_media=None, category_ids=None):
+    """M16: OPT-IN, deterministic, offline WordPress REST payload builder.
+
+    Turns an article dict into the EXACT post body the live Agent 11 sends to
+    the WordPress REST API (build inside _create_wordpress_draft), WITHOUT
+    performing any network call. The live POST (and category lookup) stays wired
+    by the caller via GitHub Secrets; this function only ASSEMBLES and VALIDATES
+    the payload so it is ready, deterministic and unit-testable offline.
+
+    The payload shape mirrors the agent exactly:
+      title, content, status, slug, categories, featured_media, author, meta
+      (meta carries the Yoast-only keys _yoast_wpseo_title / _metadesc / _focuskw).
+
+    HONEST SCOPE: pure function. No network, no LLM, no IO, no mutation of the
+    input. It NEVER raises and is DISABLED BY DEFAULT (enabled=False), returning a
+    no-op envelope so production behaviour is unchanged unless a caller opts in.
+    Building a payload does NOT publish anything; sending it remains the caller's
+    explicit, separately-gated step.
+    """
+    out = {
+        "schema": "nexus14.wp_publish_payload.v1",
+        "enabled": bool(enabled),
+        "payload": None,
+    }
+    if not enabled:
+        return out
+    try:
+        art = article or {}
+        if not hasattr(art, "get"):
+            return out
+
+        title = str(art.get("title", "") or "").strip()
+        content = art.get("content", "") or ""
+        seo_title = art.get("seo_title", "") or title
+        meta_desc = art.get("meta_description", "") or ""
+        focus_kw = art.get("keyword", "") or ""
+
+        try:
+            cats = [int(c) for c in (category_ids or []) if c is not None]
+        except Exception:  # pragma: no cover - defensive
+            cats = []
+
+        payload = {
+            "title": title,
+            "content": content,
+            "status": str(status or "draft"),
+            "slug": _wp_slugify(title),
+            "categories": cats,
+            "featured_media": featured_media,
+            "author": art.get("author_id", 1),
+            "meta": {
+                "_yoast_wpseo_title": seo_title,
+                "_yoast_wpseo_metadesc": meta_desc,
+                "_yoast_wpseo_focuskw": focus_kw,
+            },
+        }
+        out["payload"] = payload
+        return out
+    except Exception:  # pragma: no cover - defensive: never raise
+        return out
+
+
+def validate_wordpress_payload(payload, *, min_chars=5000, min_words=4000):
+    """M16 companion: deterministic, offline pre-publish validation gate.
+
+    Re-implements the live Agent 11 pre-publish checks as a PURE verdict, so a
+    caller can decide whether a payload is publishable BEFORE doing any network
+    POST. Mirrors the agent's rules:
+      * title present and not the 'Untitled Article' default,
+      * content >= min_chars characters,
+      * content >= min_words words,
+      * no body-injected JSON-LD (application/ld+json) in the content.
+
+    Accepts either the raw post dict ({title, content, ...}) or the M16 envelope
+    ({'payload': {...}}). Returns {'passed': bool, 'errors': [...] (sorted)}.
+
+    HONEST SCOPE: pure function. No network, no LLM, no IO, no mutation of input.
+    It NEVER raises. It does NOT publish: it only reports whether the payload
+    would pass the live gate.
+    """
+    result = {"schema": "nexus14.wp_publish_validation.v1", "passed": False, "errors": []}
+    errors = []
+    try:
+        data = payload or {}
+        if hasattr(data, "get") and isinstance(data.get("payload"), dict):
+            data = data.get("payload")
+        if not hasattr(data, "get"):
+            result["errors"] = ["INVALID_PAYLOAD"]
+            return result
+
+        title = str(data.get("title", "") or "").strip()
+        content = data.get("content", "") or ""
+        chars = len(content)
+        words = len(content.split()) if content else 0
+
+        if not title or title == "Untitled Article":
+            errors.append("TITLE_EMPTY_OR_DEFAULT")
+        if chars < int(min_chars):
+            errors.append("CONTENT_TOO_SHORT:%d_chars" % chars)
+        if words < int(min_words):
+            errors.append("WORD_COUNT_TOO_LOW:%d_words" % words)
+        if "application/ld+json" in content:
+            errors.append("BODY_JSONLD_FORBIDDEN")
+
+        result["errors"] = sorted(errors)
+        result["passed"] = not errors
+        return result
+    except Exception:  # pragma: no cover - defensive: never raise
+        result["errors"] = ["VALIDATION_ERROR"]
+        return result
+# end of M16 offline WordPress publish payload builder + validator
