@@ -457,3 +457,37 @@ Real CI: V4 Pipeline Tests, 211 passed on Python 3.10 / 3.11 / 3.12 (8 new offli
 CI maintenance - Node 24 GitHub Actions bump (RESOLVED)
 
 The previously-tracked Node 20 deprecation notice has been resolved. Every workflow that used the affected actions was bumped to a major version that runs on Node 24: actions/checkout@v4 -> @v5, actions/setup-python@v5 -> @v6, actions/upload-artifact@v4 -> @v5, and actions/download-artifact@v4 -> @v5. The 13 workflows updated were: v4-tests.yml, validate-v4.yml, production.yml, production_v2.yml, nexus14-enterprise-enforcement.yml, nexus14-agent-init-validation.yml, produce_20_articles.yml, backfill_images.yml, draft_image_report.yml, patch_images.yml, social_video_pipeline.yml, test_single_article.yml and wp_diagnostic.yml. The V4 Pipeline Tests suite re-ran green on the bumped checkout@v5 / setup-python@v6 actions (211 passed on Python 3.10 / 3.11 / 3.12), confirming the Node 24 toolchain works. No decision-core or test code changed as part of this maintenance.
+
+
+## M13 — Opt-in regeneration plan reporter (NEW)
+
+M13 closes the M10 -> M11 -> M12 loop with a pure, offline **reporter**:
+`summarize_regeneration_plan(plan, *, enabled=None)` in
+`orchestrator/orchestrator.py`. It takes the dict produced by the M12 planner
+(`plan_regeneration`) and returns small, log/human-friendly counters:
+`articles_to_regenerate`, `total_sections`, `quality_flagged`,
+`consistency_flagged`, `both_flagged`, a per-section `section_counts` map and the
+single most-frequent `top_section` (with a deterministic tie-break on count then
+name).
+
+**Honest scope (unchanged from M10/M11/M12 philosophy):**
+
+- **Pure function.** No network, no LLM, no IO, no mutation of the input. It
+  NEVER raises.
+- **Opt-in / no-op by default.** When the plan is disabled (or missing) the
+  summary reports zero work, so production behaviour is strictly unchanged
+  unless a caller explicitly opted M12 in. An optional `enabled` override is
+  available for reporting purposes and wins over the plan's own flag.
+- **Recomputes nothing.** It only reads the structure M12 already built.
+
+**Tests:** `tests/test_v4_m13_reporting.py` adds **11** deterministic offline
+tests covering: disabled/empty/missing/None inputs, article + section counting,
+quality/consistency/both flag counts, `top_section` selection and tie-break, the
+`enabled` override, malformed-record safety, input non-mutation, and an
+end-to-end check feeding the real M12 planner output into the reporter.
+
+**CI evidence:** V4 Pipeline Tests re-ran green on Python 3.10 / 3.11 / 3.12 with
+the test count growing **211 -> 222** (all M13 tests PASSED). This commit also
+fixed a pre-existing typo in `get_pipeline_state()` (`self.pipeline_stat` ->
+`self.pipeline_state`) that would have raised `AttributeError` at runtime; the
+fix is covered by the still-green regression suite.
