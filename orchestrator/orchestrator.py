@@ -20,6 +20,17 @@ try:
     from services.topic_selection import prioritize_validated_topics as _m7_prioritize
 except Exception:  # pragma: no cover - defensive import guard
     _m7_prioritize = None
+
+# M10: optional combined quality+consistency advisory gate. Imported
+# defensively so the orchestrator keeps working if the gates are absent.
+try:
+    from services.content_quality import assess_quality as _m10_assess_quality
+    from services.content_consistency import assess_consistency as _m10_assess_consistency
+    from services.content_consistency import combine_checks as _m10_combine
+except Exception:  # pragma: no cover - defensive import guard
+    _m10_assess_quality = None
+    _m10_assess_consistency = None
+    _m10_combine = None
 from agents.agent_03_content_planner import ContentPlannerAgent
 from agents.agent_04_article_writer import ArticleWriterAgent
 from agents.agent_05_fact_checker import FactCheckerAgent
@@ -254,6 +265,29 @@ class Orchestrator:
         """Run the article production pipeline for a single topic."""
         # Writing pipeline
         context = await self._run_agent("04", context)
+        # M10: non-blocking advisory quality+consistency gate on the fresh draft.
+        # Pure offline scoring (no network, no LLM). NEVER raises, NEVER blocks
+        # publication; it only annotates context for downstream/reporting use.
+        if _m10_assess_quality is not None and _m10_assess_consistency is not None:
+            try:
+                _draft = (context.get("agent_04_result") or {}).get("article")
+                if isinstance(_draft, str) and _draft.strip():
+                    _q = _m10_assess_quality(_draft)
+                    _c = _m10_assess_consistency(_draft)
+                    _secs = []
+                    for _s in list(_q.get("regenerate_sections") or []) + list(_c.get("regenerate_sections") or []):
+                        if _s not in _secs:
+                            _secs.append(_s)
+                    context["m10_quality_consistency"] = {
+                        "quality_score": _q.get("score"),
+                        "quality_passed": _q.get("passed"),
+                        "consistency_score": _c.get("score"),
+                        "consistency_passed": _c.get("passed"),
+                        "regenerate_sections": _secs,
+                        "blocking": False,
+                    }
+            except Exception:  # pragma: no cover - advisory only: never block
+                logger.info("M10 advisory gate skipped (non-fatal)")
         context = await self._run_agent("05", context)
         context = await self._run_agent("06", context)
         context = await self._run_agent("07", context)
@@ -322,3 +356,4 @@ class Orchestrator:
     def get_pipeline_state(self) -> Dict:
         """Get current pipeline state."""
         return self.pipeline_stat
+# end of orchestrator (M7 prioritizer + M10 advisory quality/consistency gate)
