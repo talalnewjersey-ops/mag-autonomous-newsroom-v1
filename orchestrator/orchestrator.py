@@ -13,6 +13,13 @@ from typing import Dict, List, Optional, Any
 
 from agents.agent_01_seo_research import SEOResearchAgent
 from agents.agent_02_keyword_validation import KeywordValidationAgent
+
+# M7: optional topic prioritizer bridge. Imported defensively so the
+# orchestrator keeps working even if the selection layer is unavailable.
+try:
+    from services.topic_selection import prioritize_validated_topics as _m7_prioritize
+except Exception:  # pragma: no cover - defensive import guard
+    _m7_prioritize = None
 from agents.agent_03_content_planner import ContentPlannerAgent
 from agents.agent_04_article_writer import ArticleWriterAgent
 from agents.agent_05_fact_checker import FactCheckerAgent
@@ -205,6 +212,19 @@ class Orchestrator:
             # Stage 2: Production Phase (for each validated topic)
             validated_topics = context.get("validated_topics", {}).get("topics", [])
 
+            # M7: reorder validated topics so the highest-value newcomer US/CA
+            # topics are produced first. Falls back to the original order if the
+            # selection bridge is unavailable or errors (never blocks production).
+            if _m7_prioritize is not None and validated_topics:
+                try:
+                    validated_topics = _m7_prioritize(validated_topics)
+                    logger.info(
+                        "M7 topic prioritizer applied: %d topics reordered by static score",
+                        len(validated_topics),
+                    )
+                except Exception as exc:  # pragma: no cover - defensive runtime guard
+                    logger.warning("M7 prioritizer skipped (%s); using discovery order", exc)
+
             for topic in validated_topics[:self.config.get("articles_per_batch", 5)]:
                 try:
                     article_context = {**context, "current_topic": topic}
@@ -301,4 +321,4 @@ class Orchestrator:
 
     def get_pipeline_state(self) -> Dict:
         """Get current pipeline state."""
-        return self.pipeline_state
+        return self.pipeline_stat
