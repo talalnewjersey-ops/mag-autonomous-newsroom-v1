@@ -147,4 +147,5 @@ def test_output_length_matches_input_when_no_limit():
         {"slug": LOW_SLUG},
     ]
     ordered = prioritize_validated_topics(topics)
-    assert len(ordered) == len(topics
+    assert len(ordered) == len(topics)
+# end of M7 topic-selection bridge test
