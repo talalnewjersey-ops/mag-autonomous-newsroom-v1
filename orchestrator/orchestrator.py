@@ -400,7 +400,7 @@ class Orchestrator:
 
     def get_pipeline_state(self) -> Dict:
         """Get current pipeline state."""
-        return self.pipeline_stat
+        return self.pipeline_state
 # end of orchestrator (M7 prioritizer + M10 advisory gate + M11 advisory reporting)
 
 
@@ -454,3 +454,71 @@ def plan_regeneration(pipeline_state, *, enabled=False, max_articles=None):
     plan["total_sections"] = sum(len(a["regenerate_sections"]) for a in plan["articles"])
     return plan
 # end of M12 opt-in regeneration planner
+
+
+def summarize_regeneration_plan(plan, *, enabled=None):
+    """M13: pure, offline summary of an M12 regeneration plan.
+
+    Takes the dict returned by plan_regeneration() and produces small,
+    human/log-friendly counters describing it. Recomputes nothing: it only
+    reads the plan structure M12 already built.
+
+    HONEST SCOPE: pure function. No network, no LLM, no IO, no mutation of the
+    input. It NEVER raises. If the optional 'enabled' override is provided it
+    wins; otherwise the plan's own 'enabled' flag is reported. When a plan is
+    disabled (or missing) the summary reports zero work, so production behaviour
+    is unchanged unless a caller explicitly opted M12 in.
+    """
+    summary = {
+        "enabled": False,
+        "articles_to_regenerate": 0,
+        "total_sections": 0,
+        "quality_flagged": 0,
+        "consistency_flagged": 0,
+        "both_flagged": 0,
+        "top_section": None,
+        "section_counts": {},
+    }
+    try:
+        plan = plan or {}
+    except Exception:  # pragma: no cover - defensive
+        return summary
+
+    plan_enabled = bool(plan.get("enabled")) if hasattr(plan, "get") else False
+    summary["enabled"] = bool(enabled) if enabled is not None else plan_enabled
+
+    try:
+        articles = list(plan.get("articles") or [])
+    except Exception:  # pragma: no cover - defensive
+        articles = []
+
+    # When disabled, report zero work regardless of any stale article list.
+    if not summary["enabled"]:
+        return summary
+
+    section_counts = {}
+    for art in articles:
+        art = art or {}
+        q_flagged = art.get("quality_passed") is False
+        c_flagged = art.get("consistency_passed") is False
+        if q_flagged:
+            summary["quality_flagged"] += 1
+        if c_flagged:
+            summary["consistency_flagged"] += 1
+        if q_flagged and c_flagged:
+            summary["both_flagged"] += 1
+        for sec in (art.get("regenerate_sections") or []):
+            if not sec:
+                continue
+            section_counts[sec] = section_counts.get(sec, 0) + 1
+
+    summary["articles_to_regenerate"] = len(articles)
+    summary["section_counts"] = section_counts
+    summary["total_sections"] = sum(section_counts.values())
+    if section_counts:
+        # Deterministic tie-break: highest count, then section name.
+        summary["top_section"] = sorted(
+            section_counts.items(), key=lambda kv: (-kv[1], kv[0])
+        )[0][0]
+    return summary
+# end of M13 regeneration plan reporter
