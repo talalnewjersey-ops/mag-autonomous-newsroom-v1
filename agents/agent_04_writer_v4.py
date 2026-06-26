@@ -234,4 +234,4 @@ if __name__ == "__main__":
     logger.info("Writer V4 loop rounds=%d passed=%s", result["rounds"], result["passed"])
     sys.exit(0 if result["passed"] else 2)
 
-# end of Writer V4 loop (M2 + M8 quality hook
+# end of Writer V4 loop (M2 + M8 quality hook)
