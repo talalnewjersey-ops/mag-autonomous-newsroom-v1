@@ -606,3 +606,114 @@ def regeneration_report_to_json(summary, *, enabled=None, generated_at=None, ind
     except Exception:  # pragma: no cover - defensive: never raise
         return "{}"
 # end of M14 regeneration report serializer
+
+
+def evaluate_performance_gate(lighthouse=None, serp=None, *, enabled=False, thresholds=None):
+    """M15: OPT-IN, deterministic, offline performance/SERP advisory gate.
+
+    Evaluates a Lighthouse report and/or SERP data that the CALLER has already
+    fetched, and produces a stable advisory verdict. It does NO network I/O and
+    makes NO live calls: the live Lighthouse run or SERP API request is wired by
+    the caller (e.g. a CI step feeding GitHub Secrets) and only the resulting
+    parsed payloads are passed in here. This keeps the function pure, offline and
+    fully testable, while remaining branchable to a live source later.
+
+    Inputs:
+      * lighthouse: a parsed Lighthouse JSON dict. Category scores are read from
+        lighthouse['categories'][<id>]['score'] (floats in 0..1), the shape the
+        Lighthouse CLI emits. Recognised categories: performance, accessibility,
+        best-practices, seo.
+      * serp: optional dict with a numeric 'rank' (1-based position) and optional
+        'query'/'url' for reporting. A worse (higher) rank than thresholds['serp_max_rank']
+        is flagged.
+      * thresholds: optional dict overriding the defaults below. Missing keys keep
+        their default.
+
+    HONEST SCOPE: pure function. No network, no LLM, no IO, no mutation of the
+    input. It NEVER raises and is DISABLED BY DEFAULT (enabled=False), so the
+    production pipeline behaves exactly as before unless a caller explicitly opts
+    in. The verdict is ADVISORY ('blocking': False): it points, it does not block.
+    """
+    default_thresholds = {
+        "performance": 0.9,
+        "accessibility": 0.9,
+        "best-practices": 0.9,
+        "seo": 0.9,
+        "serp_max_rank": 10,
+    }
+    gate = {
+        "schema": "nexus14.performance_gate.v1",
+        "enabled": bool(enabled),
+        "passed": True,
+        "blocking": False,
+        "categories": {},
+        "failed_categories": [],
+        "serp": None,
+        "serp_passed": None,
+    }
+    if not enabled:
+        return gate
+
+    try:
+        thr = dict(default_thresholds)
+        if thresholds:
+            thr.update({k: v for k, v in dict(thresholds).items() if v is not None})
+    except Exception:  # pragma: no cover - defensive
+        thr = dict(default_thresholds)
+
+    # ---- Lighthouse categories -------------------------------------------------
+    cats = {}
+    try:
+        cats = dict(((lighthouse or {}).get("categories") or {}))
+    except Exception:  # pragma: no cover - defensive
+        cats = {}
+
+    failed = []
+    for cat_id in ("performance", "accessibility", "best-practices", "seo"):
+        entry = cats.get(cat_id)
+        if not isinstance(entry, dict) or "score" not in entry:
+            continue
+        try:
+            score = float(entry.get("score"))
+        except Exception:  # pragma: no cover - defensive
+            continue
+        try:
+            limit = float(thr.get(cat_id))
+        except Exception:  # pragma: no cover - defensive
+            limit = 0.9
+        passed = score >= limit
+        gate["categories"][cat_id] = {
+            "score": score,
+            "threshold": limit,
+            "passed": passed,
+        }
+        if not passed:
+            failed.append(cat_id)
+
+    gate["failed_categories"] = sorted(failed)
+
+    # ---- SERP rank -------------------------------------------------------------
+    serp_passed = None
+    if serp is not None:
+        try:
+            rank = serp.get("rank") if hasattr(serp, "get") else None
+            if rank is not None:
+                rank = int(rank)
+                max_rank = int(thr.get("serp_max_rank"))
+                serp_passed = rank <= max_rank
+                gate["serp"] = {
+                    "rank": rank,
+                    "max_rank": max_rank,
+                    "query": serp.get("query") if hasattr(serp, "get") else None,
+                    "url": serp.get("url") if hasattr(serp, "get") else None,
+                    "passed": serp_passed,
+                }
+        except Exception:  # pragma: no cover - defensive
+            serp_passed = None
+
+    gate["serp_passed"] = serp_passed
+
+    # ---- Overall advisory verdict ---------------------------------------------
+    gate["passed"] = (not failed) and (serp_passed is not False)
+    return gate
+# end of M15 performance/SERP advisory gate
