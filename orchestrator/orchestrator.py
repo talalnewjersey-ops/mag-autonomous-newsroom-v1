@@ -402,3 +402,55 @@ class Orchestrator:
         """Get current pipeline state."""
         return self.pipeline_stat
 # end of orchestrator (M7 prioritizer + M10 advisory gate + M11 advisory reporting)
+
+
+def plan_regeneration(pipeline_state, *, enabled=False, max_articles=None):
+    """M12: OPT-IN, deterministic, offline regeneration planner.
+
+    Turns the M10/M11 advisories already collected during a run into an ORDERED
+    plan of which articles (and which sections) to regenerate. It recomputes
+    nothing: it only reads pipeline_state['m10_advisories'] and the advisory
+    fields M10 already produced (quality_passed / consistency_passed /
+    regenerate_sections).
+
+    HONEST SCOPE: pure function. No network, no LLM, no IO, no mutation of the
+    input. It NEVER raises and is DISABLED BY DEFAULT (enabled=False), so the
+    production pipeline behaves exactly as before unless a caller explicitly
+    opts in. Actually executing the plan still requires the gated Anthropic
+    writer (agent_04_writer_v4); this function only DECIDES and POINTS.
+    """
+    plan = {"enabled": bool(enabled), "articles": [], "total_sections": 0, "blocking": False}
+    if not enabled:
+        return plan
+    try:
+        advisories = list((pipeline_state or {}).get("m10_advisories") or [])
+    except Exception:  # pragma: no cover - defensive
+        return plan
+    for rec in advisories:
+        adv = (rec or {}).get("advisory") or {}
+        sections = [s for s in (adv.get("regenerate_sections") or []) if s]
+        flagged = adv.get("quality_passed") is False or adv.get("consistency_passed") is False
+        if not (sections and flagged):
+            continue
+        plan["articles"].append({
+            "keyword": (rec or {}).get("keyword"),
+            "decision": (rec or {}).get("decision"),
+            "regenerate_sections": sections,
+            "quality_passed": adv.get("quality_passed"),
+            "consistency_passed": adv.get("consistency_passed"),
+        })
+
+    def _weakness(item):
+        q = item.get("quality_passed")
+        c = item.get("consistency_passed")
+        return (0 if q is False else 1) + (0 if c is False else 1)
+
+    plan["articles"].sort(key=_weakness)
+    if max_articles is not None:
+        try:
+            plan["articles"] = plan["articles"][: int(max_articles)]
+        except Exception:  # pragma: no cover - defensive
+            pass
+    plan["total_sections"] = sum(len(a["regenerate_sections"]) for a in plan["articles"])
+    return plan
+# end of M12 opt-in regeneration planner
