@@ -40,6 +40,7 @@ EMBEDDINGS_PROVIDER=hashing PYTHONPATH=. python scripts/validate_v4_pipeline.py
 | V4 Pipeline Tests #25 | `4ac942b` | `v4-tests.yml` | Success | `111 passed` on Python 3.10 / 3.11 / 3.12 (Approach B / B1 complete) |
 | V4 Pipeline Tests #31 | `0f38cb1` | `v4-tests.yml` | Success | `139 passed` on Python 3.10 / 3.11 / 3.12 (M7 topic selection) |
 | V4 Pipeline Tests #38 | `cbc1ab5` | `v4-tests.yml` | Success | `152 passed` on Python 3.10 / 3.11 / 3.12 (M7 prioritizer wired into orchestrator) |
+| V4 Pipeline Tests #43 | `63b7d1c` | `v4-tests.yml` | Success | `168 passed` on Python 3.10 / 3.11 / 3.12 (M8 content-quality gate + writer hook) |
 
 > **Honest note on run #13.** The first commit of the runtime-gate suite
 > (`474821e`, V4 Pipeline Tests #13) **failed** with `1 failed, 61 passed`:
@@ -334,4 +335,32 @@ plus the existing suite, run #38 (`cbc1ab5`) = `152 passed` on Python
   real search / trend / affiliate-demand signals and the generation-entrypoint
   wiring remain follow-up integration points awaiting an authorised data
   source.
+## M8 - Content-quality gate (deterministic, offline)
+
+`services/content_quality.py` scores a finished article on six transparent,
+auditable signals (length, structure, newcomer-actionability, EEAT-surface,
+FAQ coverage, readability) and returns a 0-100 score plus the list of weak
+sections to regenerate. The section names match the existing
+`services.writer_variation` vocabulary, so a low-quality article feeds straight
+into the same targeted-regeneration path the originality loop already uses.
+
+`agents/agent_04_writer_v4.py` gained an OPTIONAL `quality_check` parameter on
+`run_writer_v4_loop`. When supplied, its flagged sections are folded into the
+per-round regeneration set; when omitted, behaviour is unchanged. The hook is
+wrapped in a defensive `try/except` so a failing or missing gate never blocks
+production.
+
+Honest scope: the gate performs NO network calls, NO LLM calls and fabricates
+NO search / trend / click / affiliate metrics. The newcomer lens is encoded as
+small editable keyword and structure heuristics, not as live data we do not
+have. Real section regeneration still requires the Anthropic API (gated in the
+writer module). CI run #43 (`63b7d1c`) reported `168 passed` (16 new offline
+tests added on top of the previous 152) on Python 3.10 / 3.11 / 3.12.
+
+> **Honest note on the M8 commits.** The feature landed across three commits:
+> `feat(quality)` (the gate), `feat(writer-v4)` (the hook) and a cosmetic
+> `fix(writer-v4)` restoring a closing parenthesis that the web-editor injection
+> dropped from the file-final COMMENT line (never any executable code). The
+> trailing-comment guard kept the truncation harmless; CI run #43 passed.
+
 <!-- end V4 validation results --
