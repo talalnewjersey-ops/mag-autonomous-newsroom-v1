@@ -142,6 +142,7 @@ def run_writer_v4_loop(
     section_generator: Callable[[str, str], str],
     seed: str = "",
     max_rounds: int = MAX_ROUNDS,
+    quality_check: Optional[Callable[[str], List[str]]] = None,
 ) -> Dict:
     """Full Writer V4 loop: draft -> originality -> targeted regeneration.
 
@@ -152,11 +153,22 @@ def run_writer_v4_loop(
     rounds = 0
     report = run_originality_check(markdown, corpus,
                                    output_path="output/agent_04/originality_round_0.json")
-    while not report["passed"] and rounds < max_rounds:
-        rounds += 1
-        flagged = report["regenerate_sections"]
-        if not flagged:
+    while True:
+        flagged = list(report["regenerate_sections"])
+        # M8: fold in any sections the (optional) quality gate wants regenerated.
+        # Never blocks: a failing or missing gate simply contributes no sections.
+        if quality_check is not None:
+            try:
+                for sec in quality_check(markdown):
+                    if sec not in flagged:
+                        flagged.append(sec)
+            except Exception as exc:  # pragma: no cover - defensive runtime guard
+                logger.warning("M8 quality gate skipped (%s)", exc)
+        if report["passed"] and not flagged:
             break
+        if rounds >= max_rounds or not flagged:
+            break
+        rounds += 1
         regenerated = regenerate_with_variation(markdown, flagged, section_generator, seed)
         markdown = apply_regenerated_sections(markdown, regenerated, seed)
         report = run_originality_check(
@@ -221,3 +233,5 @@ if __name__ == "__main__":
     Path(args.output).write_text(result["markdown"], encoding="utf-8")
     logger.info("Writer V4 loop rounds=%d passed=%s", result["rounds"], result["passed"])
     sys.exit(0 if result["passed"] else 2)
+
+# end of Writer V4 loop (M2 + M8 quality hook
