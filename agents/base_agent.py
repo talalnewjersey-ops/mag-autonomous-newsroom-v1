@@ -97,16 +97,19 @@ class BaseAgent(ABC):
         self.logger.info(f"Output saved: {output_path}")
         
         # Also save to storage service (S3/cloud)
-        try:
-            await self.storage.save(str(output_path), data)
-        except Exception as e:
-            self.log_warning(f"Failed to save to cloud storage: {e}")
+        if self.storage is not None:
+            try:
+                await self.storage.save(str(output_path), data)
+            except Exception as e:
+                self.log_warning(f"Failed to save to cloud storage: {e}")
         
         return output_path
     
     async def call_llm(self, prompt: str, system: str = None, 
                        model: str = None, max_tokens: int = 4096) -> str:
         """Call the LLM service with retry logic."""
+        if self.llm is None:
+            raise RuntimeError(f"{self.AGENT_NAME}: LLM service is not configured. Ensure llm_service is passed to the agent constructor.")
         max_retries = 3
         
         for attempt in range(max_retries):
