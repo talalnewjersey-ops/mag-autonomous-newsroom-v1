@@ -1,126 +1,79 @@
 #!/usr/bin/env python3
-"""WordPress Diagnostic Script v2 - Tests authentication methods"""
-import os
-import base64
-import requests
+"""WP Diagnostic v3 - Headers + Blocker ID"""
+import os, base64, requests
 
-WP_URL = os.environ.get("WORDPRESS_URL", "https://moneyabroadguide.com").rstrip("/")
-WP_USER = os.environ.get("WORDPRESS_USERNAME", "")
-WP_PASS = os.environ.get("WORDPRESS_APP_PASSWORD", "") or os.environ.get("WORDPRESS_PASSWORD", "")
+WP_URL = os.environ.get("WORDPRESS_URL","https://moneyabroadguide.com").rstrip("/")
+WP_USER = os.environ.get("WORDPRESS_USERNAME","")
+WP_PASS = os.environ.get("WORDPRESS_APP_PASSWORD","") or os.environ.get("WORDPRESS_PASSWORD","")
 
-print("=" * 60)
-print("WORDPRESS DIAGNOSTIC v2")
-print("=" * 60)
-print("WP_URL: ***")
-print("WP_USER length:", len(WP_USER), "chars")
-print("WP_PASS length:", len(WP_PASS), "chars")
-print("WP_PASS repr (sanitized):", repr(WP_PASS[:4] + "..." + WP_PASS[-4:]) if len(WP_PASS) > 8 else "TOO SHORT")
+print("="*60)
+print("WP DIAGNOSTIC v3 - HEADER CAPTURE + BLOCKER ID")
+print("="*60)
+print("WP_USER:", len(WP_USER),"chars")
+print("WP_PASS:", len(WP_PASS),"chars", repr(WP_PASS[:4]+"..."+WP_PASS[-4:]) if len(WP_PASS)>8 else "SHORT")
 print()
 
-# Test 1: Raw password as-is
-creds_raw = base64.b64encode((WP_USER + ":" + WP_PASS).encode()).decode()
+creds = base64.b64encode((WP_USER+":"+WP_PASS.replace(" ","")).encode()).decode()
+AUTH = {"Authorization":"Basic "+creds,"Content-Type":"application/json","Accept":"application/json","User-Agent":"NEXUS14-Diag/3"}
 
-# Test 2: Password stripped (remove spaces)
-wp_pass_stripped = WP_PASS.replace(" ", "")
-creds_stripped = base64.b64encode((WP_USER + ":" + wp_pass_stripped).encode()).decode()
+def dump(r):
+    print("  STATUS:",r.status_code,"TIME:",round(r.elapsed.total_seconds(),2),"s")
+    print("  HEADERS:")
+    for k,v in r.headers.items(): print(f"    {k}: {v}")
+    print("  END-HEADERS")
 
-# Test 3: Re-space every 4 chars (normalize app password format)
-wp_pass_nospace = WP_PASS.replace(" ", "")
-wp_pass_respaced = " ".join(wp_pass_nospace[i:i+4] for i in range(0, len(wp_pass_nospace), 4))
-creds_respaced = base64.b64encode((WP_USER + ":" + wp_pass_respaced).encode()).decode()
+def blocker(r):
+    h={k.lower():v.lower() for k,v in r.headers.items()}
+    body=r.text[:2000]; bl=body.lower(); sv=h.get("server","")
+    v="UNKNOWN"
+    if h.get("cf-ray"): v="CLOUDFLARE"
+    elif "cloudflare" in sv or "cloudflare" in bl: v="CLOUDFLARE"
+    elif "litespeed" in sv or "lsws" in sv:
+        v="LITESPEED+MODSEC" if "modsecurity" in bl or "mod_security" in bl else "LITESPEED WAF"
+    elif "apache" in sv: v="APACHE+MODSEC" if "modsec" in bl else "APACHE/.htaccess"
+    elif "nginx" in sv: v="NGINX"
+    elif "wordfence" in bl: v="WORDFENCE"
+    elif "patchstack" in bl: v="PATCHSTACK"
+    elif "hostinger" in bl: v="HOSTINGER WAF"
+    elif "text/html" in r.headers.get("content-type",""): v="SERVER-LEVEL (HTML not JSON)"
+    print(f"  ***BLOCKER: {v}***")
+    print("  BODY:",body[:1200])
+    return v
 
-variants = [
-    ("Raw password as stored", creds_raw),
-    ("Password with spaces removed", creds_stripped),
-    ("Password re-spaced every 4 chars", creds_respaced),
-]
-
-print("[TEST 1] GET /wp-json/ - API root (no auth needed)")
+print("[T1] GET /wp-json/ no auth")
 try:
-    r = requests.get(WP_URL + "/wp-json/", timeout=15)
-    ct = r.headers.get("Content-Type", "")
-    print("  Status:", r.status_code, "| CT:", ct[:50])
-    if r.status_code == 200 and "json" in ct:
-        d = r.json()
-        print("  -> API accessible! Site:", d.get("name", "?"))
-    else:
-        print("  -> FAILED:", r.text[:100])
-except Exception as e:
-    print("  ERROR:", e)
-
+    r=requests.get(WP_URL+"/wp-json/",timeout=15); dump(r)
+    if r.status_code==200:
+        d=r.json(); print("  OK site:",d.get("name"),"ns:",d.get("namespaces",[])[:5])
+        print("  AppPasswords:", "ON" if "application-passwords" in d.get("authentication",{}) else "OFF")
+    else: blocker(r)
+except Exception as e: print("  ERR:",e)
 print()
-print("[TEST 2] GET /wp-json/wp/v2/users/me - Auth check (3 credential variants)")
-for name, creds in variants:
-    h = {
-        "Authorization": "Basic " + creds,
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0",
-    }
-    try:
-        r = requests.get(WP_URL + "/wp-json/wp/v2/users/me", headers=h, timeout=15)
-        print("  [" + name + "]:", r.status_code)
-        if r.status_code == 200:
-            d = r.json()
-            print("  -> AUTH OK! User:", d.get("name", "?"), "Roles:", d.get("roles", []))
-            break
-        else:
-            body = r.text[:150]
-            print("  -> " + body)
-    except Exception as e:
-        print("  ERROR:", e)
 
-print()
-print("[TEST 3] POST /wp/v2/posts - Create draft (3 credential variants)")
-post_data = {
-    "title": "NEXUS-14 Diag Test - DELETE ME",
-    "content": "<p>Diagnostic test. Safe to delete.</p>",
-    "status": "draft"
-}
-success = False
-for name, creds in variants:
-    h = {
-        "Authorization": "Basic " + creds,
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0",
-    }
-    try:
-        r = requests.post(WP_URL + "/wp-json/wp/v2/posts", headers=h, json=post_data, timeout=30)
-        print("  [" + name + "]:", r.status_code)
-        if r.status_code in (200, 201):
-            d = r.json()
-            pid = d.get("id", "?")
-            print("  -> POST SUCCESS! ID=" + str(pid))
-            requests.delete(WP_URL + "/wp-json/wp/v2/posts/" + str(pid) + "?force=true", headers=h, timeout=15)
-            print("  -> Test post deleted")
-            success = True
-            break
-        else:
-            print("  -> " + r.text[:200])
-    except Exception as e:
-        print("  ERROR:", e)
-
-if not success:
-    print("  ALL AUTH VARIANTS FAILED for POST")
-
-print()
-print("[TEST 4] Check if Application Passwords are enabled")
+print("[T2] GET /wp-json/wp/v2/users/me auth")
 try:
-    r = requests.get(WP_URL + "/wp-json/", timeout=15)
-    if r.status_code == 200:
-        d = r.json()
-        auth = d.get("authentication", {})
-        print("  Authentication methods:", list(auth.keys()) if auth else "None listed")
-        if "application-passwords" in auth:
-            ap = auth["application-passwords"]
-            print("  Application Passwords endpoints:", list(ap.get("endpoints", {}).keys()))
-        namespaces = d.get("namespaces", [])
-        print("  Available namespaces:", namespaces[:10])
-except Exception as e:
-    print("  ERROR:", e)
-
+    r=requests.get(WP_URL+"/wp-json/wp/v2/users/me",headers=AUTH,timeout=15); dump(r)
+    if r.status_code==200:
+        d=r.json(); caps=d.get("capabilities",{})
+        print("  OK user:",d.get("name"),"roles:",d.get("roles"))
+        print("  edit_posts:",caps.get("edit_posts",False),"publish:",caps.get("publish_posts",False),"upload:",caps.get("upload_files",False))
+    else: blocker(r)
+except Exception as e: print("  ERR:",e)
 print()
-print("=" * 60)
-print("DIAGNOSTIC v2 COMPLETE")
-print("=" * 60)
+
+print("[T3] POST /wp-json/wp/v2/posts create draft")
+try:
+    r=requests.post(WP_URL+"/wp-json/wp/v2/posts",headers=AUTH,json={"title":"DIAG-DELETE","content":"<p>test</p>","status":"draft"},timeout=30)
+    dump(r)
+    if r.status_code in(200,201):
+        d=r.json(); pid=d.get("id")
+        print("  ***SUCCESS Post ID:",pid,"slug:",d.get("slug"),"***")
+        print("  ***PIPELINE VALIDATED***")
+        requests.delete(WP_URL+f"/wp-json/wp/v2/posts/{pid}?force=true",headers=AUTH,timeout=15)
+        print("  cleanup: deleted",pid)
+    else: blocker(r)
+except Exception as e: print("  ERR:",e)
+print()
+print("="*60)
+print("DIAG v3 DONE")
+print("="*60)
