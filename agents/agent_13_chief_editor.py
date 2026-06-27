@@ -341,7 +341,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="Agent 13 - Chief Editor")
     parser.add_argument("--qa-report", required=False, default="", help="Path to QA report JSON. Optional for global-audit mode.")
-    parser.add_argument("--article", required=True)
+    parser.add_argument("--article", required=False, default="")
     parser.add_argument("--output", required=True)
     parser.add_argument("--mode", default="article", help="article or global-audit")
     args = parser.parse_args()
@@ -359,10 +359,10 @@ def main():
         return {}
 
     qa_report = load_json(args.qa_report) if args.qa_report else {}
-    article_path = Path(args.article)
+    article_path = Path(args.article) if args.article else None
     word_count = 0
     title = ""
-    if article_path.exists():
+    if article_path and article_path.exists():
         content = article_path.read_text(encoding="utf-8")
         word_count = len(content.split())
         title_match = re.search(r'title:\s*"?([^"\n]+)"?', content)
