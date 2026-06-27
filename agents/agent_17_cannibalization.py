@@ -258,5 +258,43 @@ def main():
         sys.exit(0)
     sys.exit(1 if result["blocking"] else 0)
 
+
+# ============================================================
+# NEXUS-14 V3 — CannibalizationAgent BaseAgent Wrapper
+# Added to support orchestrator class-based dispatch.
+# Delegates to run_cannibalization_check() function above.
+# ============================================================
+try:
+    from agents.base_agent import BaseAgent as _BaseAgent
+except ImportError:
+    try:
+        from base_agent import BaseAgent as _BaseAgent
+    except ImportError:
+        class _BaseAgent:
+            def __init__(self, config=None, **kwargs):
+                self.config = config or {}
+
+class CannibalizationAgent(_BaseAgent):
+    """Orchestrator-compatible wrapper for Agent 17 content cannibalization check."""
+    AGENT_ID = "agent_17"
+    AGENT_NAME = "Content Cannibalization Agent"
+
+    def __init__(self, config=None, **kwargs):
+        try:
+            super().__init__(config or {}, **kwargs)
+        except Exception:
+            self.config = config or {}
+
+    async def run(self, context=None):
+        ctx = context or {}
+        topic = (ctx.get("current_topic") or {}).get("title", "") or ctx.get("topic", "")
+        kws_raw = (ctx.get("current_topic") or {}).get("keyword", "")
+        keywords = [k.strip() for k in str(kws_raw).split(",") if k.strip()] if kws_raw else []
+        out_dir = "output/agent_17"
+        out_path = f"{out_dir}/cannibalization_report.json"
+        result = run_cannibalization_check(topic, keywords, out_path)
+        return result
+
+
 if __name__ == "__main__":
     main()
