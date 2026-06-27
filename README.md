@@ -1,4 +1,4 @@
-# 🤖 NEXUS-14 V3 — MoneyAbroadGuide Quality-First Autonomous Newsroom
+# 🤖 NEXUS-14 V3/V4 — MoneyAbroadGuide Quality-First Autonomous Newsroom
 
 > **QUALITY ALWAYS WINS OVER VOLUME.**
 
@@ -307,10 +307,13 @@ S3_BUCKET=
 
 | Workflow | Purpose |
 |----------|---------|
-| `production_v2.yml` | ⭐ V3 main workflow (quality-first, 6/day max) |
-| `production.yml` | V1 legacy (retained for reference) |
-| `test_single_article.yml` | Single article testing |
-| `wp_diagnostic.yml` | WordPress connectivity check |
+| `production_v2.yml` | ⭐ **V4.0 ACTIVE PIPELINE** — Reliability-First, 6/day max |
+| `production.yml` | V1 legacy — archived, schedule trigger removed (see commit 16ae5b5) |
+| `test_single_article.yml` | Single article manual testing |
+| `wp_diagnostic.yml` | WordPress connectivity diagnostics |
+| `produce_20_articles.yml` | Bulk 20-article production (manual dispatch) |
+| `nexus14-enterprise-enforcement.yml` | Enterprise standard validation on push/PR |
+| `nexus14-agent-init-validation.yml` | Agent initialization smoke tests |
 
 ---
 
