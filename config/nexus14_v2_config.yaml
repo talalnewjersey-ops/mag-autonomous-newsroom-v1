@@ -2,6 +2,10 @@
 # NEXUS-14 V3.1 — Master Configuration COST-OPTIMIZED
 # MoneyAbroadGuide.com Cost-Optimized Autonomous Newsroom
 # Version: 3.1.0
+# Active Pipeline: production_v2.yml (V4.0 Reliability-First)
+# NOTE: File named nexus14_v2_config.yaml for legacy compatibility.
+#       Content reflects V3.1 agent configuration. The active GitHub
+#       Actions pipeline is PRODUCTION-V4.0-RELIABLE (production_v2.yml).
 # Updated: 2026-06-14
 # Philosophy: Maximum quality per dollar. Search intent > article length.
 # Platform: Financial education for newcomers, immigrants, international students (Canada/USA)
@@ -13,6 +17,8 @@ system:
   previous_version: "3.0.0"
   site: "MoneyAbroadGuide.com"
   code_name: "Cost-Optimized Quality Newsroom"
+  active_pipeline: "PRODUCTION-V4.0-RELIABLE (production_v2.yml)"
+  config_version_note: "Config at V3.1; active workflow at V4.0"
   primary_ai: "Anthropic Claude API"
   image_ai:
     - "Gemini AI"
