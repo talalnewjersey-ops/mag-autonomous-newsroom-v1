@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NEXUS-14 PRODUCTION SCRIPT v7.2 - CLAUDE HAIKU 4.5 + GEMINI NATIVE IMAGE + AGENT 24
+NEXUS-14 PRODUCTION SCRIPT v8.0 ENTERPRISE - CLAUDE HAIKU 4.5 + GEMINI NATIVE IMAGE + AGENT 24 (90+ STANDARD)
 scripts/produce_article.py
 v7.2 fixes:
 - Word count: increased per-part max_tokens 1500->2000 + target 1000-1200 words/part
@@ -67,7 +67,7 @@ WP_JSON_HEADERS = {
 }
 
 print("=" * 60)
-print("NEXUS-14 PRODUCTION v7.2 -- " + ARTICLE_INDEX)
+print("NEXUS-14 PRODUCTION v8.0 ENTERPRISE -- " + ARTICLE_INDEX)
 print("=" * 60)
 print("Topic :", TOPIC)
 print("Market :", MARKET.upper())
@@ -438,8 +438,10 @@ def get_links_for_topic(topic):
 # AGENT 24 - EDITOR-IN-CHIEF (VETO POWER)
 # ============================================================
 EDITOR_SYSTEM = """You are the Editor-in-Chief of MoneyAbroadGuide.com.
-Your standards are NerdWallet and Investopedia.
-You make final editorial decisions. Your veto is absolute.
+Your standards are Forbes, NerdWallet and Investopedia at their absolute highest level.
+You ONLY approve articles scoring 90/100 or above. This is non-negotiable.
+Scoring guide: 90-100 = APPROVED | 80-89 = NEEDS_REVISION | below 80 = REJECTED.
+You make final editorial decisions. Your veto is absolute and cannot be overridden.
 Output ONLY valid JSON. No markdown. No explanation outside JSON."""
 
 def agent24_editorial_review(client, article_html, topic, market, cycle=1):
@@ -493,8 +495,8 @@ Answer these 5 questions:
 5. Would readers stay to the end? (yes/no)
 Output ONLY this JSON:
 {{
-  "verdict": "APPROVED" or "REJECTED",
-  "overall_score": 0-100,
+  "verdict": "APPROVED" or "NEEDS_REVISION" or "REJECTED",
+  "overall_score": 0-100 (90+ for APPROVED, 80-89 for NEEDS_REVISION, <80 for REJECTED),
   "nerdwallet_publishable": true/false,
   "investopedia_publishable": true/false,
   "genuine_value": true/false,
@@ -511,10 +513,10 @@ Output ONLY this JSON:
         if json_match:
             verdict = json.loads(json_match.group())
         else:
-            verdict = {"verdict": "APPROVED", "overall_score": 70, "approval_reason": "JSON parse failed"}
+            verdict = {"verdict": "NEEDS_REVISION", "overall_score": 72, "issues": ["JSON parse failed - treating as NEEDS_REVISION"], "corrections_required": ["Improve content quality to reach 90+ score"], "approval_reason": "JSON parse failed"}
     except Exception as e:
         print(f"  [Agent 24] Review failed: {e}")
-        verdict = {"verdict": "APPROVED", "overall_score": 65, "approval_reason": f"Review error: {e}"}
+        verdict = {"verdict": "NEEDS_REVISION", "overall_score": 65, "issues": ["Review error - treating as NEEDS_REVISION"], "corrections_required": ["Fix content issues to reach 90+ score"], "approval_reason": f"Review error: {e}"}
 
     code_issues = []
     if template_hits:
@@ -564,39 +566,54 @@ EXCERPT TO IMPROVE: {corrected[500:1800]}"""
     return corrected
 
 def run_agent24_pipeline(client, article_html, topic, market):
+    """
+    v8.0 ENTERPRISE: Requires 90+/100 for APPROVED.
+    80-89 = NEEDS_REVISION (auto-correct + retry).
+    <80 = REJECTED immediately.
+    After 3 cycles, if still <90: FINAL REJECTION.
+    """
     print()
-    print("[AGENT 24] Editor-in-Chief pipeline starting...")
+    print("[AGENT 24] Editor-in-Chief pipeline (Enterprise v8.0 - 90+ standard)...")
     current_html = article_html
     final_verdict = {}
     for cycle in range(1, 4):
         verdict = agent24_editorial_review(client, current_html, topic, market, cycle)
         final_verdict = verdict
-        if verdict.get("verdict") == "APPROVED":
-            print(f"  [Agent 24] APPROVED at cycle {cycle}")
+        score = verdict.get("overall_score", 0)
+        raw_verdict = verdict.get("verdict", "REJECTED")
+        corrections = verdict.get("corrections_required", [])
+        # Enterprise scoring: 90+ = APPROVED, 80-89 = NEEDS_REVISION, <80 = REJECTED
+        if score >= 90 and raw_verdict == "APPROVED"and not verdict.get("code_issues"):
+            print(f"  [Agent 24] ENTERPRISE APPROVED at cycle {cycle} (score {score}/100)")
             print(f"  [Agent 24] {verdict.get('approval_reason', 'Approved')}")
             return current_html, verdict, True
-        corrections = verdict.get("corrections_required", [])
-        score = verdict.get("overall_score", 0)
-        if not corrections:
-            if score >= 60:
-                print(f"  [Agent 24] Score {score}/100 >= 60 - APPROVED despite minor issues")
-                verdict["verdict"] = "APPROVED"
-                verdict["approval_reason"] = f"Score {score}/100 acceptable"
-                return current_html, verdict, True
+        elif score >= 90 and not verdict.get("code_issues"):
+            # Score is 90+ but verdict was not APPROVED - force approve
+            verdict["verdict"] = "APPROVED"
+            verdict["approval_reason"] = f"Enterprise score {score}/100 >= 90"
+            print(f"  [Agent 24] ENTERPRISE SCORE APPROVED at cycle {cycle} (score {score}/100)")
+            return current_html, verdict, True
+        elif score < 80:
+            print(f"  [Agent 24] ENTERPRISE REJECTED at cycle {cycle}: score {score}/100 < 80")
+            if cycle < 3 and corrections:
+                print(f"  [Agent 24] Cycle {cycle} - applying {len(corrections)} correction(s) before next cycle...")
+                current_html = agent24_auto_correct(client, current_html, topic, market, corrections)
             else:
-                print(f"  [Agent 24] Score {score}/100 < 60 - REJECTED")
+                print(f"  [Agent 24] FINAL REJECTION: score {score}/100 after {cycle} cycle(s)")
+                verdict["verdict"] = "REJECTED"
+                verdict["approval_reason"] = f"ENTERPRISE: score {score}/100 < 80 minimum after {cycle} cycles"
                 return current_html, verdict, False
-        if cycle < 3:
-            print(f"  [Agent 24] Cycle {cycle} REJECTED - applying {len(corrections)} correction(s)...")
-            current_html = agent24_auto_correct(client, current_html, topic, market, corrections)
         else:
-            if score >= 55:
-                verdict["verdict"] = "APPROVED"
-                verdict["approval_reason"] = f"3-cycle override: score {score}/100 acceptable"
-                print(f"  [Agent 24] 3-cycle override APPROVED (score {score}/100)")
-                return current_html, verdict, True
+            # score 80-89: NEEDS_REVISION
+            print(f"  [Agent 24] NEEDS_REVISION at cycle {cycle}: score {score}/100 (need 90+)")
+            if cycle < 3:
+                print(f"  [Agent 24] Applying corrections to reach 90+ standard...")
+                current_html = agent24_auto_correct(client, current_html, topic, market, corrections)
             else:
-                print(f"  [Agent 24] FINAL REJECTION (score {score}/100 < 55)")
+                # After 3 cycles still 80-89: REJECT per Enterprise standard
+                print(f"  [Agent 24] ENTERPRISE FINAL REJECTION: score {score}/100 < 90 after 3 cycles")
+                verdict["verdict"] = "REJECTED"
+                verdict["approval_reason"] = f"ENTERPRISE: score {score}/100 below 90 threshold after 3 cycles"
                 return current_html, verdict, False
     return current_html, final_verdict, False
 # ============================================================
