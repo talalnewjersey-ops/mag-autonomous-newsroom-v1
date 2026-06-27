@@ -1,0 +1,61 @@
+name: Test WordPress Draft Publish
+on:
+  workflow_dispatch:
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feature/nexus14-v4-enterprise
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -q requests
+      - name: Publish Test Article to WordPress
+        run: |
+          python3 << 'PYEOF'
+          import os, requests, json
+          from requests.auth import HTTPBasicAuth
+          
+          article = {
+            "title": "Best Banks for Canadian Expats - Test",
+            "content": "<h2>Introduction</h2><p>Banking as an expat in Canada requires finding the right institution.</p><h2>TD Bank</h2><p>TD offers comprehensive expat banking with multi-currency support.</p><h2>BMO</h2><p>Bank of Montreal serves international clients with dedicated services.</p>",
+            "excerpt": "Guide to best banks for expats in Canada",
+            "slug": "best-banks-expats-canada-test"
+          }
+          
+          wp_url = "https://www.moneyabroadguide.com"
+          wp_user = "ai-publisher"
+          wp_pass = os.environ.get("WP_APPLICATION_PASSWORD", "")
+          
+          if not wp_pass:
+            print("ERROR: Missing WP_APPLICATION_PASSWORD"); exit(1)
+          
+          endpoint = f"{wp_url}/wp-json/wp/v2/posts"
+          payload = {
+            "title": article["title"],
+            "content": article["content"],
+            "excerpt": article["excerpt"],
+            "slug": article["slug"],
+            "status": "draft"
+          }
+          
+          r = requests.post(endpoint, json=payload, auth=HTTPBasicAuth(wp_user, wp_pass), timeout=30)
+          
+          if r.status_code in (200, 201):
+            data = r.json()
+            print(f"✅ SUCCESS - Article published to DRAFT")
+            print(f"   Post ID: {data.get('id')}")
+            print(f"   Title: {data.get('title')}")
+            print(f"   Edit: {wp_url}/wp-admin/post.php?post={data.get('id')}&action=edit")
+          else:
+            print(f"❌ FAILED - HTTP {r.status_code}")
+            print(r.text[:300]); exit(1)
+          PYEOF
+        env:
+          WP_APPLICATION_PASSWORD: ${{ secrets.WP_APPLICATION_PASSWORD }}
+      - name: Status
+        if: always()
+        run: echo "Article published in DRAFT - Check WordPress admin drafts"
