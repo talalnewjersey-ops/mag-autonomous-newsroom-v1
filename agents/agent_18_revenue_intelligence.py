@@ -503,5 +503,44 @@ def main():
     sys.exit(1 if result["blocking"] else 0)
 
 
+
+# ============================================================
+# NEXUS-14 V3 — RevenueIntelligenceAgent BaseAgent Wrapper
+# Added to support orchestrator class-based dispatch.
+# Delegates to run_revenue_analysis() function above.
+# ============================================================
+try:
+    from agents.base_agent import BaseAgent as _BaseAgent
+except ImportError:
+    try:
+        from base_agent import BaseAgent as _BaseAgent
+    except ImportError:
+        class _BaseAgent:
+            def __init__(self, config=None, **kwargs):
+                self.config = config or {}
+
+class RevenueIntelligenceAgent(_BaseAgent):
+    """Orchestrator-compatible wrapper for Agent 18 revenue intelligence scoring."""
+    AGENT_ID = "agent_18"
+    AGENT_NAME = "Revenue Intelligence Agent"
+
+    def __init__(self, config=None, **kwargs):
+        try:
+            super().__init__(config or {}, **kwargs)
+        except Exception:
+            self.config = config or {}
+
+    async def run(self, context=None):
+        ctx = context or {}
+        topic = (ctx.get("current_topic") or {}).get("title", "") or ctx.get("topic", "")
+        kws_raw = (ctx.get("current_topic") or {}).get("keyword", "")
+        keywords = [k.strip() for k in str(kws_raw).split(",") if k.strip()] if kws_raw else []
+        sv = int((ctx.get("current_topic") or {}).get("search_volume", 2000))
+        cpc = float((ctx.get("current_topic") or {}).get("cpc", 3.50))
+        out_path = "output/agent_18/revenue_score.json"
+        result = run_revenue_analysis(topic, keywords, out_path, sv, cpc)
+        return result
+
+
 if __name__ == "__main__":
     main()
