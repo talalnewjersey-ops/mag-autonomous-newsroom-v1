@@ -431,11 +431,9 @@ KNOWN_GOOD_INTERNAL_LINKS = [
 
 def validate_internal_links(article_html):
     """Check that all internal links point to known good URLs."""
-    # Count both HTML and Markdown format internal links
-    links_html = re.findall(r'href="(https?://moneyabroadguide\.com[^"]*)"'  # HTML
-    links_md = re.findall(r'\(https?://moneyabroadguide\.com[^)]*\)'  # Markdown  
-    links = links_html + [l[1:-1] for l in links_md if l]  # Combine
-    _unused = re.findall(r'href="(https?://moneyabroadguide\.com[^"]*)"'  # Backward compat, article_html)
+    links_html = re.findall(r'href="(https?://moneyabroadguide\.com[^"]*)"', article_html)
+    links_md = re.findall(r'\(https?://moneyabroadguide\.com[^)]*\)', article_html)
+    links = links_html + [l[1:-1] for l in links_md]
     issues = []
     valid_count = 0
     for link in links:
