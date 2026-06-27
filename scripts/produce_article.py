@@ -370,8 +370,9 @@ image_prompts = [
 def upload_image_to_wp(img_bytes, filename, wp_url, wp_headers):
     """Upload image bytes to WordPress Media Library."""
     from io import BytesIO
+    upload_headers = {k: v for k, v in wp_headers.items() if k != "Content-Type"}
     files = {"file": (filename, BytesIO(img_bytes), "image/png")}
-    r = requests.post(f"{wp_url}/media", headers=wp_headers, files=files, timeout=60)
+    r = requests.post(f"{wp_url}/media", headers=upload_headers, files=files, timeout=60)
     if r.status_code in (200, 201):
         data = r.json()
         return data.get("id"), data.get("source_url", "")
@@ -520,7 +521,7 @@ for i, prompt in enumerate(image_prompts):
     if img_bytes:
         # Upload to WordPress
         filename = f"nexus14-img-{i+1}-{int(time.time())}.png"
-        media_id, media_url = upload_image_to_wp(img_bytes, filename, WP_URL, WP_HEADERS)
+        media_id, media_url = upload_image_to_wp(img_bytes, filename, WP_URL, WP_JSON_HEADERS)
         if media_id:
             generated_images.append({
                 "index": i+1,
@@ -550,11 +551,11 @@ if generated_images:
     print(f"  Featured image ID: {image_report['featured_media_id']}")
 
     # Set featured image on the post
-    if results.get("post_id") and image_report["featured_media_id"]:
+    if wp_post_id and image_report["featured_media_id"]:
         try:
             r_feat = requests.post(
-                f"{WP_URL}/posts/{results['post_id']}",
-                headers=WP_HEADERS,
+                f"{WP_URL}/posts/{wp_post_id}",
+                headers=WP_JSON_HEADERS,
                 json={"featured_media": image_report["featured_media_id"]},
                 timeout=30
             )
