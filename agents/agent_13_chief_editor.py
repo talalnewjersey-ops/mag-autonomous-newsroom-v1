@@ -381,7 +381,7 @@ def main():
             }
             llm_svc = LLMService({"anthropic_api_key": api_key, "llm_provider": "anthropic"})
             storage_svc = StorageService({"output_dir": str(output_path.parent)})
-            agent = ChiefEditorAgent(config, llm_svc, storage_svc)
+            agent = ChiefEditorAgent(config, llm_svc, storage_svc, EmailService({"sendgrid_api_key": os.environ.get("SENDGRID_API_KEY", "")}))
             editor_report = asyncio.run(agent.run())
             log.info("Chief Editor decision complete via DI stack")
         except Exception as e:
@@ -398,8 +398,8 @@ def main():
             decision = "READY_TO_PUBLISH"
             verdict = "APPROVE"
         elif passes_words:
-            decision = "READY_TO_PUBLISH"
-            verdict = "APPROVE_WITH_NOTES"
+            decision = "NEEDS_REVISION"
+            verdict = "REQUEST_REVISION_QA_FAILED"
         else:
             decision = "NEEDS_REVISION"
             verdict = "REQUEST_REVISION"
