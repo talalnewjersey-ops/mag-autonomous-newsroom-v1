@@ -1,5 +1,5 @@
-# NEXUS-14: Single Article Test v2
-# Uses produce_article.py v2 (fixed engine)
+# NEXUS-14: Single Article Test v3 (Claude Haiku 4.5 + Gemini Images)
+# Uses produce_article.py v6.0
 
 name: NEXUS-14 Single Article Test
 
@@ -19,13 +19,13 @@ on:
           - USA
           - CANADA
       article_index:
-        description: 'Article index (e.g. TEST-01)'
+        description: 'Article index (e.g. V6-USA-01)'
         required: false
-        default: 'TEST-01'
+        default: 'V6-TEST-01'
 
 jobs:
   test-article:
-    name: Single Article Test v2
+    name: Single Article Test v3 (Claude Haiku 4.5)
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -38,19 +38,16 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install openai requests
+        run: pip install anthropic requests
 
-      - name: Run v2 produce_article.py
+      - name: Run v6.0 produce_article.py (Claude Haiku 4.5)
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          NANO_BANANA_API_KEY: ${{ secrets.NANO_BANANA_API_KEY }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
           WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
           WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
-          EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
-          ARTICLE_INDEX: ${{ github.event.inputs.article_index || 'TEST-01' }}
+          ARTICLE_INDEX: ${{ github.event.inputs.article_index || 'V6-TEST-01' }}
           TARGET_MARKET: ${{ github.event.inputs.market || 'USA' }}
           TOPIC_OVERRIDE: ${{ github.event.inputs.topic || '' }}
         run: python scripts/produce_article.py
@@ -59,7 +56,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-v2-report-${{ github.event.inputs.article_index || 'TEST-01' }}-${{ github.run_id }}
-          path: execution_report_${{ github.event.inputs.article_index || 'TEST-01' }}.json
+          name: v6-report-${{ github.event.inputs.article_index || 'V6-TEST-01' }}-${{ github.run_id }}
+          path: execution_report_${{ github.event.inputs.article_index || 'V6-TEST-01' }}.json
           retention-days: 30
           if-no-files-found: warn
