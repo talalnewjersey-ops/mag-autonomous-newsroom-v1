@@ -340,7 +340,7 @@ def main():
     log = logging.getLogger(__name__)
 
     parser = argparse.ArgumentParser(description="Agent 13 - Chief Editor")
-    parser.add_argument("--qa-report", required=True)
+    parser.add_argument("--qa-report", required=False, default="", help="Path to QA report JSON. Optional for global-audit mode.")
     parser.add_argument("--article", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--mode", default="article", help="article or global-audit")
@@ -358,7 +358,7 @@ def main():
             except: pass
         return {}
 
-    qa_report = load_json(args.qa_report)
+    qa_report = load_json(args.qa_report) if args.qa_report else {}
     article_path = Path(args.article)
     word_count = 0
     title = ""
