@@ -361,7 +361,7 @@ NANO_KEY   = os.environ.get("NANO_BANANA_KEY", os.environ.get("NANO_BANANA_API_K
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 image_prompts = [
-    f"Professional editorial photo: {ARTICLE_TOPIC} in the USA, modern healthcare setting, photorealistic, high quality",
+    f"Professional editorial photo: {TOPIC} in the USA, modern healthcare setting, photorealistic, high quality",
     f"Infographic style illustration about health insurance costs and coverage in America, clean modern design",
     f"Diverse group of immigrants and newcomers at a healthcare office in the USA, professional documentary photography",
     f"Health insurance documents, stethoscope and American flag on desk, professional business photo"
