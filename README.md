@@ -314,6 +314,10 @@ S3_BUCKET=
 | `produce_20_articles.yml` | Bulk 20-article production (manual dispatch) |
 | `nexus14-enterprise-enforcement.yml` | Enterprise standard validation on push/PR |
 | `nexus14-agent-init-validation.yml` | Agent initialization smoke tests |
+| `backfill_images.yml` | Backfill images on existing WordPress posts (dry-run default) |
+| `patch_images.yml` | Patch images on draft posts |
+| `draft_image_report.yml` | Image report for draft posts |
+| `social_video_pipeline.yml` | TikTok/Short-form social video pipeline |
 
 ---
 
