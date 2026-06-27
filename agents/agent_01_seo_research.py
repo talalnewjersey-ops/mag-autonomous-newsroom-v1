@@ -315,18 +315,36 @@ class SEOResearchAgent:
 PRIORITY: Canada newcomer/immigrant/international student topics.
 Return ONLY a valid JSON array with fields: keyword, market, search_volume, keyword_difficulty, cpc, intent, opportunity_types, affiliate_programs, content_type, estimated_word_count (max 5000)."""
         headers = {"x-api-key": self.anthropic_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
-        payload = {"model": "claude-3-5-haiku-20241022", "max_tokens": 2000, "messages": [{"role": "user", "content": prompt}]}
+        # NEXUS-14 P1 FIX: model now read from env with new model family.
+        # Primary + fallback, deduplicated so the same model is never tried twice.
+        primary = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
+        fallback = os.getenv("ANTHROPIC_MODEL_FALLBACK", "claude-sonnet-4-5")
+        models_to_try = list(dict.fromkeys([primary, fallback]))
+        last_error = None
         async with aiohttp.ClientSession() as session:
-            async with session.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload,
-                                    timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                if resp.status != 200:
-                    raise Exception(f"Claude API error: {resp.status}")
-                data = await resp.json()
-                text = data["content"][0]["text"].strip()
-                json_match = re.search(r'\[.*\]', text, re.DOTALL)
-                if json_match:
-                    topics = json.loads(json_match.group())
-                    return [self._normalize_topic(t) for t in topics if isinstance(t, dict)]
+            for model_name in models_to_try:
+                payload = {"model": model_name, "max_tokens": 2000, "messages": [{"role": "user", "content": prompt}]}
+                try:
+                    async with session.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload,
+                                            timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                        if resp.status != 200:
+                            last_error = Exception(f"Claude API error: {resp.status} (model={model_name})")
+                            logger.warning(f"Claude research model failed model={model_name} status={resp.status}")
+                            continue
+                        data = await resp.json()
+                        text = data["content"][0]["text"].strip()
+                        json_match = re.search(r'\[.*\]', text, re.DOTALL)
+                        logger.info(f"Claude research succeeded model={model_name}")
+                        if json_match:
+                            topics = json.loads(json_match.group())
+                            return [self._normalize_topic(t) for t in topics if isinstance(t, dict)]
+                        return []
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"Claude research request failed model={model_name}: {e}")
+                    continue
+        if last_error:
+            raise last_error
         return []
 
     def _get_from_builtin_database(self, count: int) -> List[Dict]:

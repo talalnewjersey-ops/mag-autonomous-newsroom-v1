@@ -2,9 +2,13 @@
 """
 NEXUS-14 V3 - Agent 17: Content Cannibalization Agent
 MoneyAbroadGuide.com | Prevents duplicate content before production.
-
 Decisions: CREATE_NEW_ARTICLE | UPDATE_EXISTING_ARTICLE | MERGE_WITH_EXISTING | REJECT_DUPLICATE
 Runs BEFORE Agent 04. Output: cannibalization_report.json
+
+Etape 1 - Observation Mode (additive):
+  * Adds an "observation" block to the JSON report (additive only).
+  * AGENT17_OBSERVE_ONLY (default ON) guarantees sys.exit(0) - never blocks.
+  * would_block / decision / blocking are still measured.
 """
 
 import json, logging, os, re, sys
@@ -15,6 +19,21 @@ from difflib import SequenceMatcher
 import anthropic
 import requests
 from requests.auth import HTTPBasicAuth
+
+# Etape 1 Observation Mode: local search-intent heuristic (no API, no cost)
+try:
+    from agents.search_intent_heuristic import (
+        classify_intent, classify_category, detect_country_signals, intent_similarity,
+    )
+    _INTENT_OK = True
+except Exception:  # pragma: no cover - fallback outside package context
+    try:
+        from search_intent_heuristic import (
+            classify_intent, classify_category, detect_country_signals, intent_similarity,
+        )
+        _INTENT_OK = True
+    except Exception:
+        _INTENT_OK = False
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [AGENT-17] %(levelname)s %(message)s")
 logger = logging.getLogger("agent_17_cannibalization")
@@ -32,7 +51,6 @@ DECISIONS = {
     "MERGE": "MERGE_WITH_EXISTING",
     "REJECT": "REJECT_DUPLICATE",
 }
-
 
 def fetch_wordpress_articles(status="any", per_page=100):
     if not WP_URL:
@@ -58,12 +76,10 @@ def fetch_wordpress_articles(status="any", per_page=100):
     logger.info(f"Fetched {len(articles)} articles (status={status})")
     return articles
 
-
 def text_similarity(a, b):
     a_c = re.sub(r'[^a-z0-9 ]', '', a.lower().strip())
     b_c = re.sub(r'[^a-z0-9 ]', '', b.lower().strip())
     return SequenceMatcher(None, a_c, b_c).ratio()
-
 
 def extract_keywords(title):
     stopwords = {'a','an','the','is','in','on','at','to','for','of','and','or',
@@ -72,13 +88,11 @@ def extract_keywords(title):
     return [w for w in re.findall(r'[a-z]+', title.lower())
             if w not in stopwords and len(w) > 2]
 
-
 def keyword_overlap(kws_a, kws_b):
     if not kws_a or not kws_b:
         return 0.0
     sa, sb = set(kws_a), set(kws_b)
     return len(sa & sb) / len(sa | sb) if (sa | sb) else 0.0
-
 
 def ai_semantic_analysis(new_topic, new_keywords, existing_articles):
     if not ANTHROPIC_API_KEY or not existing_articles:
@@ -90,13 +104,10 @@ def ai_semantic_analysis(new_topic, new_keywords, existing_articles):
         title = re.sub(r'<[^>]+>', '', t.get("rendered","") if isinstance(t,dict) else str(t))
         summaries.append(f"ID:{art.get('id','?')} | {title} | {art.get('status','?')}")
     prompt = f"""Content Cannibalization Analyst for MoneyAbroadGuide.com (financial education for immigrants/newcomers USA/Canada).
-
 NEW TOPIC: {new_topic}
 KEYWORDS: {', '.join(new_keywords)}
-
 EXISTING ARTICLES:
 {chr(10).join(summaries)}
-
 Return JSON only:
 {{"decision":"CREATE_NEW_ARTICLE|UPDATE_EXISTING_ARTICLE|MERGE_WITH_EXISTING|REJECT_DUPLICATE","confidence":0-100,"conflicting_ids":[],"reasoning":"brief","recommended_action":"specific","content_gap":"unique angle if CREATE_NEW"}}"""
     try:
@@ -107,7 +118,6 @@ Return JSON only:
         return json.loads(m.group()) if m else {"decision": DECISIONS["CREATE_NEW"]}
     except Exception as e:
         return {"decision": DECISIONS["CREATE_NEW"], "reasoning": f"Error: {e}"}
-
 
 def run_cannibalization_check(new_topic, new_keywords, output_path="output/agent_17/cannibalization_report.json"):
     start = datetime.utcnow()
@@ -158,6 +168,50 @@ def run_cannibalization_check(new_topic, new_keywords, output_path="output/agent
         action = ai.get("content_gap") or "Proceed. Content gap confirmed."
         confidence = max(50, 100 - int(max_score * 100))
 
+    # --- Etape 1 Observation Mode metrics (additive, non-blocking) ---
+    observed_would_block = bool(blocking)
+    observed_reason = action if blocking else "no_block"
+    conflicts_072 = sum(1 for c in conflicts if c.get("combined_score", 0.0) >= SIMILARITY_THRESHOLD)
+
+    def _slugify(text):
+        return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-")
+
+    new_slug = _slugify(new_topic)
+    slug_collisions = []
+    for article in all_content:
+        a_slug = article.get("slug", "") if isinstance(article, dict) else ""
+        if a_slug and new_slug and (a_slug == new_slug or a_slug in new_slug or new_slug in a_slug):
+            slug_collisions.append({"article_id": article.get("id"), "slug": a_slug})
+
+    if _INTENT_OK:
+        try:
+            si_intent = classify_intent(new_topic, new_kws)
+            si_category = classify_category(new_topic, new_kws)
+            country_signals = detect_country_signals(new_topic + " " + " ".join(new_kws or []))
+            top_conflict_title = conflicts[0]["title"] if conflicts else ""
+            si_similarity = (intent_similarity({"title": new_topic, "keywords": new_kws},
+                                               {"title": top_conflict_title})
+                             if top_conflict_title else 0.0)
+        except Exception:
+            si_intent, si_category, country_signals, si_similarity = "unknown", "other", {}, 0.0
+    else:
+        si_intent, si_category, country_signals, si_similarity = "unknown", "other", {}, 0.0
+
+    observation_block = {
+        "mode": "observe_only",
+        "would_block": observed_would_block,
+        "reason": observed_reason,
+        "conflicts_at_similarity_0_72": conflicts_072,
+        "max_combined_score": round(max_score, 3),
+        "slug_collisions": slug_collisions,
+        "country_signals": country_signals,
+        "search_intent": {
+            "intent": si_intent,
+            "category": si_category,
+            "similarity": round(si_similarity, 3),
+        },
+    }
+
     result = {
         "agent": "Agent 17 - Content Cannibalization Agent",
         "version": "V3",
@@ -174,6 +228,7 @@ def run_cannibalization_check(new_topic, new_keywords, output_path="output/agent
         "ai_analysis": ai,
         "recommended_action": action,
         "execution_duration_seconds": round((datetime.utcnow() - start).total_seconds(), 2),
+        "observation": observation_block,
     }
 
     out = Path(output_path)
@@ -182,9 +237,9 @@ def run_cannibalization_check(new_topic, new_keywords, output_path="output/agent
         json.dump(result, f, indent=2)
 
     logger.info(f"DECISION: {decision} | Blocking: {blocking}")
+    logger.info(f"OBSERVATION: would_block={observed_would_block} | conflicts>=0.72={conflicts_072} | max_score={round(max_score,3)}")
     logger.info(f"Report saved: {output_path}")
     return result
-
 
 def main():
     import argparse
@@ -195,8 +250,13 @@ def main():
     args = parser.parse_args()
     keywords = [k.strip() for k in args.keywords.split(",") if k.strip()]
     result = run_cannibalization_check(args.topic, keywords, args.output)
+    # Etape 1 Observation Mode fail-safe: AGENT17_OBSERVE_ONLY defaults to ON.
+    # would_block / decision / blocking remain measured in result["observation"],
+    # but the process never exits non-zero in observation mode.
+    observe_only = os.getenv("AGENT17_OBSERVE_ONLY", "true").strip().lower() not in ("0", "false", "no")
+    if observe_only:
+        sys.exit(0)
     sys.exit(1 if result["blocking"] else 0)
-
 
 if __name__ == "__main__":
     main()

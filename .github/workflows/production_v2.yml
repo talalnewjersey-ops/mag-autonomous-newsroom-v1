@@ -118,8 +118,18 @@ jobs:
           ARTICLES_PRODUCED=0
           ARTICLES_FAILED=0
 
-          for ARTICLE_NUM in 1 2 3; do
-            echo "===== ARTICLE ${ARTICLE_NUM} OF 3 ====="
+          MAX_ARTICLES="${{ github.event.inputs.max_articles || needs.detect.outputs.max_articles || 3 }}"
+
+          case "$MAX_ARTICLES" in (*[!0-9]*|"") MAX_ARTICLES=3 ;; esac
+
+          if [ "$MAX_ARTICLES" -lt 1 ]; then MAX_ARTICLES=1; fi
+
+          if [ "$MAX_ARTICLES" -gt 3 ]; then MAX_ARTICLES=3; fi
+
+          echo "Batch will produce $MAX_ARTICLES article(s) (max_articles input respected)"
+
+          for ARTICLE_NUM in $(seq 1 "$MAX_ARTICLES"); do
+            echo "===== ARTICLE ${ARTICLE_NUM} OF ${MAX_ARTICLES} ====="
             export ARTICLE_DIR="output/article_${ARTICLE_NUM}"
             mkdir -p "${ARTICLE_DIR}/"{agent_01,agent_02,agent_03,agent_04,agent_05}
             mkdir -p "${ARTICLE_DIR}/"{agent_06,agent_07,agent_08,agent_09,agent_10}

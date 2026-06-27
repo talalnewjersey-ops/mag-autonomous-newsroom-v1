@@ -6,6 +6,7 @@ Supports: OpenAI, Anthropic Claude, Google Gemini
 
 import asyncio
 import logging
+import os
 import time
 from typing import Dict, List, Optional, Any
 from enum import Enum
@@ -49,7 +50,7 @@ class LLMService:
         # Default models per provider
         self.models = {
             LLMProvider.OPENAI: config.get("openai_model", "gpt-4-turbo-preview"),
-            LLMProvider.ANTHROPIC: config.get("anthropic_model", "claude-3-5-sonnet-20241022"),
+            LLMProvider.ANTHROPIC: config.get("anthropic_model", os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")),
             LLMProvider.GEMINI: config.get("gemini_model", "gemini-1.5-pro")
         }
         
@@ -92,37 +93,58 @@ class LLMService:
     async def _complete_anthropic(self, prompt: str, system: str = None,
                                    model: str = None, max_tokens: int = 4096,
                                    temperature: float = 0.7) -> str:
-        """Complete using Anthropic Claude."""
+        """Complete using Anthropic Claude.
+
+        NEXUS-14 P1 FIX: model now read from env with new model family.
+        Tries primary then fallback, deduplicated so the same model is
+        never tried twice.
+        """
         client = await self._get_anthropic_client()
-        model = model or self.models[LLMProvider.ANTHROPIC]
-        
+
+        if model:
+            models_to_try = [model]
+        else:
+            primary = os.getenv("ANTHROPIC_MODEL", self.models[LLMProvider.ANTHROPIC])
+            fallback = os.getenv("ANTHROPIC_MODEL_FALLBACK", "claude-sonnet-4-5")
+            models_to_try = list(dict.fromkeys([primary, fallback]))
+
         messages = [{"role": "user", "content": prompt}]
-        
-        kwargs = {
-            "model": model,
-            "max_tokens": max_tokens,
-            "messages": messages,
-            "temperature": temperature
-        }
-        
-        if system:
-            kwargs["system"] = system
-        
-        start = time.time()
-        response = await asyncio.to_thread(
-            client.messages.create, **kwargs
-        )
-        duration = time.time() - start
-        
-        # Track usage
-        usage = response.usage
-        self.total_tokens += usage.input_tokens + usage.output_tokens
-        self.request_count += 1
-        
-        logger.debug(f"Anthropic response: {usage.input_tokens}in/{usage.output_tokens}out tokens, {duration:.2f}s")
-        
-        return response.content[0].text
-    
+        last_error = None
+
+        for model_name in models_to_try:
+            kwargs = {
+                "model": model_name,
+                "max_tokens": max_tokens,
+                "messages": messages,
+                "temperature": temperature
+            }
+
+            if system:
+                kwargs["system"] = system
+
+            try:
+                start = time.time()
+                response = await asyncio.to_thread(
+                    client.messages.create, **kwargs
+                )
+                duration = time.time() - start
+
+                # Track usage
+                usage = response.usage
+                self.total_tokens += usage.input_tokens + usage.output_tokens
+                self.request_count += 1
+
+                logger.info(f"Anthropic completion succeeded model={model_name}")
+                logger.debug(f"Anthropic response: {usage.input_tokens}in/{usage.output_tokens}out tokens, {duration:.2f}s")
+
+                return response.content[0].text
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Anthropic completion failed model={model_name}: {e}")
+                continue
+
+        raise last_error if last_error else RuntimeError("Anthropic completion failed")
+
     async def _complete_openai(self, prompt: str, system: str = None,
                                 model: str = None, max_tokens: int = 4096,
                                 temperature: float = 0.7) -> str:
