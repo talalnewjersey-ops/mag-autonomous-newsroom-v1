@@ -1,6 +1,6 @@
 """
 NEXUS-14: Main Orchestrator
-Coordinates all 14 agents in the production pipeline.
+Coordinates all 18 agents in the production pipeline.
 """
 
 import asyncio
@@ -25,6 +25,10 @@ from agents.agent_11_wordpress_integration import WordPressIntegrationAgent
 from agents.agent_12_quality_assurance import QualityAssuranceAgent
 from agents.agent_13_chief_editor import ChiefEditorAgent
 from agents.agent_14_production_director import ProductionDirectorAgent
+from agents.agent_15_affiliate_compliance import AffiliateComplianceAgent
+from agents.agent_16_publishing_optimization import PublishingOptimizationAgent
+from agents.agent_17_cannibalization import CannibalizationAgent
+from agents.agent_18_revenue_intelligence import RevenueIntelligenceAgent
 
 from services.llm_service import LLMService
 from services.search_service import SearchService
@@ -104,7 +108,7 @@ class Orchestrator:
     """
     Main NEXUS-14 Orchestrator
 
-    Coordinates all 14 specialized agents through the complete
+    Coordinates all 18 specialized agents through the complete
     content production pipeline from SEO research to WordPress publication.
 
     Pipeline:
@@ -174,6 +178,10 @@ class Orchestrator:
             "12": QualityAssuranceAgent,
             "13": ChiefEditorAgent,
             "14": ProductionDirectorAgent,
+            "15": AffiliateComplianceAgent,
+            "16": PublishingOptimizationAgent,
+            "17": CannibalizationAgent,
+            "18": RevenueIntelligenceAgent,
         }
 
         self.agents = {}
@@ -232,6 +240,16 @@ class Orchestrator:
 
     async def _run_article_pipeline(self, context: Dict) -> Dict:
         """Run the article production pipeline for a single topic."""
+        # Pre-production: Cannibalization + Revenue (informational, non-blocking)
+        try:
+            context = await self._run_agent("17", context)
+        except Exception as e:
+            logger.warning(f"Agent 17 (Cannibalization) failed non-blocking: {e}")
+        try:
+            context = await self._run_agent("18", context)
+        except Exception as e:
+            logger.warning(f"Agent 18 (Revenue Intelligence) failed non-blocking: {e}")
+
         # Writing pipeline
         context = await self._run_agent("04", context)
         context = await self._run_agent("05", context)
@@ -245,6 +263,17 @@ class Orchestrator:
 
         # Integration & QA
         context = await self._run_agent("11", context)
+
+        # Post-integration: Affiliate Compliance + Publishing Optimization (non-blocking)
+        try:
+            context = await self._run_agent("15", context)
+        except Exception as e:
+            logger.warning(f"Agent 15 (Affiliate Compliance) failed non-blocking: {e}")
+        try:
+            context = await self._run_agent("16", context)
+        except Exception as e:
+            logger.warning(f"Agent 16 (Publishing Optimization) failed non-blocking: {e}")
+
         context = await self._run_agent("12", context)
 
         # Editorial decision
