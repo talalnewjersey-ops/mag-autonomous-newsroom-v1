@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-NEXUS-14 PRODUCTION SCRIPT v5.4 - GEMINI IMAGEN 3 DIRECT + IMAGE BODY INJECTION
+NEXUS-14 PRODUCTION SCRIPT v5.5 - 4 BODY IMAGES + 1 FEATURED — NEXUS STANDARD
 scripts/produce_article.py
 
-NEXUS-14 v5.4 — Gemini Imagen 3 Direct API + Images injected in article body
+NEXUS-14 v5.5 — NEXUS standard: 5 images (1 featured + 4 body) + Gemini direct API
 
 FIXES in v5.2:
 - Generate directly in HTML format (no Markdown conversion needed)
@@ -811,30 +811,40 @@ else:
 
 # ============================================================
 # ============================================================
-# STEP 11: IMAGE PIPELINE — Gemini Imagen 3 Direct (GEMINI_API_KEY) + inject in article
+# STEP 11: IMAGE PIPELINE v5.5 — 5 images (1 featured + 4 body) — NEXUS-14 standard
 # ============================================================
 print()
-print("[STEP 11] IMAGE PIPELINE -- 4 images (Gemini Imagen 3 Direct)")
-print("-" * 50)
+print("[STEP 11] IMAGE PIPELINE -- 5 images: 1 featured + 4 body (NEXUS-14 standard)")
+print("-" * 60)
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+print(f"  Gemini key: {'SET (' + str(len(GEMINI_API_KEY)) + ' chars)' if GEMINI_API_KEY else 'MISSING — will use gpt-image-1'}")
 img_cost = 0.0
 
+# 5 prompts: img1 = featured, img2-5 = body (4 images in article body = NEXUS standard)
 IMG_PROMPTS = [
-    f"Ultra-realistic editorial photograph: a diverse immigrant couple signing a rental lease agreement in a modern apartment in the USA or Canada. Professional real estate agent present. Bright, welcoming interior, 2026. Documentary photography style, no text overlay.",
-    f"Ultra-realistic photo: a young immigrant woman reviewing her first apartment purchase documents with a mortgage broker. Modern bank office, USA or Canada 2026. Natural lighting, high detail, photojournalism style.",
-    f"Ultra-realistic image: apartment rental vs buying cost comparison chart for immigrants in the USA and Canada 2026. Blue and white color scheme, professional financial design.",
-    f"Ultra-realistic photo: a happy immigrant family standing in front of their first owned home or apartment building in North America. Diverse family, sunny day, suburban neighborhood, 2026. Warm, hopeful atmosphere."
+    # img1 — FEATURED IMAGE (hero)
+    f"Ultra-realistic editorial photograph: a diverse immigrant couple signing a rental lease agreement in a modern apartment in the USA or Canada. Professional real estate agent present. Bright, welcoming interior, 2026. Documentary photography style, no text.",
+    # img2 — body image 1 (after section 2)
+    f"Ultra-realistic photo: a young immigrant woman reviewing her first apartment purchase documents with a mortgage broker at a modern bank office in USA or Canada 2026. Natural lighting, high detail, photojournalism style.",
+    # img3 — body image 2 (after section 4)
+    f"Ultra-realistic infographic-style photo: an apartment cost comparison dashboard showing rental vs buying costs for immigrants in USA and Canada 2026. Clean blue and white design, professional data visualization, real numbers.",
+    # img4 — body image 3 (after section 6)
+    f"Ultra-realistic photo: a smiling immigrant family (father, mother, two children) receiving keys to their first home from a real estate agent in North America 2026. Warm, hopeful atmosphere, suburban neighborhood, golden hour lighting.",
+    # img5 — body image 4 (after section 8)
+    f"Ultra-realistic photo: a step-by-step process guide visual showing an immigrant man at a government office applying for housing documents in USA or Canada 2026. Professional environment, organized desk, paperwork visible.",
 ]
 
-def generate_image_gemini_direct(prompt_text, idx):
+def generate_image_v55(prompt_text, idx):
     global img_cost
-    # PRIMARY: Gemini Imagen 3 via Google REST API
+    label = f"img{idx}"
+
+    # PRIMARY: Gemini Imagen 3 via Google REST API (GEMINI_API_KEY)
     if GEMINI_API_KEY:
         try:
-            import urllib.request
+            import urllib.request, urllib.error
             api_url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key={GEMINI_API_KEY}"
-            payload = json.dumps({
+            payload_data = json.dumps({
                 "instances": [{"prompt": prompt_text}],
                 "parameters": {
                     "sampleCount": 1,
@@ -843,61 +853,66 @@ def generate_image_gemini_direct(prompt_text, idx):
                     "personGeneration": "allow_adult"
                 }
             }).encode("utf-8")
-            req = urllib.request.Request(api_url, data=payload,
-                headers={"Content-Type": "application/json"}, method="POST")
+            req = urllib.request.Request(
+                api_url, data=payload_data,
+                headers={"Content-Type": "application/json"}, method="POST"
+            )
             with urllib.request.urlopen(req, timeout=90) as resp:
                 data = json.loads(resp.read().decode())
             predictions = data.get("predictions", [])
-            if predictions:
-                b64 = predictions[0].get("bytesBase64Encoded", "")
-                if b64:
-                    img_cost += 0.02
-                    print(f"  Image {idx}: Gemini Imagen 3 SUCCESS")
-                    return base64.b64decode(b64)
-            print(f"  Image {idx}: Gemini OK but no bytes — {str(data)[:200]}")
+            if predictions and predictions[0].get("bytesBase64Encoded"):
+                b64 = predictions[0]["bytesBase64Encoded"]
+                img_cost += 0.02
+                print(f"  {label}: Gemini Imagen 3 SUCCESS ✓")
+                return base64.b64decode(b64)
+            else:
+                print(f"  {label}: Gemini OK but no image bytes — resp keys: {list(data.keys())}")
         except Exception as e:
-            print(f"  Image {idx}: Gemini error: {str(e)[:150]}")
+            err = str(e)[:200]
+            print(f"  {label}: Gemini error → {err}")
 
-    # FALLBACK: gpt-image-1 (OpenAI)
+    # FALLBACK 1: gpt-image-1 (OpenAI)
     if OPENAI_KEY:
         try:
             ci = openai.OpenAI(api_key=OPENAI_KEY)
             ir = ci.images.generate(model="gpt-image-1", prompt=prompt_text[:1000], size="1024x1024", n=1)
-            b64 = ir.data[0].b64_json if ir.data else None
-            if b64:
+            if ir.data and ir.data[0].b64_json:
                 img_cost += 0.04
-                print(f"  Image {idx}: gpt-image-1 fallback SUCCESS")
-                return base64.b64decode(b64)
+                print(f"  {label}: gpt-image-1 fallback SUCCESS ✓")
+                return base64.b64decode(ir.data[0].b64_json)
             elif ir.data and hasattr(ir.data[0], 'url') and ir.data[0].url:
                 img_cost += 0.04
-                print(f"  Image {idx}: gpt-image-1 URL fallback SUCCESS")
+                print(f"  {label}: gpt-image-1 URL SUCCESS ✓")
                 return requests.get(ir.data[0].url, timeout=30).content
         except Exception as e:
-            print(f"  Image {idx}: gpt-image-1 error: {str(e)[:80]}")
+            print(f"  {label}: gpt-image-1 error → {str(e)[:80]}")
 
     # FALLBACK 2: dall-e-3
     if OPENAI_KEY:
         try:
             ci3 = openai.OpenAI(api_key=OPENAI_KEY)
-            ir3 = ci3.images.generate(model="dall-e-3", prompt=f"Ultra-realistic photo: {prompt_text[:200]}", size="1024x1024", quality="standard", n=1)
-            url3 = ir3.data[0].url if ir3.data else None
-            if url3:
+            ir3 = ci3.images.generate(
+                model="dall-e-3",
+                prompt=f"Ultra-realistic photo: {prompt_text[:200]}",
+                size="1024x1024", quality="standard", n=1
+            )
+            if ir3.data and ir3.data[0].url:
                 img_cost += 0.04
-                print(f"  Image {idx}: dall-e-3 fallback SUCCESS")
-                return requests.get(url3, timeout=30).content
+                print(f"  {label}: dall-e-3 fallback SUCCESS ✓")
+                return requests.get(ir3.data[0].url, timeout=30).content
         except Exception as e:
-            print(f"  Image {idx}: dall-e-3 error: {str(e)[:60]}")
+            print(f"  {label}: dall-e-3 error → {str(e)[:60]}")
 
-    print(f"  Image {idx}: ALL PROVIDERS FAILED")
+    print(f"  {label}: ALL PROVIDERS FAILED")
     return None
 
 def upload_to_wp(img_bytes, filename):
-    if not creds_wp: return None
+    if not creds_wp: return None, None
     try:
         hdr = {
             "Authorization": "Basic " + creds_wp,
             "Content-Disposition": f'attachment; filename="{filename}"',
-            "Content-Type": "image/png",
+            "Content-Type": "image/jpeg",
             "User-Agent": "NEXUS14-v5/1.0",
         }
         mr = requests.post(WP_URL + "/wp-json/wp/v2/media", headers=hdr, data=img_bytes, timeout=90)
@@ -905,95 +920,136 @@ def upload_to_wp(img_bytes, filename):
         if mr.status_code in (200, 201):
             mid = mr.json().get("id")
             murl = mr.json().get("source_url", "")
-            short_url = murl[:80] if murl else ""
-            print(f"  Media ID: {mid}, URL: {short_url}")
+            print(f"  Media ID: {mid} | URL: {murl[:70]}")
             return mid, murl
         else:
-            print(f"  Media FAIL: {mr.text[:150]}")
+            print(f"  Media FAIL {mr.status_code}: {mr.text[:100]}")
             return None, None
     except Exception as e:
         print(f"  Media error: {e}")
         return None, None
 
-# Generate + upload all 4 images
-image_urls = []  # full WP URLs for injection into article body
+def inject_4_images_into_html(html, body_image_list):
+    """
+    Inject exactly 4 images into the article body.
+    Target: after H2 numbers 2, 4, 6, 8 (0-indexed: 1, 3, 5, 7).
+    Falls back to evenly spaced positions if fewer H2 found.
+    """
+    if not body_image_list:
+        return html
+
+    h2_ends = []
+    for m in re.finditer(r'</h2>', html, re.IGNORECASE):
+        h2_ends.append(m.end())
+
+    total_h2 = len(h2_ends)
+    print(f"  Total H2 tags found: {total_h2}")
+
+    # Target H2 positions: 2nd, 4th, 6th, 8th (indices 1,3,5,7)
+    # If fewer H2, distribute evenly
+    desired_indices = [1, 3, 5, 7]
+    actual_indices = []
+    for di in desired_indices:
+        if di < total_h2:
+            actual_indices.append(di)
+        elif total_h2 > 0:
+            # fallback: use last available H2
+            actual_indices.append(total_h2 - 1)
+
+    # Deduplicate and cap
+    actual_indices = list(dict.fromkeys(actual_indices))[:len(body_image_list)]
+    print(f"  Injecting at H2 indices: {actual_indices}")
+
+    alt_texts = [
+        "Immigrant couple reviewing apartment documents with real estate agent USA Canada 2026",
+        "Apartment rental vs buying cost comparison for immigrants USA Canada 2026",
+        "Immigrant family receiving keys to first home in North America 2026",
+        "Immigrant applying for housing documents at government office USA Canada 2026",
+    ]
+
+    # Insert from end to preserve indices
+    insert_pairs = sorted(zip(actual_indices, body_image_list[:len(actual_indices)]), reverse=True)
+
+    for idx_h2, (mid, murl) in insert_pairs:
+        if not murl:
+            continue
+        insert_pos = h2_ends[idx_h2]
+        img_idx = actual_indices.index(idx_h2) if idx_h2 in actual_indices else 0
+        alt = alt_texts[img_idx % len(alt_texts)]
+        img_tag = (
+            f'\n<figure class="wp-block-image size-large aligncenter">'
+            f'<img src="{murl}" alt="{alt}" class="wp-image-{mid}" '
+            f'style="max-width:100%;height:auto;margin:24px auto;display:block;border-radius:8px;" '
+            f'loading="lazy" />'
+            f'<figcaption style="text-align:center;font-style:italic;color:#666;">{alt}</figcaption>'
+            f'</figure>\n'
+        )
+        html = html[:insert_pos] + img_tag + html[insert_pos:]
+
+    imgs_in_html = len(re.findall(r'<img', html))
+    print(f"  Final <img> count in article body: {imgs_in_html}")
+    return html
+
+# ── Generate all 5 images ──
+image_urls = []  # (media_id, source_url) for body injection
+print(f"\n  Generating 5 images (1 featured + 4 body) ...")
 for i, prompt in enumerate(IMG_PROMPTS):
-    print(f"\n  Generating image {i+1}/4...")
-    img_bytes = generate_image_gemini_direct(prompt, i+1)
+    print(f"\n  [{i+1}/5] Generating {'FEATURED' if i==0 else 'BODY img'+str(i)} ...")
+    img_bytes = generate_image_v55(prompt, i+1)
     if img_bytes:
         generated_images.append(img_bytes)
-        fname = f"nexus14-v5-{ARTICLE_INDEX}-img{i+1}-{int(time.time())}.png"
+        ts = int(time.time())
+        fname = f"nexus14-v5-{ARTICLE_INDEX}-img{i+1}-{ts}.jpg"
         mid, murl = upload_to_wp(img_bytes, fname)
         if mid:
             media_ids.append(mid)
             image_urls.append((mid, murl or ""))
     time.sleep(2)
 
-# Set featured image (image 1) on the post
+# ── Set featured image (img1) ──
 featured_media_id = media_ids[0] if media_ids else None
 if featured_media_id and wp_post_id:
     try:
         r_feat = wp_request("POST", f"/wp-json/wp/v2/posts/{wp_post_id}",
                             WP_JSON_HEADERS, json_data={"featured_media": featured_media_id}, timeout=30)
         if r_feat and r_feat.status_code in (200, 201):
-            print(f"  Featured image set: media_id={featured_media_id}")
+            print(f"\n  Featured image set: media_id={featured_media_id} ✓")
     except Exception as e:
         print(f"  Featured image error: {e}")
 
-# INJECT images 2, 3, 4 into the article body at strategic H2 positions
-def inject_images_into_html(html, img_list):
-    """Inject images after the 2nd, 4th, and 6th <h2> tags in the article."""
-    if not img_list:
-        return html
-    h2_positions = [m.start() for m in re.finditer(r'<h2[^>]*>', html, re.IGNORECASE)]
-    target_positions = []
-    for pos_idx in [1, 3, 5]:  # after 2nd, 4th, 6th H2
-        if pos_idx < len(h2_positions):
-            # Find end of this H2 closing tag to insert after the heading
-            h2_start = h2_positions[pos_idx]
-            h2_end_match = re.search(r'</h2>', html[h2_start:], re.IGNORECASE)
-            if h2_end_match:
-                target_positions.append(h2_start + h2_end_match.end())
-    # Insert images at found positions (insert from end to not shift indices)
-    for i, (insert_pos, (mid, murl)) in enumerate(zip(reversed(target_positions), reversed(img_list))):
-        if not murl:
-            continue
-        alt_texts = [
-            "Immigrant couple reviewing apartment rental agreement with real estate agent in the USA 2026",
-            "Immigrant woman reviewing apartment purchase documents with mortgage broker Canada 2026",
-            "Happy immigrant family in front of their first home in North America 2026"
-        ]
-        alt = alt_texts[i] if i < len(alt_texts) else f"Immigrant housing guide image {i+1}"
-        img_tag = f'\n<figure class="wp-block-image size-large"><img src="{murl}" alt="{alt}" class="wp-image-{mid}" style="max-width:100%;height:auto;margin:20px 0;" loading="lazy" /><figcaption>{alt}</figcaption></figure>\n'
-        html = html[:insert_pos] + img_tag + html[insert_pos:]
-    return html
+# ── Inject body images (img2, img3, img4, img5 = 4 images) ──
+body_images = image_urls[1:]  # skip img1 (featured), inject img2-5
+print(f"\n  Body images to inject: {len(body_images)}/4")
 
-# Inject body images (images 2, 3, 4) if available
-body_images = image_urls[1:4] if len(image_urls) > 1 else []
 if body_images and article_html and wp_post_id:
-    print(f"\n  Injecting {len(body_images)} images into article body...")
-    article_html_with_images = inject_images_into_html(article_html, body_images)
-    imgs_in_html = len(re.findall(r'<img', article_html_with_images))
-    print(f"  Images in HTML after injection: {imgs_in_html}")
-    # Update the WordPress post with injected images
+    article_html_with_images = inject_4_images_into_html(article_html, body_images)
+    imgs_count = len(re.findall(r'<img', article_html_with_images))
+    print(f"  Updating WordPress post with {len(body_images)} body images ...")
     update_payload = {"content": article_html_with_images}
     if featured_media_id:
         update_payload["featured_media"] = featured_media_id
-    r_update = wp_request("POST", f"/wp-json/wp/v2/posts/{wp_post_id}",
-                          WP_JSON_HEADERS, json_data=update_payload, timeout=90)
-    if r_update and r_update.status_code in (200, 201):
-        print(f"  Article updated with {len(body_images)} body images injected!")
-        article_html = article_html_with_images  # update for final word count
+    r_upd = wp_request("POST", f"/wp-json/wp/v2/posts/{wp_post_id}",
+                       WP_JSON_HEADERS, json_data=update_payload, timeout=90)
+    if r_upd and r_upd.status_code in (200, 201):
+        print(f"  Article updated: {imgs_count} <img> tags in body ✓")
+        article_html = article_html_with_images
     else:
-        status_code = r_update.status_code if r_update else "no response"
-        print(f"  Update FAIL: {status_code}")
+        sc = r_upd.status_code if r_upd else "timeout"
+        print(f"  Update FAIL: {sc}")
 else:
-    print(f"  No body images to inject (body_images={len(body_images)}, wp_post_id={wp_post_id})")
+    print(f"  Skipping body injection (body_images={len(body_images)}, post_id={wp_post_id})")
 
 results["images_generated"] = len(generated_images) >= 4
 results["featured_image_set"] = featured_media_id is not None
-print(f"\n  Images: {len(generated_images)}/4 generated, {len(media_ids)}/4 uploaded, {len(body_images)} injected in body")
-print(f"  Gemini key: {'SET' if GEMINI_API_KEY else 'MISSING'}")
+
+total_uploaded = len(media_ids)
+body_injected = len(body_images)
+print(f"\n  IMAGES SUMMARY:")
+print(f"  Generated : {len(generated_images)}/5")
+print(f"  Uploaded  : {total_uploaded}/5")
+print(f"  Featured  : {featured_media_id} ({'SET' if featured_media_id else 'MISSING'})")
+print(f"  Body imgs : {body_injected}/4 injected in article")
+print(f"  Gemini    : {'USED' if GEMINI_API_KEY and 'Gemini Imagen 3 SUCCESS' in str(generated_images) else 'fallback gpt-image-1'}")
 
 # STEP 12: FINAL REPORT
 # ============================================================
@@ -1023,7 +1079,7 @@ critical = ["article_written", "word_count_5000plus", "thematic_coherence_70plus
 critical_ok = all(results.get(c, False) for c in critical)
 
 print("=" * 60)
-print("PRODUCTION REPORT v5.4 -- " + ARTICLE_INDEX)
+print("PRODUCTION REPORT v5.5 -- " + ARTICLE_INDEX)
 print("=" * 60)
 for name, val in checks:
     print(("[PASS] " if val else "[FAIL] ") + name)
@@ -1061,7 +1117,7 @@ if gate_failures or improvement_log:
     print(f"Improvement log: {len(log_entry['prompt_improvements'])} suggestions saved")
 
 report = {
-    "version": "v5.4",
+    "version": "v5.5",
     "article_index": ARTICLE_INDEX,
     "topic": TOPIC,
     "market": MARKET,
