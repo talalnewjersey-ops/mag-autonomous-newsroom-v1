@@ -1,0 +1,198 @@
+# NEXUS-14 DAILY PRODUCTION v3 - 6 Articles/Day
+# Claude Haiku 4.5 + Gemini Imagen 3 | Budget: $0.25/article max
+# Schedule: Batch 1 @ 06:00 UTC (3 articles) | Batch 2 @ 13:00 UTC (3 articles)
+# NEXUS-14 standard: 4000-5000 words | SEO 70+ | EEAT 60+ | 5 Gemini images
+
+name: NEXUS-14 Daily Production v3
+
+on:
+  schedule:
+    # Batch 1 - 06:00 UTC every day
+    - cron: '0 6 * * *'
+    # Batch 2 - 13:00 UTC every day
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+    inputs:
+      batch:
+        description: 'Batch to run (1 = morning 3 articles, 2 = afternoon 3 articles, all = 6 articles)'
+        required: true
+        default: '1'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - 'all'
+
+env:
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+  WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+  WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+
+jobs:
+  # ============================================================
+  # BATCH 1 - MORNING (06:00 UTC) - 3 ARTICLES
+  # Topics: USA Banking | Canada Banking | USA Credit
+  # ============================================================
+  batch1-article1:
+    name: "[Batch1/1] USA Banking Guide"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    if: github.event_name == 'schedule' || github.event.inputs.batch == '1' || github.event.inputs.batch == 'all'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install anthropic requests
+      - name: Generate Article
+        env:
+          ARTICLE_INDEX: V6-USA-BANK-${{ github.run_number }}
+          TARGET_MARKET: USA
+          TOPIC_OVERRIDE: ''
+        run: python scripts/produce_article.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report-batch1-art1-${{ github.run_id }}
+          path: execution_report_V6-USA-BANK-${{ github.run_number }}.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  batch1-article2:
+    name: "[Batch1/2] Canada Banking Guide"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: batch1-article1
+    if: |
+      always() && (github.event_name == 'schedule' || github.event.inputs.batch == '1' || github.event.inputs.batch == 'all')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install anthropic requests
+      - name: Generate Article
+        env:
+          ARTICLE_INDEX: V6-CA-BANK-${{ github.run_number }}
+          TARGET_MARKET: CANADA
+          TOPIC_OVERRIDE: ''
+        run: python scripts/produce_article.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report-batch1-art2-${{ github.run_id }}
+          path: execution_report_V6-CA-BANK-${{ github.run_number }}.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  batch1-article3:
+    name: "[Batch1/3] USA Credit Guide"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: batch1-article2
+    if: |
+      always() && (github.event_name == 'schedule' || github.event.inputs.batch == '1' || github.event.inputs.batch == 'all')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install anthropic requests
+      - name: Generate Article
+        env:
+          ARTICLE_INDEX: V6-USA-CREDIT-${{ github.run_number }}
+          TARGET_MARKET: USA
+          TOPIC_OVERRIDE: 'how to build credit score as a new immigrant in the usa 2026'
+        run: python scripts/produce_article.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report-batch1-art3-${{ github.run_id }}
+          path: execution_report_V6-USA-CREDIT-${{ github.run_number }}.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ============================================================
+  # BATCH 2 - AFTERNOON (13:00 UTC) - 3 ARTICLES
+  # Topics: USA Tax | Canada Credit | USA Health Insurance
+  # ============================================================
+  batch2-article1:
+    name: "[Batch2/1] USA Tax Guide for Immigrants"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    if: github.event_name == 'schedule' || github.event.inputs.batch == '2' || github.event.inputs.batch == 'all'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install anthropic requests
+      - name: Generate Article
+        env:
+          ARTICLE_INDEX: V6-USA-TAX-${{ github.run_number }}
+          TARGET_MARKET: USA
+          TOPIC_OVERRIDE: 'us expat tax filing guide 2026 complete handbook for immigrants'
+        run: python scripts/produce_article.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report-batch2-art1-${{ github.run_id }}
+          path: execution_report_V6-USA-TAX-${{ github.run_number }}.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  batch2-article2:
+    name: "[Batch2/2] Canada Credit Building Guide"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: batch2-article1
+    if: |
+      always() && (github.event_name == 'schedule' || github.event.inputs.batch == '2' || github.event.inputs.batch == 'all')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install anthropic requests
+      - name: Generate Article
+        env:
+          ARTICLE_INDEX: V6-CA-CREDIT-${{ github.run_number }}
+          TARGET_MARKET: CANADA
+          TOPIC_OVERRIDE: 'how to build credit score as a new immigrant in canada 2026'
+        run: python scripts/produce_article.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report-batch2-art2-${{ github.run_id }}
+          path: execution_report_V6-CA-CREDIT-${{ github.run_number }}.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  batch2-article3:
+    name: "[Batch2/3] USA Health Insurance Guide"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: batch2-article2
+    if: |
+      always() && (github.event_name == 'schedule' || github.event.inputs.batch == '2' || github.event.inputs.batch == 'all')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install anthropic requests
+      - name: Generate Article
+        env:
+          ARTICLE_INDEX: V6-USA-HEALTH-${{ github.run_number }}
+          TARGET_MARKET: USA
+          TOPIC_OVERRIDE: 'health insurance for new immigrants in the usa 2026 guide'
+        run: python scripts/produce_article.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: report-batch2-art3-${{ github.run_id }}
+          path: execution_report_V6-USA-HEALTH-${{ github.run_number }}.json
+          retention-days: 30
+          if-no-files-found: warn
