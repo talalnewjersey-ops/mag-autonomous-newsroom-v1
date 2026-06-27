@@ -809,47 +809,97 @@ else:
         results["wordpress_draft_created"] = False
 
 # ============================================================
-# STEP 11: IMAGE PIPELINE
+# ============================================================
+# STEP 11: IMAGE PIPELINE — Nano Banana + Gemini Imagen (realistic)
 # ============================================================
 print()
-print("[STEP 11] IMAGE PIPELINE -- 4 images")
+print("[STEP 11] IMAGE PIPELINE -- 4 images (Gemini via Nano Banana)")
 print("-" * 50)
 
+NANO_BANANA_KEY = os.environ.get("NANO_BANANA_API_KEY", "").strip()
+BANANA_BASE_URL = "https://api.nanobanana.io"
+
 img_cost = 0.0
+
 IMG_PROMPTS = [
-    f"Professional editorial photo: diverse immigrants learning about {TOPIC} in the USA. Modern, warm lighting, documentary style. No text overlay.",
-    f"Clean infographic: {TOPIC} comparison chart. Blue and green, white background, financial style. No people.",
-    f"Photorealistic: immigrant family with financial advisor about {TOPIC}. Professional office, diverse, natural lighting.",
-    f"Modern flat design: {TOPIC} icons for newcomers. Professional financial branding, blue palette, minimal."
+    f"Ultra-realistic editorial photograph: a diverse immigrant couple signing a rental lease agreement in a modern apartment in the USA or Canada. Professional real estate agent present. Bright, welcoming interior, 2026. Documentary photography style, no text overlay.",
+    f"Ultra-realistic photo: a young immigrant woman reviewing her first apartment purchase documents with a mortgage broker. Modern bank office setting, USA or Canada 2026. Natural lighting, high detail, photojournalism style.",
+    f"Ultra-realistic image: a clean infographic dashboard showing apartment rental vs buying costs for immigrants in the USA and Canada 2026. Blue and white color scheme, professional financial design, data visualization.",
+    f"Ultra-realistic photo: a happy immigrant family standing in front of their first owned home or apartment building in North America. Diverse family, sunny day, suburban neighborhood, 2026. Warm, hopeful atmosphere."
 ]
 
-def generate_image(prompt_text, idx):
+def generate_image_banana_gemini(prompt_text, idx):
     global img_cost
-    try:
-        ci = openai.OpenAI(api_key=OPENAI_KEY)
-        ir = ci.images.generate(model="gpt-image-1", prompt=prompt_text, size="1024x1024", n=1)
-        b64 = ir.data[0].b64_json if ir.data else None
-        if b64:
-            img_cost += 0.04
-            print(f"  Image {idx}: gpt-image-1 SUCCESS")
-            return base64.b64decode(b64)
-        elif ir.data and ir.data[0].url:
-            resp = requests.get(ir.data[0].url, timeout=30)
-            img_cost += 0.04
-            return resp.content
-    except Exception as e:
-        print(f"  Image {idx}: gpt-image-1 error: {str(e)[:60]}")
-    try:
-        ci3 = openai.OpenAI(api_key=OPENAI_KEY)
-        ir3 = ci3.images.generate(model="dall-e-3", prompt=f"Professional financial image about {TOPIC[:80]}. Blue, clean modern style.", size="1024x1024", quality="standard", n=1)
-        url3 = ir3.data[0].url if ir3.data else None
-        if url3:
-            img_cost += 0.04
-            print(f"  Image {idx}: dall-e-3 SUCCESS")
-            return requests.get(url3, timeout=30).content
-    except Exception as e:
-        print(f"  Image {idx}: dall-e-3 error: {str(e)[:60]}")
-    print(f"  Image {idx}: FAILED")
+    # Try Nano Banana with Gemini Imagen 3 (realistic)
+    if NANO_BANANA_KEY:
+        try:
+            headers = {
+                "Authorization": f"Bearer {NANO_BANANA_KEY}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": "imagen-3.0-generate-002",
+                "prompt": prompt_text,
+                "number_of_images": 1,
+                "aspect_ratio": "1:1",
+                "safety_filter_level": "block_some",
+                "person_generation": "allow_adult",
+            }
+            r = requests.post(
+                f"{BANANA_BASE_URL}/v1/images/generate",
+                headers=headers, json=payload, timeout=90
+            )
+            print(f"  Banana/Gemini status: {r.status_code}")
+            if r.status_code == 200:
+                data = r.json()
+                # Handle base64 response
+                b64 = None
+                if "images" in data and data["images"]:
+                    b64 = data["images"][0].get("b64_json") or data["images"][0].get("imageBytes")
+                elif "data" in data and data["data"]:
+                    b64 = data["data"][0].get("b64_json")
+                if b64:
+                    img_cost += 0.02
+                    print(f"  Image {idx}: Banana/Gemini Imagen SUCCESS")
+                    return base64.b64decode(b64)
+                else:
+                    print(f"  Image {idx}: Banana response OK but no image data: {str(data)[:200]}")
+            else:
+                print(f"  Banana error {r.status_code}: {r.text[:200]}")
+        except Exception as e:
+            print(f"  Image {idx}: Banana/Gemini error: {str(e)[:100]}")
+
+    # Fallback: gpt-image-1 (OpenAI)
+    if OPENAI_KEY:
+        try:
+            ci = openai.OpenAI(api_key=OPENAI_KEY)
+            ir = ci.images.generate(model="gpt-image-1", prompt=prompt_text[:1000], size="1024x1024", n=1)
+            b64 = ir.data[0].b64_json if ir.data else None
+            if b64:
+                img_cost += 0.04
+                print(f"  Image {idx}: gpt-image-1 fallback SUCCESS")
+                return base64.b64decode(b64)
+            elif ir.data and ir.data[0].url:
+                img_cost += 0.04
+                print(f"  Image {idx}: gpt-image-1 URL fallback SUCCESS")
+                return requests.get(ir.data[0].url, timeout=30).content
+        except Exception as e:
+            print(f"  Image {idx}: gpt-image-1 fallback error: {str(e)[:80]}")
+
+    # Fallback 2: dall-e-3
+    if OPENAI_KEY:
+        try:
+            ci3 = openai.OpenAI(api_key=OPENAI_KEY)
+            ir3 = ci3.images.generate(model="dall-e-3", prompt=f"Ultra-realistic photo: {prompt_text[:200]}", size="1024x1024", quality="standard", n=1)
+            url3 = ir3.data[0].url if ir3.data else None
+            if url3:
+                img_cost += 0.04
+                print(f"  Image {idx}: dall-e-3 fallback SUCCESS")
+                return requests.get(url3, timeout=30).content
+        except Exception as e:
+            print(f"  Image {idx}: dall-e-3 error: {str(e)[:60]}")
+
+    print(f"  Image {idx}: ALL PROVIDERS FAILED")
     return None
 
 def upload_to_wp(img_bytes, filename):
@@ -865,7 +915,8 @@ def upload_to_wp(img_bytes, filename):
         print(f"  WP Media: {mr.status_code}")
         if mr.status_code in (200, 201):
             mid = mr.json().get("id")
-            print(f"  Media ID: {mid}")
+            murl = mr.json().get("source_url", "")[:60]
+            print(f"  Media ID: {mid}, URL: {murl}")
             return mid
         else:
             print(f"  Media FAIL: {mr.text[:150]}")
@@ -876,14 +927,14 @@ def upload_to_wp(img_bytes, filename):
 
 for i, prompt in enumerate(IMG_PROMPTS):
     print(f"\n  Generating image {i+1}/4...")
-    img_bytes = generate_image(prompt, i+1) if OPENAI_KEY else None
+    img_bytes = generate_image_banana_gemini(prompt, i+1)
     if img_bytes:
         generated_images.append(img_bytes)
         fname = f"nexus14-v5-{ARTICLE_INDEX}-img{i+1}-{int(time.time())}.png"
         mid = upload_to_wp(img_bytes, fname)
         if mid:
             media_ids.append(mid)
-    time.sleep(1)
+    time.sleep(2)
 
 featured_media_id = media_ids[0] if media_ids else None
 if featured_media_id and wp_post_id:
