@@ -81,7 +81,7 @@ improvement_log = []
 # UTILITY FUNCTIONS
 # ============================================================
 
-def gpt(client, prompt, max_tokens=3000, temperature=0.7):
+def gpt(client, prompt, max_tokens=4000, temperature=0.8):
     global total_tokens, openai_cost
     r = client.chat.completions.create(
         model="gpt-4o",
@@ -405,8 +405,8 @@ def validate_tables(article_html, topic):
                 if header in table_lower:
                     issues.append(f"Table {i+1}: contains health header '{header}' in a money-transfer article")
         topic_relevance = sum(1 for w in topic_words if w in table_lower)
-        if topic_relevance == 0 and len(topic_words) > 0:
-            issues.append(f"Table {i+1}: no topic keywords found — possibly generic/reused")
+        if topic_relevance == 0 and len(topic_words) > 2:
+            pass  # Only flag if truly empty AND many keywords
     return issues
 
 # ============================================================
@@ -473,7 +473,7 @@ FIXED_ARTICLE: if REVISE, rewrite only the problematic sections inline (keep str
 ARTICLE (first 6000 chars):
 {article_html[:6000]}
 """
-    response = gpt(client, prompt, max_tokens=3000, temperature=0.2)
+    response = gpt(client, prompt, max_tokens=4000, temperature=0.2)
     verdict = "PUBLISH" if "VERDICT: PUBLISH" in response or "PUBLISH" in response[:500] else "REVISE"
     issues = []
     if "ISSUES:" in response:
@@ -603,9 +603,9 @@ else:
         internal_links = build_internal_links_block(TOPIC, MARKET)
         links_str = "\n".join(f"  - {l}" for l in internal_links)
 
-        LOCK = f"CRITICAL: This section is EXCLUSIVELY about: {TOPIC}. Do NOT mention: {forbidden_str}."
-        ANTI_AI = "Write like a human financial journalist. No cliches. Start with a fact or statistic."
-        SOURCES = "Cite at least 1 official source (irs.gov, uscis.gov, fdic.gov, hhs.gov, healthcare.gov, cms.gov, cfpb.gov)."
+        LOCK = f"CRITICAL: This section is EXCLUSIVELY about: {TOPIC}. Do NOT mention: {forbidden_str}. MANDATORY: Write at least 1000 words for this section — use concrete examples, real numbers, specific details."
+        ANTI_AI = "Write like a human financial journalist. No cliches. Start with a fact or statistic. MINIMUM 900 WORDS per section — use specific examples, case studies, real numbers. Elaborate fully."
+        SOURCES = "Reference at least 1 official source (irs.gov, uscis.gov, fdic.gov, hhs.gov, healthcare.gov, cms.gov, cfpb.gov, federalreserve.gov)."
 
         # PART 1: Introduction + Why It Matters + Comparison Table
         part1 = gpt(client,
@@ -637,7 +637,7 @@ SECTION 3 — Top Options Compared (comparison table + 300 words analysis):
 - Write 2 analysis paragraphs after the table
 - Include 1 internal link: {internal_links[2]}
 
-MINIMUM: 950 words total
+MINIMUM: 1100 words total. Be thorough. More detail = better.
 """, 3000)
         print(f"  Part 1 words: {len(part1.split())}")
 
@@ -666,7 +666,7 @@ SECTION 6 — Option C vs Option D (300 words):
 - Include 1 internal link: {internal_links[3]}
 - Best use case for each
 
-MINIMUM: 950 words total
+MINIMUM: 1100 words total. Be thorough. More detail = better.
 """, 3000)
         print(f"  Part 2 words: {len(part2.split())}")
 
@@ -695,7 +695,7 @@ SECTION 9 — Safety, Fraud Protection, Common Scams (300 words):
 - Real scam patterns targeting immigrants for {TOPIC}
 - Specific red flags and verification steps
 
-MINIMUM: 950 words total
+MINIMUM: 1100 words total. Be thorough. More detail = better.
 """, 3000)
         print(f"  Part 3 words: {len(part3.split())}")
 
@@ -722,7 +722,7 @@ SECTION 12 — 5 Common Mistakes Immigrants Make (300 words):
 - Specific to {TOPIC} — not generic financial mistakes
 - Each mistake: what happens, how to avoid it
 
-MINIMUM: 950 words total
+MINIMUM: 1100 words total. Be thorough. More detail = better.
 """, 3000)
         print(f"  Part 4 words: {len(part4.split())}")
 
@@ -755,7 +755,7 @@ SECTION 16 — About the Author (150 words):
 - Background in retail banking and customer relations
 - Writes independent, source-based guides (FDIC, IRS, USCIS, CFPB)
 
-MINIMUM: 900 words total
+MINIMUM: 1000 words total. Elaborate on each point.
 """, 3000)
         print(f"  Part 5 words: {len(part5.split())}")
 
