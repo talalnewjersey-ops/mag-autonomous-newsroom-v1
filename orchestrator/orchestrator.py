@@ -147,7 +147,7 @@ class Orchestrator:
         }
 
     def _init_agents(self):
-        """Initialize all 14 agents.
+        """Initialize all 18 agents.
 
         Each agent is built via _construct_agent(), which filters the full
         superset of available services down to the kwargs each constructor
