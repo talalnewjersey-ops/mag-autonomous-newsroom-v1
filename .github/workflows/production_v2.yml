@@ -118,7 +118,7 @@ jobs:
           ARTICLES_PRODUCED=0
           ARTICLES_FAILED=0
 
-          MAX_ARTICLES="${{ github.event.inputs.max_articles || needs.detect.outputs.max_articles || 3 }}"
+          MAX_ARTICLES="${{ github.event.inputs.max_articles || needs.route-trigger.outputs.max_articles || 3 }}"
 
           case "$MAX_ARTICLES" in (*[!0-9]*|"") MAX_ARTICLES=3 ;; esac
 
