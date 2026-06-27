@@ -23,37 +23,32 @@ except ImportError:
     os.system("pip install openai -q")
     import openai
 
+
 def md_to_html(md_text):
-    """Convert Markdown to clean HTML for WordPress publication."""
-    import re
-    html = md_text if md_text else ""
-    html = re.sub(r'^---[\s\S]*?---\n?', '', html)
-    html = re.sub(r'```[^\n]*\n', '<pre><code>', html)
-    html = re.sub(r'```', '</code></pre>', html)
-    for lvl in range(6, 0, -1):
-        pattern = '^' + '#' * lvl + r' +(.+)$'
-        html = re.sub(pattern, f'<h{lvl}>\\1</h{lvl}>', html, flags=re.MULTILINE)
-    html = re.sub(r'\*\*\*(.+?)\*\*\*', r'<strong><em>\1</em></strong>', html)
-    html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html)
-    html = re.sub(r'\*(.+?)\*', r'<em>\1</em>', html)
-    html = re.sub(r'`(.+?)`', r'<code>\1</code>', html)
-    html = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', html)
-    html = re.sub(r'^---+$', '<hr>', html, flags=re.MULTILINE)
-    html = re.sub(r'^> (.+)$', r'<blockquote>\1</blockquote>', html, flags=re.MULTILINE)
-    lines = html.split('\n')
-    out = []
-    for line in lines:
-        s = line.strip()
-        if not s:
+    """Convert Markdown headers to HTML. Wrap lines in paragraphs."""
+    if not md_text:
+        return ""
+    result = []
+    for line in md_text.split('\n'):
+        if line.startswith('###### '):
+            result.append('<h6>' + line[7:] + '</h6>')
+        elif line.startswith('##### '):
+            result.append('<h5>' + line[6:] + '</h5>')
+        elif line.startswith('#### '):
+            result.append('<h4>' + line[5:] + '</h4>')
+        elif line.startswith('### '):
+            result.append('<h3>' + line[4:] + '</h3>')
+        elif line.startswith('## '):
+            result.append('<h2>' + line[3:] + '</h2>')
+        elif line.startswith('# '):
+            result.append('<h1>' + line[2:] + '</h1>')
+        elif not line.strip():
             continue
-        if s.startswith('<') or s.startswith('|') or s == '<hr>':
-            out.append(s)
+        elif line.strip().startswith('<') or line.strip().startswith('|'):
+            result.append(line)
         else:
-            out.append(f'<p>{s}</p>')
-    return '\n'.join(out)
-
-
-
+            result.append('<p>' + line + '</p>')
+    return '\n'.join(result)
 START = time.time()
 ARTICLE_INDEX = os.environ.get("ARTICLE_INDEX", "0")
 MARKET = (os.environ.get("TARGET_MARKET") or "usa").lower()
@@ -214,7 +209,125 @@ else:
             "Links: <a href=\"https://moneyabroadguide.com/security\">security tips</a> and <a href=\"https://moneyabroadguide.com/faq\">FAQ page</a>\nMin 900 words.", 3000)
         print("  Part 6 words:", len(part6.split()))
 
-        raw = part1 + "\n\n" + part2 + "\n\n" + part3 + "\n\n" + part4 + "\n\n" + part5 + "\n\print("[STEP 6] IMAGE PIPELINE -- 4 images")
+        raw = part1 + "\n\n" + part2 + "\n\n" + part3 + "\n\n" + part4 + "\n\n" + part5 + "\n\n" + part6
+        article_content = clean_html(raw)
+        total_words = len(article_content.split())
+        print("  TOTAL words:", total_words)
+        results["article_written"] = len(article_content) > 500
+        results["word_count_5000plus"] = total_words >= 5000
+        print("  word_count_5000plus:", results["word_count_5000plus"])
+    except Exception as e:
+        print("  ERROR:", e)
+        import traceback; traceback.print_exc()
+        results["article_written"] = False
+        results["word_count_5000plus"] = False
+
+print()
+print("[STEP 2] SEO scoring...")
+seo_score = 0
+if article_content:
+    words_in_topic = [w for w in TOPIC.lower().split() if len(w) > 3]
+    found_kw = sum(1 for w in words_in_topic if w in article_content.lower())
+    kw_density = found_kw / max(len(words_in_topic), 1)
+    if kw_density >= 0.7: seo_score += 25
+    if article_content.count("<h2>") >= 5: seo_score += 20
+    if "<table" in article_content: seo_score += 15
+    if len(article_content.split()) >= 5000: seo_score += 20
+    if "href=" in article_content: seo_score += 15
+    if "faq" in article_content.lower() or "frequently asked" in article_content.lower(): seo_score += 5
+results["seo_score_95plus"] = seo_score >= 95
+print("  SEO score:", seo_score)
+
+print()
+print("[STEP 3] EEAT scoring...")
+eeat_score = 0
+if article_content:
+    cl = article_content.lower()
+    if any(w in cl for w in ["expert", "research", "study", "data", "statistic", "analysis"]): eeat_score += 20
+    if any(w in cl for w in ["review", "comparison", "tested", "versus", "vs"]): eeat_score += 20
+    if any(w in cl for w in ["fee", "cost", "price", "rate", "percent", "%"]): eeat_score += 20
+    if len(article_content.split()) >= 5000: eeat_score += 20
+    if "faq" in cl or "frequently asked" in cl: eeat_score += 10
+    if "ebook" in cl or "free guide" in cl or "download" in cl: eeat_score += 10
+results["eeat_score_95plus"] = eeat_score >= 95
+print("  EEAT score:", eeat_score)
+
+print()
+print("[STEP 4] Counting internal links...")
+if article_content:
+    links = re.findall(r"href=\"(https?://[^\"]+)\"", article_content)
+    internal_links = sum(1 for l in links if "moneyabroadguide.com" in l)
+else:
+    internal_links = 0
+results["internal_links_5plus"] = internal_links >= 5
+print("  Internal links:", internal_links)
+
+print()
+print("[QUALITY GATE CHECK]")
+gate_word = results.get("word_count_5000plus", False)
+print("  word_count_5000plus:", gate_word)
+print("  seo_score_95plus   :", results.get("seo_score_95plus", False))
+print("  eeat_score_95plus  :", results.get("eeat_score_95plus", False))
+
+if not gate_word:
+    print("  [BLOCKED] Word count < 5000 - ABORT")
+    results["wordpress_draft_created"] = False
+    results["images_generated"] = False
+    results["quality_gate_passed"] = False
+    elapsed_g = round(time.time() - START, 1)
+    report_g = {"article_index": ARTICLE_INDEX, "topic": TOPIC, "market": MARKET,
+                "abort_reason": "word_count_below_5000", "word_count": len(article_content.split()),
+                "seo_score": seo_score, "eeat_score": eeat_score, "timestamp": datetime.utcnow().isoformat()}
+    with open("execution_report_" + ARTICLE_INDEX + ".json", "w") as f:
+        json.dump(report_g, f, indent=2)
+    print("STATUS : BLOCKED (word count gate)")
+    sys.exit(1)
+
+results["quality_gate_passed"] = True
+print("  [OK] Quality gates passed")
+
+print()
+print("[STEP 5] Creating WordPress draft (with retry + backoff)...")
+wp_post_id = None
+wp_category = WP_CAT_USA if MARKET == "usa" else WP_CAT_CANADA
+print("  Category ID:", wp_category, "(" + ("Newcomers to the USA" if MARKET == "usa" else "Newcomers to Canada") + ")")
+
+focus_kw = TOPIC.replace(" 2026", "").strip()
+seo_title = TOPIC.title() + " | MoneyAbroadGuide"
+meta_desc = ("Complete guide to " + TOPIC + ". Compare top services, fees, exchange rates and expert tips "
+             "for " + MARKET.upper() + " residents in 2026.")
+
+if not WP_USER or not WP_PASS:
+    print("  ERROR: WP credentials missing")
+    results["wordpress_draft_created"] = False
+else:
+    wp_payload = {
+        "title": TOPIC.title(),
+        "content": md_to_html(article_content),
+        "status": "draft",
+        "categories": [wp_category],
+        "author": WP_AUTHOR_ID,
+        "meta": {
+            "_yoast_wpseo_title": seo_title,
+            "_yoast_wpseo_metadesc": meta_desc,
+            "_yoast_wpseo_focuskw": focus_kw,
+        }
+    }
+    r = wp_request("POST", "/wp-json/wp/v2/posts", WP_JSON_HEADERS, json_data=wp_payload, timeout=90)
+    if r and r.status_code in (200, 201):
+        d = r.json()
+        wp_post_id = d.get("id")
+        print("  SUCCESS! Post ID:", wp_post_id)
+        results["wordpress_draft_created"] = True
+    else:
+        status = r.status_code if r else "no response"
+        body = r.text[:300] if r else "timeout/error"
+        print("  FAILED after retries. Status:", status)
+        print("  Response:", body)
+        results["wordpress_draft_created"] = False
+
+print()
+print("[STEP 6] IMAGE PIPELINE -- 4 images")
 print("  Chain: Gemini -> Nano Banana -> OpenAI gpt-image-1")
 print("-" * 50)
 
@@ -340,124 +453,6 @@ if generated_images:
             print(f"  Featured image error: {e}")
 else:
     print("  No images generated")
-
-
-n" + part6
-        article_content = clean_html(raw)
-        total_words = len(article_content.split())
-        print("  TOTAL words:", total_words)
-        results["article_written"] = len(article_content) > 500
-        results["word_count_5000plus"] = total_words >= 5000
-        print("  word_count_5000plus:", results["word_count_5000plus"])
-    except Exception as e:
-        print("  ERROR:", e)
-        import traceback; traceback.print_exc()
-        results["article_written"] = False
-        results["word_count_5000plus"] = False
-
-print()
-print("[STEP 2] SEO scoring...")
-seo_score = 0
-if article_content:
-    words_in_topic = [w for w in TOPIC.lower().split() if len(w) > 3]
-    found_kw = sum(1 for w in words_in_topic if w in article_content.lower())
-    kw_density = found_kw / max(len(words_in_topic), 1)
-    if kw_density >= 0.7: seo_score += 25
-    if article_content.count("<h2>") >= 5: seo_score += 20
-    if "<table" in article_content: seo_score += 15
-    if len(article_content.split()) >= 5000: seo_score += 20
-    if "href=" in article_content: seo_score += 15
-    if "faq" in article_content.lower() or "frequently asked" in article_content.lower(): seo_score += 5
-results["seo_score_95plus"] = seo_score >= 95
-print("  SEO score:", seo_score)
-
-print()
-print("[STEP 3] EEAT scoring...")
-eeat_score = 0
-if article_content:
-    cl = article_content.lower()
-    if any(w in cl for w in ["expert", "research", "study", "data", "statistic", "analysis"]): eeat_score += 20
-    if any(w in cl for w in ["review", "comparison", "tested", "versus", "vs"]): eeat_score += 20
-    if any(w in cl for w in ["fee", "cost", "price", "rate", "percent", "%"]): eeat_score += 20
-    if len(article_content.split()) >= 5000: eeat_score += 20
-    if "faq" in cl or "frequently asked" in cl: eeat_score += 10
-    if "ebook" in cl or "free guide" in cl or "download" in cl: eeat_score += 10
-results["eeat_score_95plus"] = eeat_score >= 95
-print("  EEAT score:", eeat_score)
-
-print()
-print("[STEP 4] Counting internal links...")
-if article_content:
-    links = re.findall(r"href=\"(https?://[^\"]+)\"", article_content)
-    internal_links = sum(1 for l in links if "moneyabroadguide.com" in l)
-else:
-    internal_links = 0
-results["internal_links_5plus"] = internal_links >= 5
-print("  Internal links:", internal_links)
-
-print()
-print("[QUALITY GATE CHECK]")
-gate_word = results.get("word_count_5000plus", False)
-print("  word_count_5000plus:", gate_word)
-print("  seo_score_95plus   :", results.get("seo_score_95plus", False))
-print("  eeat_score_95plus  :", results.get("eeat_score_95plus", False))
-
-if not gate_word:
-    print("  [BLOCKED] Word count < 5000 - ABORT")
-    results["wordpress_draft_created"] = False
-    results["images_generated"] = False
-    results["quality_gate_passed"] = False
-    elapsed_g = round(time.time() - START, 1)
-    report_g = {"article_index": ARTICLE_INDEX, "topic": TOPIC, "market": MARKET,
-                "abort_reason": "word_count_below_5000", "word_count": len(article_content.split()),
-                "seo_score": seo_score, "eeat_score": eeat_score, "timestamp": datetime.utcnow().isoformat()}
-    with open("execution_report_" + ARTICLE_INDEX + ".json", "w") as f:
-        json.dump(report_g, f, indent=2)
-    print("STATUS : BLOCKED (word count gate)")
-    sys.exit(1)
-
-results["quality_gate_passed"] = True
-print("  [OK] Quality gates passed")
-
-print()
-print("[STEP 5] Creating WordPress draft (with retry + backoff)...")
-wp_post_id = None
-wp_category = WP_CAT_USA if MARKET == "usa" else WP_CAT_CANADA
-print("  Category ID:", wp_category, "(" + ("Newcomers to the USA" if MARKET == "usa" else "Newcomers to Canada") + ")")
-
-focus_kw = TOPIC.replace(" 2026", "").strip()
-seo_title = TOPIC.title() + " | MoneyAbroadGuide"
-meta_desc = ("Complete guide to " + TOPIC + ". Compare top services, fees, exchange rates and expert tips "
-             "for " + MARKET.upper() + " residents in 2026.")
-
-if not WP_USER or not WP_PASS:
-    print("  ERROR: WP credentials missing")
-    results["wordpress_draft_created"] = False
-else:
-    wp_payload = {
-        "title": TOPIC.title(),
-        "content": md_to_html(article_content),
-        "status": "draft",
-        "categories": [wp_category],
-        "author": WP_AUTHOR_ID,
-        "meta": {
-            "_yoast_wpseo_title": seo_title,
-            "_yoast_wpseo_metadesc": meta_desc,
-            "_yoast_wpseo_focuskw": focus_kw,
-        }
-    }
-    r = wp_request("POST", "/wp-json/wp/v2/posts", WP_JSON_HEADERS, json_data=wp_payload, timeout=90)
-    if r and r.status_code in (200, 201):
-        d = r.json()
-        wp_post_id = d.get("id")
-        print("  SUCCESS! Post ID:", wp_post_id)
-        results["wordpress_draft_created"] = True
-    else:
-        status = r.status_code if r else "no response"
-        body = r.text[:300] if r else "timeout/error"
-        print("  FAILED after retries. Status:", status)
-        print("  Response:", body)
-        results["wordpress_draft_created"] = False
 
 print()
 print("[STEP 7] Email notification (non-bloquant)...")
