@@ -968,7 +968,7 @@ g20 = {"status": "PASS", "issues": []}
 if article_html:
     g20 = gate20_anti_thin(article_html, TOPIC)
     results["gate20_status"] = g20["status"]
-    print(f"  Gate 20: {g20["status"]} | Issues: {g20["issues"]}")
+    print(f"  Gate 20: {g20['status']} | Issues: {g20['issues']}")
 else: results["gate20_status"] = "FAIL"
 # ============================================================
 # STEP 8: QUALITY GATE BLOCKING
