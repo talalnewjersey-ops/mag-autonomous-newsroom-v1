@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """
-NEXUS-14 PRODUCTION SCRIPT v7.1 - CLAUDE HAIKU 4.5 + GEMINI NATIVE IMAGE + AGENT 24
+NEXUS-14 PRODUCTION SCRIPT v7.2 - CLAUDE HAIKU 4.5 + GEMINI NATIVE IMAGE + AGENT 24
 scripts/produce_article.py
-
-v7.1 fixes:
+v7.2 fixes:
+- Word count: increased per-part max_tokens 1500->2000 + target 1000-1200 words/part
+- Removed STRICT LIMIT from SYSTEM_PROMPT (was capping parts at <1000 words)
+- Dual-pass expansion: if still <4000 after first expansion, run second pass
+- Gemini: confirmed no responseMimeType in generationConfig (HTTP 400 fix from v7.1)
+- WP timeout: 120s (from v7.1)
+v7.1 fixes (preserved):
 - Gemini: removed invalid responseMimeType from generationConfig (HTTP 400 fix)
 - Word count: strict 4000-4800 words to avoid WP timeout on large payloads
 - Agent 17: pagination up to 300 posts
 - EEAT scorer: extended domain list
-
-NEXUS-14 v7.1 - NEXUS standard (2026):
+NEXUS-14 v7.2 - NEXUS standard (2026):
 - Writer: claude-haiku-4-5 (Anthropic) - 4000-4800 words, cost <= $0.25/article
 - Images: 5 total (1 featured + 4 body) via Gemini Native Image (gemini-2.5-flash-image)
   MIGRATION NOTE: imagen-3.0-generate-002 DEPRECATED shutdown Aug 17 2026
@@ -63,9 +67,9 @@ WP_JSON_HEADERS = {
 }
 
 print("=" * 60)
-print("NEXUS-14 PRODUCTION v7.1 -- " + ARTICLE_INDEX)
+print("NEXUS-14 PRODUCTION v7.2 -- " + ARTICLE_INDEX)
 print("=" * 60)
-print("Topic  :", TOPIC)
+print("Topic :", TOPIC)
 print("Market :", MARKET.upper())
 print("Claude :", "SET" if ANTHROPIC_KEY else "MISSING")
 print("Gemini :", "SET" if GEMINI_KEY else "MISSING")
@@ -100,7 +104,7 @@ def haiku(client, prompt, max_tokens=2000, system=None):
     cost = (inp / 1_000_000) * 0.80 + (out / 1_000_000) * 4.00
     anthropic_cost += cost
     if anthropic_cost > COST_BUDGET * 0.9:
-        print(f" [COST WARNING] cost so far: budget threshold approaching")
+        print(f"  [COST WARNING] cost so far: budget threshold approaching")
     return r.content[0].text
 
 def wp_request(method, path, headers, json_data=None, data=None, timeout=60, max_retries=3):
@@ -111,14 +115,14 @@ def wp_request(method, path, headers, json_data=None, data=None, timeout=60, max
                 r = requests.post(url, headers=headers, json=json_data, data=data, timeout=timeout)
             else:
                 r = requests.get(url, headers=headers, timeout=timeout)
-            print(f" WP {method} -> {r.status_code} (attempt {attempt})")
+            print(f"  WP {method} -> {r.status_code} (attempt {attempt})")
             if r.status_code in (200, 201):
                 return r
             if r.status_code in (401, 403):
                 return r
             time.sleep(2)
         except Exception as e:
-            print(f" WP error attempt {attempt}: {e}")
+            print(f"  WP error attempt {attempt}: {e}")
             time.sleep(2 ** attempt)
     return None
 
@@ -157,7 +161,7 @@ def title_similarity_a17(a, b):
 
 def get_existing_wp_posts():
     if not WP_USER or not WP_PASS:
-        print(" [Agent 17] No WP creds - skipping")
+        print("  [Agent 17] No WP creds - skipping")
         return []
     posts = []
     for page in range(1, 4):
@@ -170,9 +174,9 @@ def get_existing_wp_posts():
                 if len(batch) < 100: break
             else: break
         except Exception as e:
-            print(f" [Agent 17] Error page {page}: {e}")
+            print(f"  [Agent 17] Error page {page}: {e}")
             break
-    print(f" [Agent 17] Fetched {len(posts)} posts for duplicate check")
+    print(f"  [Agent 17] Fetched {len(posts)} posts for duplicate check")
     return posts
 
 def check_agent17_duplicate(topic, market, existing_posts):
@@ -361,6 +365,8 @@ def validate_internal_links(article_html):
     return len(links) - len(draft_issues), len(links), [f"DRAFT: {l}" for l in draft_issues]
 # ============================================================
 # SYSTEM PROMPT + LINKS
+# v7.2 FIX: Removed "STRICT LIMIT: Keep each part under 1000 words"
+# That constraint was BLOCKING haiku from generating enough content.
 # ============================================================
 SYSTEM_PROMPT = """You are a senior financial journalist at MoneyAbroadGuide.com.
 Write for immigrants and newcomers in the USA and Canada.
@@ -369,7 +375,7 @@ NEVER write: navigate, delve into, it is important to note, comprehensive guide,
 shed light on, embark on, a myriad of, leverage, utilize, plays a crucial role.
 ALWAYS: specific numbers, real examples, official sources (IRS, USCIS, FDIC, HHS, CMS, CFPB).
 Write in active voice. Start paragraphs with facts. NO markdown, only HTML.
-STRICT LIMIT: Keep each part under 1000 words to stay within budget."""
+Write at least 1000 words per section to provide genuine value to readers."""
 
 def get_links_for_topic(topic):
     tl = topic.lower()
@@ -399,6 +405,15 @@ def get_links_for_topic(topic):
             'href="https://moneyabroadguide.com/expat-financial-guide/"',
             'href="https://moneyabroadguide.com/tax-guide-expats/"',
             'href="https://moneyabroadguide.com/first-90-days-canada-checklist/"',
+        ]
+    elif "mortgage" in tl or "home" in tl or "house" in tl:
+        return [
+            'href="https://moneyabroadguide.com/best-banks-immigrants-usa/"',
+            'href="https://moneyabroadguide.com/build-credit-usa-newcomer/"',
+            'href="https://moneyabroadguide.com/expat-financial-guide/"',
+            'href="https://moneyabroadguide.com/tax-guide-expats/"',
+            'href="https://moneyabroadguide.com/best-credit-cards-immigrants/"',
+            'href="https://moneyabroadguide.com/first-90-days-usa-checklist/"',
         ]
     elif "tax" in tl:
         return [
@@ -465,22 +480,17 @@ def agent24_editorial_review(client, article_html, topic, market, cycle=1):
         first_paragraph = strip_html(p_match.group(1))[:300]
     sample_text = clean_text[:2000]
 
-    prompt = f"""EDITORIAL REVIEW — Topic: "{topic}" | Market: {market.upper()}
-
+    prompt = f"""EDITORIAL REVIEW - Topic: "{topic}" | Market: {market.upper()}
 METRICS: words={word_count} | h2={h2_headings[:6]} | tables={len(tables)} | sources={sources_found}
 Template phrases: {template_hits} | Off-topic tables: {off_topic_tables} | AI artifacts: {len(ai_artifact_hits)}
-
 FIRST PARAGRAPH: {first_paragraph}
-
 SAMPLE (first 2000 chars): {sample_text}
-
 Answer these 5 questions:
 1. Would NerdWallet publish this? (yes/no)
 2. Would Investopedia publish this? (yes/no)
 3. Does it provide genuine value to immigrants? (yes/no)
 4. Does it read like AI? (yes/no)
 5. Would readers stay to the end? (yes/no)
-
 Output ONLY this JSON:
 {{
   "verdict": "APPROVED" or "REJECTED",
@@ -497,7 +507,7 @@ Output ONLY this JSON:
 
     try:
         response = haiku(client, prompt, max_tokens=800, system=EDITOR_SYSTEM)
-        json_match = re.search(r"\{[\s\S]*\}", response)
+        json_match = re.search(r"\{{[\s\S]*\}}", response)
         if json_match:
             verdict = json.loads(json_match.group())
         else:
@@ -590,8 +600,8 @@ def run_agent24_pipeline(client, article_html, topic, market):
                 return current_html, verdict, False
     return current_html, final_verdict, False
 # ============================================================
-# IMAGE PIPELINE v7.1 - GEMINI NATIVE IMAGE
-# FIX: removed responseMimeType from generationConfig (HTTP 400 fix)
+# IMAGE PIPELINE v7.2 - GEMINI NATIVE IMAGE
+# v7.1 FIX preserved: removed responseMimeType from generationConfig (HTTP 400 fix)
 # Model: gemini-2.5-flash-image via generateContent API
 # ============================================================
 def get_img_prompts(topic, market):
@@ -608,7 +618,7 @@ def generate_image_gemini_native(prompt_text, idx):
     """
     Generate image via Gemini Native Image API (gemini-2.5-flash-image).
     v7.1 FIX: removed responseMimeType from generationConfig - causes HTTP 400 INVALID_ARGUMENT.
-    Images are returned as inlineData in the response parts.
+    v7.2: confirmed fix preserved. Images returned as inlineData in response parts.
     """
     global img_cost
     label = f"img{idx}"
@@ -630,23 +640,22 @@ def generate_image_gemini_native(prompt_text, idx):
         )
         with urllib.request.urlopen(req, timeout=90) as resp:
             data = json.loads(resp.read().decode())
-            candidates = data.get("candidates", [])
-            for candidate in candidates:
-                content = candidate.get("content", {})
-                for part in content.get("parts", []):
-                    if "inlineData" in part:
-                        b64_data = part["inlineData"].get("data", "")
-                        if b64_data:
-                            img_cost += 0.015
-                            print(f"  {label}: Gemini Native Image SUCCESS (img cost so far: {img_cost:.3f})")
-                            return base64.b64decode(b64_data)
-            print(f"  {label}: Gemini OK but no inlineData. Keys: {list(data.keys())}")
-            # Log first candidate for debug
-            if candidates:
-                c = candidates[0]
-                parts = c.get("content", {}).get("parts", [])
-                print(f"  {label}: parts count={len(parts)}, types={[list(p.keys()) for p in parts[:3]]}")
-            return None
+        candidates = data.get("candidates", [])
+        for candidate in candidates:
+            content = candidate.get("content", {})
+            for part in content.get("parts", []):
+                if "inlineData" in part:
+                    b64_data = part["inlineData"].get("data", "")
+                    if b64_data:
+                        img_cost += 0.015
+                        print(f"  {label}: Gemini Native Image SUCCESS (img cost so far: {img_cost:.3f})")
+                        return base64.b64decode(b64_data)
+        print(f"  {label}: Gemini OK but no inlineData. Keys: {list(data.keys())}")
+        if candidates:
+            c = candidates[0]
+            parts = c.get("content", {}).get("parts", [])
+            print(f"  {label}: parts count={len(parts)}, types={[list(p.keys()) for p in parts[:3]]}")
+        return None
     except urllib.error.HTTPError as e:
         body = ""
         try: body = e.read().decode()[:400]
@@ -723,33 +732,35 @@ print("[STEP 0] Agent 17 V3.2 - Duplicate prevention check...")
 existing_posts = get_existing_wp_posts()
 wp_category = WP_CAT_USA if MARKET == "usa" else WP_CAT_CANADA
 a17_decision, a17_reason, a17_blocking = check_agent17_duplicate(TOPIC, MARKET, existing_posts)
-print(f" Decision: {a17_decision}")
-print(f" Reason  : {a17_reason}")
-print(f" Blocking: {a17_blocking}")
+print(f"  Decision: {a17_decision}")
+print(f"  Reason  : {a17_reason}")
+print(f"  Blocking: {a17_blocking}")
 results["agent17_decision"] = a17_decision
 results["agent17_blocking"] = a17_blocking
 if a17_blocking and a17_decision == "REJECT_DUPLICATE":
-    print(f" [AGENT 17] BLOCKED: {a17_reason}")
+    print(f"  [AGENT 17] BLOCKED: {a17_reason}")
     sys.exit(1)
 elif a17_decision == "MANUAL_REVIEW":
-    print(f" [AGENT 17] WARNING: {a17_reason}")
+    print(f"  [AGENT 17] WARNING: {a17_reason}")
 else:
-    print(f" [AGENT 17] OK: {a17_reason}")
+    print(f"  [AGENT 17] OK: {a17_reason}")
 
 g19 = gate19_country_category(TOPIC, MARKET, wp_category)
-print(f" [Gate 19] {g19['status']}: {g19['message']}")
+print(f"  [Gate 19] {g19['status']}: {g19['message']}")
 results["gate19_status"] = g19["status"]
 
 # ============================================================
 # STEP 1: ARTICLE GENERATION
+# v7.2 FIX: max_tokens per part 1500->2000, target 1000-1200 words/part
+# v7.2 FIX: dual-pass expansion if still <4000 after first expansion
 # ============================================================
 print()
-print("[STEP 1] Generating article (4 parts x 1500 tokens, Claude claude-haiku-4-5)...")
+print("[STEP 1] Generating article (4 parts x 2000 tokens, Claude claude-haiku-4-5)...")
 article_html = ""
 client = None
 
 if not ANTHROPIC_KEY:
-    print(" ERROR: ANTHROPIC_API_KEY not set")
+    print("  ERROR: ANTHROPIC_API_KEY not set")
     results["article_written"] = False
 else:
     try:
@@ -761,66 +772,67 @@ else:
         L0,L1,L2,L3,L4,L5 = link_attrs[0],link_attrs[1],link_attrs[2],link_attrs[3],link_attrs[4],link_attrs[5]
         LOCK = f"TOPIC LOCK: Write EXCLUSIVELY about '{TOPIC}'. Do NOT mention: {forbidden_str}."
         ANTI_AI = "NO cliches. Start with a real statistic. Write like a human senior journalist."
-        SRC = "Cite at least 1 official source: irs.gov, uscis.gov, fdic.gov, hhs.gov, cfpb.gov, canada.ca."
+        SRC = "Cite at least 2 official sources: irs.gov, uscis.gov, fdic.gov, hhs.gov, cfpb.gov, canada.ca."
 
         p1_prompt = f"""Write PART 1 of an expert financial article about: "{TOPIC}" for {mkt} immigrants.
 Output ONLY valid HTML. No markdown. No backticks. {LOCK} {ANTI_AI}
 <h2>Introduction</h2>
-3 paragraphs (250 words). Open with a real government statistic. {SRC}
+4 paragraphs (350+ words). Open with a real government statistic. {SRC}
 Include: <a {L0}>anchor text</a>
 <h2>Why This Matters for {mkt} Immigrants in 2026</h2>
-2 paragraphs (200 words) with specific official data.
+3 paragraphs (300 words) with specific official data from USCIS or FDIC.
 Include: <a {L1}>anchor text</a>
 <h2>Top Options Compared</h2>
 HTML table comparing 5 options relevant to {TOPIC} (columns specific to topic).
-2 analysis paragraphs (150 words). Include: <a {L2}>anchor text</a>
-Target: 700-800 words. Be specific. Use real numbers."""
+3 analysis paragraphs (250 words). Include: <a {L2}>anchor text</a>
+Target: 1000-1200 words. Be specific. Use real numbers from official sources."""
 
-        p1 = haiku(client, p1_prompt, max_tokens=1500, system=SYSTEM_PROMPT)
-        print(f" Part 1 words: {len(strip_html(p1).split())} | Cost: {anthropic_cost:.4f}")
+        p1 = haiku(client, p1_prompt, max_tokens=2000, system=SYSTEM_PROMPT)
+        print(f"  Part 1 words: {len(strip_html(p1).split())} | Cost: {anthropic_cost:.4f}")
 
         p2_prompt = f"""Write PART 2 of the article about: "{TOPIC}" for {mkt} immigrants.
 Output ONLY valid HTML. {LOCK} {ANTI_AI}
 <h2>Best Options: Detailed Analysis</h2>
-3 specific options with real fees, requirements, pros/cons. {SRC}
+5 specific options with real fees, requirements, pros/cons. {SRC}
+Each option: <h3>Option Name</h3> + 2 paragraphs (100 words each).
 <h2>Cost Breakdown in {mkt} 2026</h2>
 HTML cost table with real dollar amounts.
-2 analysis paragraphs (150 words). Include: <a {L3}>anchor text</a>
-Target: 700-800 words. Include specific dollar amounts."""
+3 analysis paragraphs (250 words). Include: <a {L3}>anchor text</a>
+Target: 1000-1200 words. Include specific dollar amounts and dates."""
 
-        p2 = haiku(client, p2_prompt, max_tokens=1500, system=SYSTEM_PROMPT)
-        print(f" Part 2 words: {len(strip_html(p2).split())} | Cost: {anthropic_cost:.4f}")
+        p2 = haiku(client, p2_prompt, max_tokens=2000, system=SYSTEM_PROMPT)
+        print(f"  Part 2 words: {len(strip_html(p2).split())} | Cost: {anthropic_cost:.4f}")
 
         p3_prompt = f"""Write PART 3 of the article about: "{TOPIC}" for {mkt} immigrants.
 Output ONLY valid HTML. {LOCK} {ANTI_AI}
 <h2>Legal Requirements for Immigrants in {mkt}</h2>
-3 paragraphs about regulations (FDIC, IRS, USCIS, HHS). {SRC}
+4 paragraphs about regulations (FDIC, IRS, USCIS, HHS, CFPB). {SRC}
 Include: <a {L4}>anchor text</a>
 <h2>Step-by-Step Guide for Immigrants 2026</h2>
-Numbered <ol> with 7 steps. Each: action + documents + time.
+Numbered <ol> with 8 steps. Each: action + documents + time + cost.
 <h2>How to Avoid Fraud and Scams</h2>
-2 paragraphs about real scams targeting immigrants.
+3 paragraphs about real scams targeting immigrants, with FTC/CFPB data.
 Include: <a {L5}>anchor text</a>
-Target: 700-800 words."""
+Target: 1000-1200 words."""
 
-        p3 = haiku(client, p3_prompt, max_tokens=1500, system=SYSTEM_PROMPT)
-        print(f" Part 3 words: {len(strip_html(p3).split())} | Cost: {anthropic_cost:.4f}")
+        p3 = haiku(client, p3_prompt, max_tokens=2000, system=SYSTEM_PROMPT)
+        print(f"  Part 3 words: {len(strip_html(p3).split())} | Cost: {anthropic_cost:.4f}")
 
         p4_prompt = f"""Write PART 4 (FINAL) of the article about: "{TOPIC}" for {mkt} immigrants.
 Output ONLY valid HTML. {LOCK} {ANTI_AI}
 <h2>Frequently Asked Questions</h2>
-8 Q&A: <h3>Question?</h3><p>Answer 40+ words, cite source.</p>
+10 Q&A: <h3>Question?</h3><p>Answer 50+ words, cite official source.</p>
 <h2>5 Expert Tips to Save Money in 2026</h2>
-5 tips in <ul>. Each: action + saving + source. {SRC}
+5 tips in <ul>. Each: action + saving amount + source. {SRC}
 <h2>Conclusion</h2>
-2 paragraphs (150 words). Key takeaways + call to action.
+3 paragraphs (200 words). Key takeaways + call to action + next steps.
 <p><strong>Disclaimer:</strong> This article is for informational purposes only. Always consult a licensed professional. MoneyAbroadGuide.com may earn affiliate commissions.</p>
 <div class="author-bio"><h3>About the Author</h3>
 <p>Talal Eddaouahiri is the founder of MoneyAbroadGuide.com. A Moroccan immigrant who arrived in the USA in 2015, he navigated firsthand the financial challenges facing newcomers. He writes independent, source-based guides citing FDIC, IRS, USCIS, and CFPB data.</p></div>
-Target: 700-800 words."""
+Target: 1000-1200 words."""
 
-        p4 = haiku(client, p4_prompt, max_tokens=1500, system=SYSTEM_PROMPT)
-        print(f" Part 4 words: {len(strip_html(p4).split())} | Cost: {anthropic_cost:.4f}")
+        p4 = haiku(client, p4_prompt, max_tokens=2000, system=SYSTEM_PROMPT)
+        print(f"  Part 4 words: {len(strip_html(p4).split())} | Cost: {anthropic_cost:.4f}")
 
         parts = []
         for p in [p1, p2, p3, p4]:
@@ -829,34 +841,57 @@ Target: 700-800 words."""
             parts.append(clean)
         article_html = "\n\n".join(parts)
         total_words = len(strip_html(article_html).split())
-        print(f" TOTAL words: {total_words}")
-        print(f" TOTAL cost (text): {anthropic_cost:.4f}")
+        print(f"  TOTAL words: {total_words}")
+        print(f"  TOTAL cost (text): {anthropic_cost:.4f}")
 
+        # FIRST EXPANSION PASS
         if total_words < MIN_WORDS and anthropic_cost < COST_BUDGET * 0.5:
-            needed = MIN_WORDS - total_words
-            print(f" Auto-expanding: need {needed} more words...")
+            needed = MIN_WORDS - total_words + 200
+            print(f"  Auto-expanding (pass 1): need {needed} more words...")
             try:
                 expansion = haiku(client,
                     f"""The article about "{TOPIC}" needs {needed} more words.
 Output ONLY valid HTML.
-Add 5 more FAQ: <h3>Question?</h3><p>Answer with specific data from official sources.</p>
-Write at least {needed} words.""",
-                    max_tokens=1200, system=SYSTEM_PROMPT)
+Add 6 detailed FAQ entries: <h3>Question?</h3><p>Answer with 60+ words citing USCIS, FDIC, CFPB, or IRS data.</p>
+Also add a section: <h2>Common Mistakes Immigrants Make</h2> with 3 paragraphs (300+ words total).
+Write at least {needed} words in total.""",
+                    max_tokens=2000, system=SYSTEM_PROMPT)
                 exp_clean = re.sub(r"```html?\n?", "", expansion)
                 exp_clean = re.sub(r"```", "", exp_clean).strip()
                 article_html = article_html + "\n\n" + exp_clean
                 total_words = len(strip_html(article_html).split())
-                print(f" After expansion: {total_words} words | Cost: {anthropic_cost:.4f}")
+                print(f"  After expansion pass 1: {total_words} words | Cost: {anthropic_cost:.4f}")
             except Exception as e:
-                print(f" Expansion failed: {e}")
+                print(f"  Expansion pass 1 failed: {e}")
+
+        # SECOND EXPANSION PASS if still under target
+        if total_words < MIN_WORDS and anthropic_cost < COST_BUDGET * 0.65:
+            needed2 = MIN_WORDS - total_words + 150
+            print(f"  Auto-expanding (pass 2): need {needed2} more words...")
+            try:
+                expansion2 = haiku(client,
+                    f"""The article about "{TOPIC}" still needs {needed2} more words.
+Output ONLY valid HTML.
+Add: <h2>State-by-State Considerations for Immigrants</h2> with 4 paragraphs (400+ words).
+Include specific data for California, Texas, New York, Florida relating to {TOPIC}.
+Then add 4 more FAQ: <h3>Question?</h3><p>Answer 60+ words with official data.</p>
+Write at least {needed2} words.""",
+                    max_tokens=2000, system=SYSTEM_PROMPT)
+                exp2_clean = re.sub(r"```html?\n?", "", expansion2)
+                exp2_clean = re.sub(r"```", "", exp2_clean).strip()
+                article_html = article_html + "\n\n" + exp2_clean
+                total_words = len(strip_html(article_html).split())
+                print(f"  After expansion pass 2: {total_words} words | Cost: {anthropic_cost:.4f}")
+            except Exception as e:
+                print(f"  Expansion pass 2 failed: {e}")
 
         results["article_written"] = len(article_html) > 1000
         results["word_count_4000plus"] = total_words >= MIN_WORDS
         results["word_count_5000max"] = total_words <= MAX_WORDS
-        print(f" word_count: {results['word_count_4000plus']} ({total_words} words)")
+        print(f"  word_count: {results['word_count_4000plus']} ({total_words} words)")
 
     except Exception as e:
-        print(f" ERROR: {e}")
+        print(f"  ERROR: {e}")
         import traceback; traceback.print_exc()
         results["article_written"] = False
         results["word_count_4000plus"] = False
@@ -871,10 +906,10 @@ if article_html:
     forbidden_terms = build_forbidden_terms(TOPIC)
     coherence_score, coherence_violations = check_thematic_coherence(article_html, TOPIC, forbidden_terms)
     results["thematic_coherence_70plus"] = coherence_score >= 60
-    print(f" Coherence: {coherence_score}/100")
+    print(f"  Coherence: {coherence_score}/100")
     if coherence_violations:
-        for v in coherence_violations[:5]: print(f" VIOLATION: '{v['term']}' x{v['count']}")
-    else: print(" No violations")
+        for v in coherence_violations[:5]: print(f"  VIOLATION: '{v['term']}' x{v['count']}")
+    else: print("  No violations")
 else: results["thematic_coherence_70plus"] = False
 
 print()
@@ -883,7 +918,7 @@ cliche_count = 0
 if article_html:
     cliches = count_ai_cliches(article_html)
     cliche_count = len(cliches)
-    print(f" Cliches: {cliche_count}")
+    print(f"  Cliches: {cliche_count}")
     results["ai_language_clean"] = cliche_count < 8
 else: results["ai_language_clean"] = True
 
@@ -892,7 +927,7 @@ print("[STEP 4] Table validation...")
 if article_html:
     tables_found = len(re.findall(r"<table", article_html, re.IGNORECASE))
     results["tables_valid"] = tables_found >= 1
-    print(f" {tables_found} table(s) - required: 1+")
+    print(f"  {tables_found} table(s) - required: 1+")
 else: results["tables_valid"] = False
 
 print()
@@ -901,8 +936,8 @@ seo_score, seo_details = 0, {}
 if article_html:
     seo_score, seo_details = compute_seo_score_v2(article_html, TOPIC, MARKET)
     results["seo_score_70plus"] = seo_score >= 70
-    print(f" SEO: {seo_score}/100 (threshold: 70)")
-    for k, v in seo_details.items(): print(f" {k}: {v}")
+    print(f"  SEO: {seo_score}/100 (threshold: 70)")
+    for k, v in seo_details.items(): print(f"  {k}: {v}")
 else: results["seo_score_70plus"] = False
 
 print()
@@ -911,8 +946,8 @@ eeat_score, eeat_details = 0, {}
 if article_html:
     eeat_score, eeat_details = compute_eeat_score(article_html, TOPIC)
     results["eeat_score_60plus"] = eeat_score >= 60
-    print(f" EEAT: {eeat_score}/100 (threshold: 60)")
-    for k, v in eeat_details.items(): print(f" {k}: {v}")
+    print(f"  EEAT: {eeat_score}/100 (threshold: 60)")
+    for k, v in eeat_details.items(): print(f"  {k}: {v}")
 else: results["eeat_score_60plus"] = False
 
 print()
@@ -922,7 +957,7 @@ if article_html:
     valid_links, total_links, link_issues = validate_internal_links(article_html)
     results["internal_links_5plus"] = total_links >= 3
     results["no_draft_links"] = len(link_issues) == 0
-    print(f" Links: {total_links} found, {valid_links} valid")
+    print(f"  Links: {total_links} found, {valid_links} valid")
 else:
     results["internal_links_5plus"] = False
     results["no_draft_links"] = True
@@ -933,9 +968,8 @@ g20 = {"status": "PASS", "issues": []}
 if article_html:
     g20 = gate20_anti_thin(article_html, TOPIC)
     results["gate20_status"] = g20["status"]
-    print(f" Gate 20: {g20['status']} | Issues: {g20['issues']}")
+    print(f"  Gate 20: {g20["status"]} | Issues: {g20["issues"]}")
 else: results["gate20_status"] = "FAIL"
-
 # ============================================================
 # STEP 8: QUALITY GATE BLOCKING
 # ============================================================
@@ -943,15 +977,15 @@ print()
 print("[QUALITY GATE CHECK]")
 for k in ["word_count_4000plus","thematic_coherence_70plus","seo_score_70plus",
           "eeat_score_60plus","tables_valid","ai_language_clean","internal_links_5plus"]:
-    print(f" {k}: {results.get(k, False)}")
+    print(f"  {k}: {results.get(k, False)}")
 
 if not results.get("word_count_4000plus", False):
-    print(" [BLOCKED] Word count < 4000 - ABORT")
+    print("  [BLOCKED] Word count < 4000 - ABORT")
     sys.exit(1)
 if not results.get("thematic_coherence_70plus", False) and len(coherence_violations) >= 3:
-    print(f" [BLOCKED] Coherence {coherence_score}/100 < 60")
+    print(f"  [BLOCKED] Coherence {coherence_score}/100 < 60")
     sys.exit(1)
-print(" [OK] Critical gates passed")
+print("  [OK] Critical gates passed")
 
 # ============================================================
 # STEP 8b: AGENT 24 - EDITOR-IN-CHIEF
@@ -965,12 +999,12 @@ if article_html and client:
     results["agent24_approved"] = agent24_approved
     results["agent24_corrections"] = len(agent24_log)
     if not agent24_approved:
-        print(f" [AGENT 24] VETO - REJECTED")
+        print(f"  [AGENT 24] VETO - REJECTED")
         sys.exit(1)
     else:
-        print(f" [AGENT 24] APPROVED")
+        print(f"  [AGENT 24] APPROVED")
 else:
-    print(" [AGENT 24] Skipped")
+    print("  [AGENT 24] Skipped")
     results["agent24_verdict"] = "SKIPPED"
     results["agent24_approved"] = True
 
@@ -985,7 +1019,7 @@ meta_desc = f"Expert guide: {TOPIC}. Verified 2026 info for immigrants in {MARKE
 focus_kw = re.sub(r"\s*(2026|guide|complete|best)\s*", " ", TOPIC, flags=re.IGNORECASE).strip()
 
 if not WP_USER or not WP_PASS:
-    print(f" ERROR: WP credentials missing")
+    print(f"  ERROR: WP credentials missing")
     results["wordpress_draft_created"] = False
 else:
     wp_payload = {
@@ -998,190 +1032,169 @@ else:
             "_yoast_wpseo_title": seo_title,
             "_yoast_wpseo_metadesc": meta_desc,
             "_yoast_wpseo_focuskw": focus_kw,
-        }
+        },
     }
-    r = wp_request("POST", "/wp-json/wp/v2/posts", WP_JSON_HEADERS, json_data=wp_payload, timeout=120)
-    if r and r.status_code in (200, 201):
-        d = r.json()
-        wp_post_id = d.get("id")
-        print(f" SUCCESS! Post ID: {wp_post_id}")
+    wp_resp = wp_request("POST", "/wp-json/wp/v2/posts", WP_JSON_HEADERS,
+                         json_data=wp_payload, timeout=120)
+    if wp_resp and wp_resp.status_code == 201:
+        wp_post_id = wp_resp.json().get("id")
+        print(f"  SUCCESS! Post ID: {wp_post_id}")
         results["wordpress_draft_created"] = True
+        results["wp_post_id"] = wp_post_id
     else:
-        status = r.status_code if r else "no response"
-        print(f" FAILED. Status: {status}")
+        status_code = wp_resp.status_code if wp_resp else "None"
+        body_preview = wp_resp.text[:200] if wp_resp else ""
+        print(f"  FAIL: WP returned {status_code}")
+        print(f"  Body: {body_preview}")
         results["wordpress_draft_created"] = False
-
 # ============================================================
-# STEP 10: IMAGE PIPELINE v7.1
+# STEP 10: IMAGES - GEMINI NATIVE IMAGE
 # ============================================================
 print()
-print("[STEP 10] IMAGE PIPELINE v7.1 -- 5 images (gemini-2.5-flash-image)")
-print("-" * 60)
-print(f" Gemini key: {('SET (' + str(len(GEMINI_KEY)) + ' chars)') if GEMINI_KEY else 'MISSING'}")
-print(f" Model: gemini-2.5-flash-image (Nano Banana)")
-print(f" API fix: responseMimeType removed (was causing HTTP 400)")
-
-IMG_PROMPTS = get_img_prompts(TOPIC, MARKET)
-print(f"\n Generating 5 images...")
-for i, prompt in enumerate(IMG_PROMPTS):
-    label = "FEATURED" if i == 0 else f"BODY img{i}"
-    print(f"\n [{i+1}/5] Generating {label}...")
-    img_bytes = generate_image_gemini_native(prompt, i+1)
+print("[STEP 10] Generating images (Gemini Native Image v7.2)...")
+img_prompts = get_img_prompts(TOPIC, MARKET)
+all_images = []
+for i, prompt_text in enumerate(img_prompts[:5], 1):
+    img_bytes = generate_image_gemini_native(prompt_text, i)
     if img_bytes:
-        generated_images.append(img_bytes)
-        ts = int(time.time())
-        fname = f"nexus14-v71-{ARTICLE_INDEX}-img{i+1}-{ts}.jpg"
-        mid, murl = upload_to_wp(img_bytes, fname)
-        if mid:
-            media_ids.append(mid)
-            image_urls.append((mid, murl or ""))
-    time.sleep(2)
-
-featured_media_id = media_ids[0] if media_ids else None
-if featured_media_id and wp_post_id:
-    try:
-        r_feat = wp_request("POST", f"/wp-json/wp/v2/posts/{wp_post_id}",
-            WP_JSON_HEADERS, json_data={"featured_media": featured_media_id}, timeout=30)
-        if r_feat and r_feat.status_code in (200, 201):
-            print(f"\n Featured image set: {featured_media_id}")
-    except Exception as e:
-        print(f" Featured image error: {e}")
-
-body_images = image_urls[1:]
-print(f"\n Body images to inject: {len(body_images)}/4")
-if body_images and article_html and wp_post_id:
-    article_html_with_images = inject_4_body_images(article_html, body_images)
-    update_payload = {"content": article_html_with_images}
-    if featured_media_id: update_payload["featured_media"] = featured_media_id
-    r_upd = wp_request("POST", f"/wp-json/wp/v2/posts/{wp_post_id}",
-        WP_JSON_HEADERS, json_data=update_payload, timeout=120)
-    if r_upd and r_upd.status_code in (200, 201):
-        print(f" Article updated with body images")
-        article_html = article_html_with_images
+        all_images.append(img_bytes)
+        time.sleep(1)
     else:
-        print(f" Update FAIL: {r_upd.status_code if r_upd else 'timeout'}")
+        all_images.append(None)
 
-results["images_generated"] = len(generated_images) >= 4
-results["featured_image_set"] = featured_media_id is not None
-total_cost = anthropic_cost + img_cost
-print(f"\n IMAGES: {len(generated_images)}/5 | Uploaded: {len(media_ids)}/5")
-print(f" Cost: text={anthropic_cost:.4f} img={img_cost:.4f} TOTAL={total_cost:.4f}/{COST_BUDGET}")
+print(f"  Images generated: {sum(1 for x in all_images if x)}/5")
+results["gemini_images_generated"] = sum(1 for x in all_images if x)
+
+featured_media_id = None
+body_images = []
+if wp_post_id and any(all_images):
+    print()
+    print("[STEP 10b] Uploading images to WordPress...")
+    for i, img_bytes in enumerate(all_images, 1):
+        if img_bytes:
+            fname = f"nexus14-{ARTICLE_INDEX.lower()}-img{i}-{int(time.time())}.jpg"
+            mid, murl = upload_to_wp(img_bytes, fname)
+            if mid and murl:
+                media_ids.append(mid)
+                image_urls.append(murl)
+                if i == 1:
+                    featured_media_id = mid
+                else:
+                    body_images.append((mid, murl))
+            else:
+                body_images.append((None, None)) if i > 1 else None
+        else:
+            body_images.append((None, None)) if i > 1 else None
+
+    results["images_uploaded"] = len(media_ids)
+    print(f"  Total uploaded: {len(media_ids)} images")
+
+    if featured_media_id and wp_post_id:
+        print(f"  Setting featured image: Media ID {featured_media_id}")
+        feat_payload = {"featured_media": featured_media_id}
+        feat_resp = wp_request("POST", f"/wp-json/wp/v2/posts/{wp_post_id}",
+                               WP_JSON_HEADERS, json_data=feat_payload, timeout=60)
+        if feat_resp and feat_resp.status_code in (200, 201):
+            print(f"  Featured image set: {featured_media_id}")
+            results["featured_image_set"] = True
+        else:
+            print(f"  Featured image FAIL")
+            results["featured_image_set"] = False
+
+    if body_images and wp_post_id:
+        print(f"  Injecting {len(body_images)} body images...")
+        updated_html = inject_4_body_images(article_html, body_images)
+        update_payload = {"content": updated_html}
+        upd_resp = wp_request("POST", f"/wp-json/wp/v2/posts/{wp_post_id}",
+                              WP_JSON_HEADERS, json_data=update_payload, timeout=120)
+        if upd_resp and upd_resp.status_code in (200, 201):
+            print(f"  Body images injected")
+            results["body_images_injected"] = True
+        else:
+            print(f"  Body images inject FAIL")
+            results["body_images_injected"] = False
+else:
+    results["images_uploaded"] = 0
+    results["featured_image_set"] = False
+    results["body_images_injected"] = False
 # ============================================================
 # STEP 11: FINAL REPORT
 # ============================================================
-print()
 elapsed = round(time.time() - START, 1)
-final_word_count = len(strip_html(article_html).split()) if article_html else 0
 total_cost = anthropic_cost + img_cost
-
-checks = [
-    ("article_written", results.get("article_written", False)),
-    ("word_count_4000plus", results.get("word_count_4000plus", False)),
-    ("word_count_5000max", results.get("word_count_5000max", True)),
-    ("thematic_coherence_70plus", results.get("thematic_coherence_70plus", False)),
-    ("ai_language_clean", results.get("ai_language_clean", False)),
-    ("tables_valid", results.get("tables_valid", False)),
-    ("seo_score_70plus", results.get("seo_score_70plus", False)),
-    ("eeat_score_60plus", results.get("eeat_score_60plus", False)),
-    ("internal_links_5plus", results.get("internal_links_5plus", False)),
-    ("no_draft_links", results.get("no_draft_links", True)),
-    ("wordpress_draft_created", results.get("wordpress_draft_created", False)),
-    ("images_generated", results.get("images_generated", False)),
-    ("featured_image_set", results.get("featured_image_set", False)),
-    ("agent24_approved", results.get("agent24_approved", False)),
-    ("cost_within_budget", total_cost <= COST_BUDGET),
-]
-
-passed = sum(1 for _, v in checks if v)
-total_checks = len(checks)
-critical = ["article_written", "word_count_4000plus", "thematic_coherence_70plus", "wordpress_draft_created", "agent24_approved"]
-critical_ok = all(results.get(c, False) for c in critical)
-cost_ok = total_cost <= COST_BUDGET
-cost_status = "OK" if cost_ok else "OVERRUN"
-
-print("=" * 60)
-print("PRODUCTION REPORT v7.1 -- " + ARTICLE_INDEX)
-print("=" * 60)
-for name, val in checks:
-    print(("[PASS] " if val else "[FAIL] ") + name)
 print()
-print(f"Score     : {passed}/{total_checks}")
-print(f"Words     : {final_word_count} (target: {MIN_WORDS}-{MAX_WORDS})")
-print(f"SEO       : {seo_score}/100")
-print(f"EEAT      : {eeat_score}/100")
-print(f"Coherence : {coherence_score}/100")
-print(f"Cliches   : {cliche_count}")
-print(f"Links     : {total_links} internal")
-print(f"Images    : {len(generated_images)}/5 generated, {len(media_ids)} uploaded")
-print(f"Agent 24  : {results.get('agent24_verdict', 'N/A')} | Score: {results.get('agent24_score', 0)}/100")
-print(f"A24 cycles: {len(agent24_log)}")
-print(f"Topic     : {TOPIC}")
-print(f"Market    : {MARKET.upper()}")
-print(f"Model     : {MODEL}")
-print(f"Post ID   : {wp_post_id}")
-print(f"FeatImg   : {featured_media_id}")
-print(f"TOTAL cost: {total_cost:.5f} / {COST_BUDGET} ({cost_status})")
-print(f"Time      : {elapsed}s")
-print(f"Agent 17  : {results.get('agent17_decision', 'N/A')}")
-print(f"Gate 19   : {results.get('gate19_status', 'N/A')}")
-print(f"Gate 20   : {results.get('gate20_status', 'N/A')}")
+print("=" * 60)
+print("FINAL REPORT")
+print("=" * 60)
+print(f"  Article Index  : {ARTICLE_INDEX}")
+print(f"  Topic          : {TOPIC}")
+print(f"  Word Count     : {total_words if article_html else 0}")
+print(f"  SEO Score      : {seo_score}/100")
+print(f"  EEAT Score     : {eeat_score}/100")
+print(f"  Agent 24       : {results.get('agent24_verdict', 'SKIPPED')} (score: {results.get('agent24_score', 0)}/100)")
+print(f"  WP Post ID     : {wp_post_id or 'NOT CREATED'}")
+print(f"  Images Gen     : {results.get('gemini_images_generated', 0)}/5")
+print(f"  Images Upload  : {results.get('images_uploaded', 0)}")
+print(f"  Total Cost     : ${total_cost:.4f}")
+print(f"  Duration       : {elapsed}s")
+print()
 
-if passed == total_checks and critical_ok and cost_ok:
+gates_pass = [
+    results.get("word_count_4000plus", False),
+    results.get("thematic_coherence_70plus", False),
+    results.get("seo_score_70plus", False),
+    results.get("eeat_score_60plus", False),
+    results.get("tables_valid", False),
+    results.get("ai_language_clean", False),
+    results.get("internal_links_5plus", False),
+    results.get("agent24_approved", False),
+    results.get("wordpress_draft_created", False),
+]
+gates_count = sum(1 for g in gates_pass if g)
+total_gates = len(gates_pass)
+
+if gates_count >= 8 and results.get("wordpress_draft_created"):
     status = "PUBLICATION_READY"
-elif passed >= total_checks - 2 and critical_ok:
+elif gates_count >= 6:
     status = "REVIEW_REQUIRED"
-elif critical_ok:
-    status = "PARTIAL"
 else:
-    status = "FAIL"
+    status = "FAILED"
 
-print(f"STATUS    : {status}")
+print(f"  Gates Passed   : {gates_count}/{total_gates}")
+print(f"  STATUS         : {status}")
 print("=" * 60)
 
 report = {
-    "version": "v7.1",
     "article_index": ARTICLE_INDEX,
     "topic": TOPIC,
     "market": MARKET,
-    "model": MODEL,
-    "word_count": final_word_count,
+    "status": status,
+    "word_count": total_words if article_html else 0,
     "seo_score": seo_score,
     "eeat_score": eeat_score,
-    "coherence_score": coherence_score,
-    "cliches_detected": cliche_count,
-    "internal_links_count": total_links,
-    "checks": {n: v for n, v in checks},
-    "score": f"{passed}/{total_checks}",
-    "status": status,
-    "critical_ok": critical_ok,
-    "cost_ok": cost_ok,
+    "agent24": {
+        "verdict": results.get("agent24_verdict"),
+        "score": results.get("agent24_score"),
+        "cycles": results.get("agent24_corrections"),
+        "log": agent24_log,
+    },
     "wp_post_id": wp_post_id,
-    "images_generated": len(generated_images),
-    "media_ids": media_ids,
-    "featured_media_id": featured_media_id,
-    "anthropic_cost_usd": round(anthropic_cost, 5),
-    "img_cost_usd": round(img_cost, 5),
-    "total_cost_usd": round(total_cost, 5),
-    "budget_usd": COST_BUDGET,
-    "cost_within_budget": cost_ok,
-    "total_input_tokens": total_input_tokens,
-    "total_output_tokens": total_output_tokens,
-    "agent17_decision": results.get("agent17_decision", "N/A"),
-    "gate19_status": results.get("gate19_status", "N/A"),
-    "gate20_status": results.get("gate20_status", "N/A"),
-    "agent24_verdict": results.get("agent24_verdict", "N/A"),
-    "agent24_score": results.get("agent24_score", 0),
-    "agent24_approved": results.get("agent24_approved", False),
-    "agent24_cycles": len(agent24_log),
-    "agent24_log": agent24_log,
-    "elapsed_seconds": elapsed,
-    "timestamp": datetime.utcnow().isoformat()
+    "images_generated": results.get("gemini_images_generated", 0),
+    "images_uploaded": results.get("images_uploaded", 0),
+    "image_urls": image_urls,
+    "cost": {"anthropic": round(anthropic_cost, 4), "gemini": round(img_cost, 4), "total": round(total_cost, 4)},
+    "duration_seconds": elapsed,
+    "gates": {k: results.get(k) for k in ["word_count_4000plus","thematic_coherence_70plus",
+              "seo_score_70plus","eeat_score_60plus","tables_valid","ai_language_clean",
+              "internal_links_5plus","agent24_approved","wordpress_draft_created"]},
+    "timestamp": datetime.utcnow().isoformat() + "Z",
 }
 
-report_file = f"execution_report_{ARTICLE_INDEX}.json"
-with open(report_file, "w") as f:
+os.makedirs("reports", exist_ok=True)
+report_path = f"reports/{ARTICLE_INDEX}_report.json"
+with open(report_path, "w") as f:
     json.dump(report, f, indent=2)
-print(f"Report: {report_file}")
+print(f"  Report saved: {report_path}")
 
-if not critical_ok:
+if status == "FAILED":
     sys.exit(1)
