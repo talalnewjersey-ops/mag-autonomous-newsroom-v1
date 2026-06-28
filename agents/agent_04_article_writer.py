@@ -233,8 +233,8 @@ def _build_digest(written_sections: List[str]) -> str:
     stated -- so the writer references rather than re-derives them."""
     if not written_sections:
         return ""
-    entities, numbers, covered = [], [], []
-    seen_ent, seen_num = set(), set()
+    entities, numbers, covered, rules = [], [], [], []
+    seen_ent, seen_num, seen_rule = set(), set(), set()
     for sec in written_sections:
         mt = re.search(r"^#{1,3}\s+(.+)$", sec, re.MULTILINE)
         if mt:
@@ -269,6 +269,18 @@ def _build_digest(written_sections: List[str]) -> str:
             if n and n.lower() not in seen_num and any(c.isdigit() for c in n):
                 seen_num.add(n.lower())
                 numbers.append(n)
+        # SPRINT 2 (RCA-004 b): capture KEY RULES/REFERENCES already explained so the
+        # writer does not RE-EXPLAIN them (legal citations, grouped large numbers).
+        for m in re.finditer(r"\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*\s+Act\b(?:[^.\n]{0,40}?(?:R\.?S\.?C\.?|S\.?C\.?)\s*\d{4})?|(?:R\.?S\.?C\.?|S\.?C\.?)\s*\d{4}[^.\n]{0,12})", sec):
+            ref = re.sub(r"\s+", " ", m.group(0).strip())[:60]
+            if ref and ref.lower() not in seen_rule:
+                seen_rule.add(ref.lower())
+                rules.append(ref)
+        for m in re.finditer(r"\b\d{1,3}(?:[ ,]\d{3})+\b", sec):
+            n2 = re.sub(r"\s+", " ", m.group(0).strip())
+            if n2 and n2.lower() not in seen_num:
+                seen_num.add(n2.lower())
+                numbers.append(n2)
     parts = []
     if covered:
         parts.append("SECTIONS ALREADY WRITTEN (do not re-introduce these topics):\n"
@@ -279,6 +291,9 @@ def _build_digest(written_sections: List[str]) -> str:
     if numbers:
         parts.append("FACTS/NUMBERS ALREADY STATED (do NOT repeat these figures):\n"
                      + ", ".join(numbers[:25]))
+    if rules:
+        parts.append("RULES/REFERENCES ALREADY EXPLAINED (do NOT re-define or re-explain; only refer back):\n"
+                     + ", ".join(rules[:15]))
     digest = "\n".join(parts)
     if len(digest) > _DIGEST_MAX_TOTAL_CHARS:
         digest = digest[:_DIGEST_MAX_TOTAL_CHARS].rsplit(",", 1)[0] + " \u2026"
@@ -367,10 +382,12 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
                 "\n\n=== CONTEXT - ALREADY COVERED EARLIER IN THIS ARTICLE ===\n"
                 + digest
                 + "\n=== END CONTEXT ===\n"
-                "INSTRUCTION: This section must ADD NEW information. Do NOT re-introduce, "
-                "re-define, or re-list the entities, sources, or figures above - refer to "
-                "them briefly if needed and move forward. Avoid reusing the same opening "
-                "sentence patterns as earlier sections.\n"
+                "INSTRUCTION: The entities, facts, numbers and rules/references listed above "
+                "have ALREADY been explained earlier in this article. Do NOT give their "
+                "definition or explanation a second time. If you must mention one, refer back "
+                "in half a sentence (e.g. \"as noted above, CDIC insures...\") and move on. "
+                "This section must ADD NEW information; do not re-derive what is already covered. "
+                "Avoid reusing the same opening sentence patterns as earlier sections.\n"
             )
         try:
             sec_text = await _call_claude(api_key,
