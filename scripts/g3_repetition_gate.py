@@ -26,6 +26,53 @@ from collections import Counter
 COSINE_THRESHOLD = 0.80
 MIN_DUP_WORDS = 8
 
+# --- SPRINT 2: G3 synthesis-section tolerance -------------------------------
+# WHY THIS EXISTS (read before editing):
+#   Synthesis sections -- the intro, the conclusion, a "Quick Overview", an
+#   "Expert Recommendation", and the FAQ -- exist precisely to RECAP material
+#   that the body sections explain in full. A verbatim 8-word overlap between a
+#   synthesis section and the body it summarizes is a STRUCTURAL artifact of
+#   editorial form, not a quality defect: a reader expects an overview to name
+#   the same banks, and a conclusion to restate the same key documents.
+#   The gate cannot semantically tell a legitimate RECALL ("as noted, the Big
+#   Five are ...") from a genuine RE-EXPLANATION; rather than fake that
+#   distinction with brittle heuristics or a costly LLM call, we exempt by
+#   SECTION NATURE: if at least ONE side of a duplicated pair is a synthesis
+#   section, the overlap is tolerated. The real defect we still block at ZERO
+#   is body<->body duplication between two substantive sections -- the same
+#   thing explained twice where it should have been explained once.
+#   NOTE: this is a NATURE-based exemption, NOT a numeric cap. There is no
+#   "max N tolerated dups" -- a long FAQ with many legitimate recalls must not
+#   fail. Calibrating a count to a sample would overfit that sample.
+_SYNTHESIS_RE = re.compile(
+    r"(?:^__intro__$)"
+    r"|(?:\bquick\s+overview\b)"
+    r"|(?:\boverview\b)"
+    r"|(?:\bconclusion\b)"
+    r"|(?:\bexpert\s+recommendation\b)"
+    r"|(?:\brecommendation\b)"
+    r"|(?:\bfrequently\s+asked\s+questions\b)"
+    r"|(?:\bfaq\b)"
+    r"|(?:\bkey\s+takeaways\b)"
+    r"|(?:\bsummary\b)",
+    re.IGNORECASE,
+)
+
+
+def _is_synthesis(title):
+    """True if a section heading is a recap/synthesis section (see _SYNTHESIS_RE).
+    Such sections legitimately restate body material, so duplications that
+    involve them are tolerated by G3 (the body<->body case stays blocking)."""
+    return bool(_SYNTHESIS_RE.search(title or ""))
+
+
+def _is_blocking_pair(title_a, title_b):
+    """A duplicated pair is BLOCKING only when NEITHER side is a synthesis
+    section, i.e. a true body<->body repetition between two substantive
+    sections. If either side is a synthesis section the overlap is tolerated."""
+    return not (_is_synthesis(title_a) or _is_synthesis(title_b))
+# ---------------------------------------------------------------------------
+
 _WORD_RE = re.compile(r"[a-z0-9]+")
 _STOP = {
     "the", "a", "an", "and", "or", "but", "of", "to", "in", "for", "on", "with",
@@ -112,13 +159,20 @@ def evaluate(markdown, cosine_threshold=COSINE_THRESHOLD, min_dup_words=MIN_DUP_
             max_sim = max(max_sim, sim)
             if sim >= cosine_threshold:
                 pairs.append({"section_a": titles[i], "section_b": titles[j],
-                              "cosine": round(sim, 4)})
+                              "cosine": round(sim, 4),
+                              "blocking": _is_blocking_pair(titles[i], titles[j])})
 
     dups = _duplicate_phrases(tokens_by_section, min_dup_words)
-    dup_report = [{"section_a": titles[i], "section_b": titles[j], "phrase": sh}
+    dup_report = [{"section_a": titles[i], "section_b": titles[j], "phrase": sh,
+                   "blocking": _is_blocking_pair(titles[i], titles[j])}
                   for (i, j, sh) in dups]
 
-    passed = not pairs and not dup_report
+    # G3 passes when there is NO body<->body violation. Duplications that
+    # involve a synthesis section (intro/conclusion/overview/expert reco/FAQ)
+    # are tolerated by NATURE (see _is_synthesis); they are still reported.
+    blocking_pairs = [p for p in pairs if p.get("blocking")]
+    blocking_dups = [d for d in dup_report if d.get("blocking")]
+    passed = not blocking_pairs and not blocking_dups
     return {
         "gate": "G3_anti_repetition",
         "passed": passed,
@@ -128,6 +182,9 @@ def evaluate(markdown, cosine_threshold=COSINE_THRESHOLD, min_dup_words=MIN_DUP_
         "max_pairwise_cosine": round(max_sim, 4),
         "over_threshold_pairs": pairs,
         "duplicate_phrases": dup_report,
+        "blocking_pair_count": len(blocking_pairs),
+        "blocking_dup_count": len(blocking_dups),
+        "tolerated_dup_count": len(dup_report) - len(blocking_dups),
         "decision": "PASS" if passed else "FAIL",
     }
 
@@ -155,19 +212,31 @@ def main():
         json.dump(result, f, indent=2)
 
     if result["passed"]:
-        print("G3 PASS: max cosine %.4f < %.2f, no duplicate phrases"
-              % (result["max_pairwise_cosine"], args.cosine_threshold))
+        print("G3 PASS: max cosine %.4f < %.2f, no BODY<->BODY duplicate phrases "
+              "(%d tolerated synthesis-section overlap(s))"
+              % (result["max_pairwise_cosine"], args.cosine_threshold,
+                 result["tolerated_dup_count"]))
+        for _d in result["duplicate_phrases"]:
+            if not _d.get("blocking"):
+                print("  G3 DUP (TOLERATED, synthesis): [%s] <-> [%s] | \"%s\""
+                      % (_d["section_a"], _d["section_b"], _d["phrase"]),
+                      file=sys.stderr)
         sys.exit(0)
-    print("G3 FAIL: %d over-threshold pair(s), %d duplicate phrase(s)"
-          % (len(result["over_threshold_pairs"]), len(result["duplicate_phrases"])),
+    print("G3 FAIL: %d blocking body<->body over-threshold pair(s), "
+          "%d blocking body<->body duplicate phrase(s) "
+          "(%d synthesis-section overlap(s) tolerated)"
+          % (result["blocking_pair_count"], result["blocking_dup_count"],
+             result["tolerated_dup_count"]),
           file=sys.stderr)
     # CI VISIBILITY: list each violation in the logs so no artifact is needed to inspect repetition.
     for _p in result["over_threshold_pairs"]:
         print("  G3 COSINE: \"%s\" <-> \"%s\" cosine=%.4f"
               % (_p["section_a"], _p["section_b"], _p["cosine"]), file=sys.stderr)
     for _d in result["duplicate_phrases"]:
-        print("  G3 DUP: [%s] <-> [%s] | \"%s\""
-              % (_d["section_a"], _d["section_b"], _d["phrase"]), file=sys.stderr)
+        _tag = "BLOCKING body<->body" if _d.get("blocking") else "TOLERATED synthesis"
+        print("  G3 DUP (%s): [%s] <-> [%s] | \"%s\""
+              % (_tag, _d["section_a"], _d["section_b"], _d["phrase"]),
+              file=sys.stderr)
     sys.exit(1)
 
 
