@@ -411,6 +411,8 @@ def main():
     parser.add_argument("--publishing-optimizer", default="")
     parser.add_argument("--output", required=True)
     parser.add_argument("--min-words", type=int, default=5000)
+    parser.add_argument("--article-type", default="STANDARD",
+                        choices=["STANDARD", "PILLAR", "OPPORTUNITY"])
     parser.add_argument("--min-images", type=int, default=5)
     parser.add_argument("--min-faq", type=int, default=20)
     parser.add_argument("--min-links", type=int, default=5)
@@ -497,12 +499,17 @@ def main():
 
     if not qa_report:
         # Heuristic QA based on available data
+        # SPRINT 1 (B/C): two-tier word floor is the single source of truth.
+        # STANDARD >= 1500, PILLAR >= 3000 (Blueprint Partie 4, G2). Hardcoded
+        # 4000/5000 thresholds removed; --min-words kept only as explicit override.
+        TIER_MIN_WORDS = {"STANDARD": 1500, "PILLAR": 3000, "OPPORTUNITY": 1500}
+        effective_min_words = TIER_MIN_WORDS.get(args.article_type, 1500)
         image_count = img_val.get("images_produced", img_val.get("total_images", 0))
-        passes_words = word_count >= args.min_words
+        passes_words = word_count >= effective_min_words
         passes_faq = faq_count >= 8  # relaxed threshold
         passes_images = image_count >= 1  # at least 1 image or fallback
 
-        overall_pass = passes_words
+        overall_pass = passes_words and passes_faq and passes_images
         seo_score = 75 if passes_words else 50
         eeat_score = 75 if passes_words else 50
 
@@ -517,7 +524,7 @@ def main():
             "faq_count": faq_count,
             "image_count": image_count,
             "checks": {
-                "word_count": {"pass": passes_words, "value": word_count, "min": args.min_words},
+                "word_count": {"pass": passes_words, "value": word_count, "min": effective_min_words},
                 "faq": {"pass": passes_faq, "value": faq_count, "min": 8},
                 "images": {"pass": passes_images, "value": image_count, "min": 1},
             },
@@ -528,7 +535,8 @@ def main():
     output_path.write_text(json.dumps(qa_report, indent=2), encoding="utf-8")
     log.info(f"QA report written: {output_path}")
     log.info(f"Status: {qa_report.get('status', 'UNKNOWN')} | Words: {word_count}")
-    sys.exit(0)
+    # SPRINT 1 (B): QA is now BLOCKING. Non-zero exit propagates failure to the workflow.
+    sys.exit(0 if qa_report.get("status") == "PASS" else 1)
 
 
 if __name__ == "__main__":

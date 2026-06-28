@@ -263,6 +263,30 @@ jobs:
               ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
             }
 
+            # SPRINT 1 (B/C): Phase 12-13 QA + Chief Editor are now BLOCKING gates.
+            echo "[${ARTICLE_NUM}] Phase 12-13: QA + Chief Editor [BLOCKING]"
+            python -m agents.agent_12_quality_assurance \
+              --article "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_report.json" \
+              --image-validation "${ARTICLE_DIR}/agent_10/image_validation_report.json" \
+              --output "${ARTICLE_DIR}/agent_12/qa_report.json" \
+              --article-type "${ARTICLE_TYPE}" \
+              --min-words ${{ env.MIN_WORD_COUNT }} --min-images ${{ env.MIN_IMAGES }} \
+              --min-faq ${{ env.MIN_FAQ }} --min-links ${{ env.MIN_INTERNAL_LINKS }} \
+              --min-sources ${{ env.MIN_SOURCES }} --min-case-studies 2 \
+              --seo-threshold 85 --eeat-threshold ${{ env.EEAT_SCORE_THRESHOLD }} || {
+              echo "GATE QA FAIL: Agent 12 blocked article ${ARTICLE_NUM}"
+              ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
+            }
+            python -m agents.agent_13_chief_editor \
+              --qa-report "${ARTICLE_DIR}/agent_12/qa_report.json" \
+              --article "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --article-type "${ARTICLE_TYPE}" \
+              --output "${ARTICLE_DIR}/agent_13/editor_report.json" || {
+              echo "GATE EDITOR FAIL: Agent 13 blocked article ${ARTICLE_NUM}"
+              ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
+            }
+
             # FIX 4: Production Gate -- 3 gates only
             echo "[${ARTICLE_NUM}] Production Gate (3-gate minimum)"
             python scripts/production_gate.py \
@@ -277,23 +301,6 @@ jobs:
               ARTICLES_FAILED=$((ARTICLES_FAILED+1))
               echo "Article ${ARTICLE_NUM} FAILED production gate"
             }
-
-            # Phase 12-13: QA + Chief Editor (informational -- never blocks)
-            echo "[${ARTICLE_NUM}] Phase 12-13: QA + Chief Editor (informational)"
-            python -m agents.agent_12_quality_assurance \
-              --article "${ARTICLE_DIR}/agent_04/article_draft.md" \
-              --wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_report.json" \
-              --image-validation "${ARTICLE_DIR}/agent_10/image_validation_report.json" \
-              --output "${ARTICLE_DIR}/agent_12/qa_report.json" \
-              --min-words ${{ env.MIN_WORD_COUNT }} --min-images ${{ env.MIN_IMAGES }} \
-              --min-faq ${{ env.MIN_FAQ }} --min-links ${{ env.MIN_INTERNAL_LINKS }} \
-              --min-sources ${{ env.MIN_SOURCES }} --min-case-studies 2 \
-              --seo-threshold 85 --eeat-threshold ${{ env.EEAT_SCORE_THRESHOLD }} || true
-            python -m agents.agent_13_chief_editor \
-              --qa-report "${ARTICLE_DIR}/agent_12/qa_report.json" \
-              --article "${ARTICLE_DIR}/agent_04/article_draft.md" \
-              --output "${ARTICLE_DIR}/agent_13/editor_report.json" || true
-
           done
 
           echo "===== BATCH COMPLETE: ${ARTICLES_PRODUCED} produced, ${ARTICLES_FAILED} failed ====="

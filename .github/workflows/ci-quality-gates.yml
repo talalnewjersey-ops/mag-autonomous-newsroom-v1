@@ -1,0 +1,59 @@
+# CI Quality Gates — durable guard rail (compile + YAML lint + regression tests).
+# Runs on every PR to main, on push to main, on the sprint-1 branch, and on manual
+# dispatch. Blocks any change that reintroduces a non-blocking sys.exit(0) or a
+# hardcoded word floor (RCA-005 regression guard).
+
+name: CI Quality Gates
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+      - sprint-1-arret-hemorragie
+  workflow_dispatch:
+
+jobs:
+  quality-gates:
+    name: compile + yaml lint + regression tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pyyaml
+
+      - name: py_compile edited agents
+        run: |
+          python -m py_compile agents/agent_12_quality_assurance.py
+          python -m py_compile agents/agent_13_chief_editor.py
+
+      - name: YAML lint (yaml.safe_load parse)
+        run: |
+          python - <<'PY'
+          import yaml
+          for f in [".github/workflows/production_v2.yml",
+                    ".github/workflows/production_daily_v3.yml"]:
+              with open(f) as fh:
+                  yaml.safe_load(fh)
+              print("OK: " + f + " parses as valid YAML")
+          PY
+
+      - name: Regression tests (RCA-005 proof) -- API key intentionally unset
+        env:
+          ANTHROPIC_API_KEY: ""
+        run: |
+          pytest -v tests/test_sprint1_blocking_gates.py
+
+      - name: Workflow blocking semantics test
+        run: |
+          chmod +x tests/test_workflow_blocking.sh
+          bash tests/test_workflow_blocking.sh
