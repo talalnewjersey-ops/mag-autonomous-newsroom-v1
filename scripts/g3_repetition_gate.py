@@ -34,6 +34,17 @@ _STOP = {
 }
 
 
+# SPRINT 2 (metric): blocks that legitimately occur once (disclaimer, author box) are
+# excluded from this gate -- repeating a legal disclaimer is not a quality defect, and
+# the writer (agent_04) already emits them exactly once. URLs/CTAs are likewise dropped.
+# This only changes what the gate MEASURES; it never licenses duplicated body prose.
+_BOILERPLATE_HEADINGS = (
+    "disclaimer", "about the author", "affiliate disclosure", "author box",
+    "legal disclaimer", "compliance disclaimer",
+)
+_URL_RE = re.compile(r"https?://\S+|www\.\S+|\bmoneyabroadguide\.com\S*", re.IGNORECASE)
+
+
 def _split_sections(markdown):
     """Split an article into (title, body) sections on H2 (## ) boundaries.
     Front-matter and the H1 title block are ignored."""
@@ -43,6 +54,8 @@ def _split_sections(markdown):
     sections = []
     for p in parts[1:]:  # parts[0] is intro/preamble before first H2
         line, _, rest = p.partition("\n")
+        if line.strip().lower().lstrip("0123456789. )").strip() in _BOILERPLATE_HEADINGS:
+            continue  # skip blocks meant to appear once
         sections.append((line.strip(), rest.strip()))
     # include the preamble (intro) as its own pseudo-section if non-trivial
     if parts and len(parts[0].split()) > 30:
@@ -51,6 +64,7 @@ def _split_sections(markdown):
 
 
 def _tokens(text):
+    text = _URL_RE.sub(" ", text)  # drop URLs/CTA links: not editorial prose
     return [w for w in _WORD_RE.findall(text.lower()) if w not in _STOP]
 
 
