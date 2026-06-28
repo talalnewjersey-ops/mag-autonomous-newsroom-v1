@@ -209,6 +209,82 @@ async def _call_claude(api_key: str, prompt: str, system: str = None, max_tokens
         data = json.loads(resp.read().decode("utf-8"))
     return data["content"][0]["text"]
 
+# SPRINT 2 (B / RCA-004): cumulative-context digest.
+# Deterministic, no LLM (cost ~0). Bounded reinjection so the section prompt never
+# explodes the context window or cost. Lists ENTITIES and FIGURES already cited so
+# the writer does not re-introduce/re-explain them (drives down diffuse repetition / DRI).
+_DIGEST_DOMAIN_TERMS = {
+    "bank", "banks", "account", "accounts", "newcomer", "newcomers", "immigrant",
+    "immigrants", "canada", "usa", "credit", "money", "financial",
+    "moneyabroadguide", "canadian",
+}
+_DIGEST_ENT_BLACKLIST = {
+    "quick", "answer", "most", "arriving", "according", "without", "opening",
+    "you", "your", "this", "the", "why", "need", "required", "documents",
+    "proof", "address", "best", "guide", "processing", "immediately",
+}
+_DIGEST_MAX_TOTAL_CHARS = 1400  # hard cap on reinjected digest (~350 tokens max)
+
+
+def _build_digest(written_sections: List[str]) -> str:
+    """Bounded, deterministic summary of what was already written, to reinject
+    into the next section prompt (RCA-004). Surfaces, in priority order:
+    covered section titles, named entities already cited, and figures already
+    stated -- so the writer references rather than re-derives them."""
+    if not written_sections:
+        return ""
+    entities, numbers, covered = [], [], []
+    seen_ent, seen_num = set(), set()
+    for sec in written_sections:
+        mt = re.search(r"^#{1,3}\s+(.+)$", sec, re.MULTILINE)
+        if mt:
+            covered.append(mt.group(1).strip()[:80])
+        body = re.sub(r"^#{1,6}\s+.*$", "", sec, flags=re.MULTILINE)
+        for sentence in re.split(r"(?<=[.!?])\s+", body):
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+            for m in re.finditer(r"\b([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,4}|[A-Z]{2,6})\b", sentence):
+                ent = m.group(0).strip()
+                is_acr = bool(re.fullmatch(r"[A-Z]{2,6}", ent))
+                words = ent.split()
+                if m.start() == 0 and len(words) == 1 and not is_acr:
+                    continue
+                if not is_acr and len(words) < 2:
+                    continue
+                base = words[0].lower()
+                if base in _DIGEST_ENT_BLACKLIST or base in _DIGEST_DOMAIN_TERMS:
+                    continue
+                meaningful = [w for w in words
+                              if w.lower() not in _DIGEST_DOMAIN_TERMS
+                              and w.lower() not in _DIGEST_ENT_BLACKLIST]
+                if not meaningful and not is_acr:
+                    continue
+                key = ent.lower()
+                if key not in seen_ent and len(ent) > 2:
+                    seen_ent.add(key)
+                    entities.append(ent)
+        for m in re.finditer(r"(\$\s?\d[\d,.]*|\d[\d,.]*\s?(?:%|days?|business days?|months?|years?|pieces?\s+of\s+id|pieces?|CAD|USD))", sec, re.IGNORECASE):
+            n = re.sub(r"\s+", " ", m.group(0).strip())
+            if n and n.lower() not in seen_num and any(c.isdigit() for c in n):
+                seen_num.add(n.lower())
+                numbers.append(n)
+    parts = []
+    if covered:
+        parts.append("SECTIONS ALREADY WRITTEN (do not re-introduce these topics):\n"
+                     + "; ".join(covered[:8]))
+    if entities:
+        parts.append("ENTITIES/SOURCES ALREADY CITED (reference, do NOT re-explain):\n"
+                     + ", ".join(entities[:25]))
+    if numbers:
+        parts.append("FACTS/NUMBERS ALREADY STATED (do NOT repeat these figures):\n"
+                     + ", ".join(numbers[:25]))
+    digest = "\n".join(parts)
+    if len(digest) > _DIGEST_MAX_TOTAL_CHARS:
+        digest = digest[:_DIGEST_MAX_TOTAL_CHARS].rsplit(",", 1)[0] + " \u2026"
+    return digest
+
+
 INTERNAL_LINKS = {
     "canada_newcomer": [
         "[Best Bank Account for Newcomers to Canada](https://moneyabroadguide.com/best-bank-account-newcomers-canada/)",
@@ -277,9 +353,23 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     for i, section in enumerate(sections[:max_sections]):
         h2 = section.get("h2", f"Section {i+1}")
         sec_target = 600 if tier["tier"] == "PILLAR" else (500 if tier["tier"] == "STANDARD" else 400)
+        # SPRINT 2 (B / RCA-004): cumulative context. Include the intro (where
+        # entities/figures are first planted) plus all prior sections.
+        digest = _build_digest([intro] + written_sections)
+        digest_block = ""
+        if digest:
+            digest_block = (
+                "\n\n=== CONTEXT - ALREADY COVERED EARLIER IN THIS ARTICLE ===\n"
+                + digest
+                + "\n=== END CONTEXT ===\n"
+                "INSTRUCTION: This section must ADD NEW information. Do NOT re-introduce, "
+                "re-define, or re-list the entities, sources, or figures above - refer to "
+                "them briefly if needed and move forward. Avoid reusing the same opening "
+                "sentence patterns as earlier sections.\n"
+            )
         try:
             sec_text = await _call_claude(api_key,
-                f"Write section ## {i+1}. {h2} for: {title} | {keyword}\n{sec_target}-{sec_target+150}w. Concise. No padding.",
+                f"Write section ## {i+1}. {h2} for: {title} | {keyword}\n{sec_target}-{sec_target+150}w. Concise. No padding.{digest_block}",
                 SYSTEM_PROMPT, max_tokens=1800)
             written_sections.append(sec_text)
             await asyncio.sleep(0.2)
