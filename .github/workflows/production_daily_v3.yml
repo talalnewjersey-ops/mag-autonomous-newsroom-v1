@@ -6,11 +6,13 @@
 name: NEXUS-14 Daily Production v3
 
 on:
-  schedule:
-    # Batch 1 - 06:00 UTC every day
-    - cron: '0 6 * * *'
-    # Batch 2 - 13:00 UTC every day
-    - cron: '0 13 * * *'
+  # SPRINT 1 (A): scheduled crons neutralized to stop dual-pipeline bleeding.
+  # Only production_v2.yml remains scheduled. workflow_dispatch kept for manual runs.
+  # schedule:
+  #    # Batch 1 - 06:00 UTC every day
+  #    - cron: '0 6 * * *'
+  #    # Batch 2 - 13:00 UTC every day
+  #    - cron: '0 13 * * *'
   workflow_dispatch:
     inputs:
       batch:
