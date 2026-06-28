@@ -318,7 +318,7 @@ Return ONLY a valid JSON array with fields: keyword, market, search_volume, keyw
         # NEXUS-14 P1 FIX: model now read from env with new model family.
         # Primary + fallback, deduplicated so the same model is never tried twice.
         primary = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
-        fallback = os.getenv("ANTHROPIC_MODEL_FALLBACK", "claude-sonnet-4-5")
+        fallback = os.getenv("ANTHROPIC_MODEL_FALLBACK", "claude-sonnet-4-6")
         models_to_try = list(dict.fromkeys([primary, fallback]))
         last_error = None
         async with aiohttp.ClientSession() as session:

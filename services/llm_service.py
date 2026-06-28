@@ -105,7 +105,7 @@ class LLMService:
             models_to_try = [model]
         else:
             primary = os.getenv("ANTHROPIC_MODEL", self.models[LLMProvider.ANTHROPIC])
-            fallback = os.getenv("ANTHROPIC_MODEL_FALLBACK", "claude-sonnet-4-5")
+            fallback = os.getenv("ANTHROPIC_MODEL_FALLBACK", "claude-sonnet-4-6")
             models_to_try = list(dict.fromkeys([primary, fallback]))
 
         messages = [{"role": "user", "content": prompt}]

@@ -178,7 +178,7 @@ def _validate_tier_standard(article: str, word_count: int, tier: dict) -> list:
 SYSTEM_PROMPT = """You are Chief Content Officer for MoneyAbroadGuide.com, a licensed financial information platform.
 GLOBAL RULE: Maximum quality per dollar. No unnecessary padding. Satisfy search intent with authoritative financial content.
 Focus: newcomers, immigrants, expats in Canada and USA.
-MANDATORY STRUCTURE: comparison table | expert recommendation | compliance disclaimer | author box (Talal Eddaouahiri, founder MoneyAbroadGuide.com)
+ARTICLE-LEVEL STRUCTURE (each written ONCE, in its own dedicated end section — NEVER repeat inside body sections): comparison table | expert recommendation | compliance disclaimer | author box (Talal Eddaouahiri, founder MoneyAbroadGuide.com)
 EEAT REQUIREMENTS (Google E-E-A-T compliance — achieve score 90+/100):
 - EXPERTISE: Include technical terminology (FINTRAC, OSFI, FCAC, CRA, IFHP, provincial health authority, MSB, regulation, compliance, licensed)
   Include regulatory references with specific act names, regulatory bodies, official statistics
@@ -188,12 +188,15 @@ EEAT REQUIREMENTS (Google E-E-A-T compliance — achieve score 90+/100):
   Step-by-step processes, detailed how-to procedures, specific timelines and costs
 - AUTHORITY: Reference government sources (Canada.ca, CRA, IRCC, provincial health), link to official documents
   Cite industry reports, regulatory publications, licensed provider comparisons
-- TRUST: Include compliance disclaimer, regulatory notices, disclaimer about not being financial advice
-  Reference official regulatory oversight, mention licensed/regulated providers
+- TRUST: Reference official regulatory oversight and mention licensed/regulated providers.
+  (The compliance disclaimer and the author box are written ONCE, only in their dedicated end sections — do NOT insert them into body sections.)
 OUTPUT: Raw Markdown only — articles must score 85+ on EEAT validation."""
 
 async def _call_claude(api_key: str, prompt: str, system: str = None, max_tokens: int = 5000,
-                       model: str = "claude-haiku-4-5") -> str:
+                       model: str = None) -> str:
+    # SPRINT 2 (RCA-003): writer now uses Claude Sonnet for quality. Overridable via env.
+    if model is None:
+        model = os.getenv("ARTICLE_WRITER_MODEL", "claude-sonnet-4-6")
     import urllib.request
     payload_dict = {"model": model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]}
     if system:
@@ -205,6 +208,113 @@ async def _call_claude(api_key: str, prompt: str, system: str = None, max_tokens
     with urllib.request.urlopen(req, timeout=300) as resp:
         data = json.loads(resp.read().decode("utf-8"))
     return data["content"][0]["text"]
+
+# SPRINT 2 (B / RCA-004): cumulative-context digest.
+# Deterministic, no LLM (cost ~0). Bounded reinjection so the section prompt never
+# explodes the context window or cost. Lists ENTITIES and FIGURES already cited so
+# the writer does not re-introduce/re-explain them (drives down diffuse repetition / DRI).
+_DIGEST_DOMAIN_TERMS = {
+    "bank", "banks", "account", "accounts", "newcomer", "newcomers", "immigrant",
+    "immigrants", "canada", "usa", "credit", "money", "financial",
+    "moneyabroadguide", "canadian",
+}
+_DIGEST_ENT_BLACKLIST = {
+    "quick", "answer", "most", "arriving", "according", "without", "opening",
+    "you", "your", "this", "the", "why", "need", "required", "documents",
+    "proof", "address", "best", "guide", "processing", "immediately",
+}
+_DIGEST_MAX_TOTAL_CHARS = 1400  # hard cap on reinjected digest (~350 tokens max)
+
+
+def _build_digest(written_sections: List[str]) -> str:
+    """Bounded, deterministic summary of what was already written, to reinject
+    into the next section prompt (RCA-004). Surfaces, in priority order:
+    covered section titles, named entities already cited, and figures already
+    stated -- so the writer references rather than re-derives them."""
+    if not written_sections:
+        return ""
+    entities, numbers, covered, rules, offers = [], [], [], [], []
+    seen_ent, seen_num, seen_rule, seen_offer = set(), set(), set(), set()
+    for sec in written_sections:
+        mt = re.search(r"^#{1,3}\s+(.+)$", sec, re.MULTILINE)
+        if mt:
+            covered.append(mt.group(1).strip()[:80])
+        body = re.sub(r"^#{1,6}\s+.*$", "", sec, flags=re.MULTILINE)
+        for sentence in re.split(r"(?<=[.!?])\s+", body):
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+            for m in re.finditer(r"\b([A-Z][A-Za-z0-9]+(?:\s+[A-Z][A-Za-z0-9]+){0,4}|[A-Z]{2,6})\b", sentence):
+                ent = m.group(0).strip()
+                is_acr = bool(re.fullmatch(r"[A-Z]{2,6}", ent))
+                words = ent.split()
+                if m.start() == 0 and len(words) == 1 and not is_acr:
+                    continue
+                if not is_acr and len(words) < 2:
+                    continue
+                base = words[0].lower()
+                if base in _DIGEST_ENT_BLACKLIST or base in _DIGEST_DOMAIN_TERMS:
+                    continue
+                meaningful = [w for w in words
+                              if w.lower() not in _DIGEST_DOMAIN_TERMS
+                              and w.lower() not in _DIGEST_ENT_BLACKLIST]
+                if not meaningful and not is_acr:
+                    continue
+                key = ent.lower()
+                if key not in seen_ent and len(ent) > 2:
+                    seen_ent.add(key)
+                    entities.append(ent)
+        for m in re.finditer(r"(\$\s?\d[\d,.]*|\d[\d,.]*\s?(?:%|days?|business days?|months?|years?|pieces?\s+of\s+id|pieces?|CAD|USD))", sec, re.IGNORECASE):
+            n = re.sub(r"\s+", " ", m.group(0).strip())
+            if n and n.lower() not in seen_num and any(c.isdigit() for c in n):
+                seen_num.add(n.lower())
+                numbers.append(n)
+        # SPRINT 2 (RCA-004 b): capture KEY RULES/REFERENCES already explained so the
+        # writer does not RE-EXPLAIN them (legal citations, grouped large numbers).
+        for m in re.finditer(r"\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)*\s+Act\b(?:[^.\n]{0,40}?(?:R\.?S\.?C\.?|S\.?C\.?)\s*\d{4})?|(?:R\.?S\.?C\.?|S\.?C\.?)\s*\d{4}[^.\n]{0,12})", sec):
+            ref = re.sub(r"\s+", " ", m.group(0).strip())[:60]
+            if ref and ref.lower() not in seen_rule:
+                seen_rule.add(ref.lower())
+                rules.append(ref)
+        for m in re.finditer(r"\b\d{1,3}(?:[ ,]\d{3})+\b", sec):
+            n2 = re.sub(r"\s+", " ", m.group(0).strip())
+            if n2 and n2.lower() not in seen_num:
+                seen_num.add(n2.lower())
+                numbers.append(n2)
+        # SPRINT 2 (a'): capture PRODUCT/OFFER NAMES already described (e.g. "Signature No
+        # Limit Banking", "StartRight Program", "NewStart", cross-border) so the writer
+        # names them once and does not re-describe the same offer in a later section.
+        for m in re.finditer(r"\b([A-Z][A-Za-z0-9]+(?:\s+(?:No|[A-Z][A-Za-z0-9]+)){1,4}\s+(?:Program|Account|Banking|Plan|Offer|Package|Bundle|Chequing|Savings))\b", sec):
+            off = re.sub(r"\s+", " ", m.group(0).strip())[:60]
+            if off and off.lower() not in seen_offer:
+                seen_offer.add(off.lower())
+                offers.append(off)
+        for m in re.finditer(r"(?i)\b(StartRight|NewStart|Signature No Limit|cross[- ]border banking)\b", sec):
+            off = re.sub(r"\s+", " ", m.group(0).strip())
+            if off and off.lower() not in seen_offer:
+                seen_offer.add(off.lower())
+                offers.append(off)
+    parts = []
+    if covered:
+        parts.append("SECTIONS ALREADY WRITTEN (do not re-introduce these topics):\n"
+                     + "; ".join(covered[:8]))
+    if entities:
+        parts.append("ENTITIES/SOURCES ALREADY CITED (reference, do NOT re-explain):\n"
+                     + ", ".join(entities[:25]))
+    if numbers:
+        parts.append("FACTS/NUMBERS ALREADY STATED (do NOT repeat these figures):\n"
+                     + ", ".join(numbers[:25]))
+    if rules:
+        parts.append("RULES/REFERENCES ALREADY EXPLAINED (do NOT re-define or re-explain; only refer back):\n"
+                     + ", ".join(rules[:15]))
+    if offers:
+        parts.append("PRODUCT/OFFER NAMES ALREADY DESCRIBED (name them, do NOT re-describe the same offer):\n"
+                     + ", ".join(offers[:20]))
+    digest = "\n".join(parts)
+    if len(digest) > _DIGEST_MAX_TOTAL_CHARS:
+        digest = digest[:_DIGEST_MAX_TOTAL_CHARS].rsplit(",", 1)[0] + " \u2026"
+    return digest
+
 
 INTERNAL_LINKS = {
     "canada_newcomer": [
@@ -260,13 +370,18 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     else:
         topic_key = "default"
     links = INTERNAL_LINKS[topic_key]
-    links_block = "\n".join(f"- {l}" for l in links[:tier["min_links"]])
+    _links_sel = links[:tier["min_links"]]
+    links_block = "\n".join(f"- {l}" for l in _links_sel)
+    # SPRINT 2: split internal links so intro and Expert Recommendation never cite the SAME link verbatim.
+    _half = max(1, (len(_links_sel) + 1) // 2)
+    links_intro_block = "\n".join(f"- {l}" for l in _links_sel[:_half])
+    links_expert_block = "\n".join(f"- {l}" for l in _links_sel[_half:]) or links_intro_block
 
     logger.info(f"Writing {tier['tier']} article: {title} (target: {target_words}w)")
 
     intro = await _call_claude(api_key,
         f"Write introduction: {title} | {keyword} | {market} | Tier: {tier['tier']}\n"
-        f"300-400w. Quick Answer box (40-60w). 2-3 internal links:\n{links_block[:300]}\nBe concise.",
+        f"300-400w. Quick Answer box (40-60w). 2-3 internal links:\n{links_intro_block[:300]}\nBe concise.",
         SYSTEM_PROMPT, max_tokens=1200)
 
     written_sections = []
@@ -274,9 +389,26 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     for i, section in enumerate(sections[:max_sections]):
         h2 = section.get("h2", f"Section {i+1}")
         sec_target = 600 if tier["tier"] == "PILLAR" else (500 if tier["tier"] == "STANDARD" else 400)
+        # SPRINT 2 (B / RCA-004): cumulative context. Include the intro (where
+        # entities/figures are first planted) plus all prior sections.
+        digest = _build_digest([intro] + written_sections)
+        digest_block = ""
+        if digest:
+            digest_block = (
+                "\n\n=== CONTEXT - ALREADY COVERED EARLIER IN THIS ARTICLE ===\n"
+                + digest
+                + "\n=== END CONTEXT ===\n"
+                "INSTRUCTION: The entities, facts, numbers and rules/references listed above "
+                "have ALREADY been explained earlier in this article. Do NOT give their "
+                "definition or explanation a second time. If you must mention one, refer back "
+                "in half a sentence (e.g. \"as noted above, CDIC insures...\") and move on. "
+                "This section must ADD NEW information; do not re-derive what is already covered. "
+                "If a product/offer above is relevant, refer to it BY NAME without repeating its full description. "
+                "Avoid reusing the same opening sentence patterns as earlier sections.\n"
+            )
         try:
             sec_text = await _call_claude(api_key,
-                f"Write section ## {i+1}. {h2} for: {title} | {keyword}\n{sec_target}-{sec_target+150}w. Concise. No padding.",
+                f"Write section ## {i+1}. {h2} for: {title} | {keyword}\n{sec_target}-{sec_target+150}w. Concise. No padding. BODY ONLY: no compliance disclaimer, no author bio, no brand slogan, no 'not financial advice' notice, no internal-link CTA in this section — those are written elsewhere exactly once.{digest_block}",
                 SYSTEM_PROMPT, max_tokens=1800)
             written_sections.append(sec_text)
             await asyncio.sleep(0.2)
@@ -294,7 +426,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
         SYSTEM_PROMPT, max_tokens=n_cases * 500)
 
     expert_section = await _call_claude(api_key,
-        f"Write Expert Recommendation section for: {keyword} ({market}). H2. Top pick + runner-up. 300-400w. 2 internal links from: {links_block[:200]}",
+        f"Write Expert Recommendation section for: {keyword} ({market}). H2. Top pick + runner-up. 300-400w. 2 internal links from: {links_expert_block[:200]}",
         SYSTEM_PROMPT, max_tokens=1000)
 
     min_faqs = tier["min_faqs"]

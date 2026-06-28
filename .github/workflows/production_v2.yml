@@ -197,6 +197,18 @@ jobs:
               echo "Agent 04 FAILED"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
             }
 
+            # SPRINT 2 (C): DRI metric [REPORTING, non-blocking] -- diffuse repetition proof.
+            python scripts/dri_metric.py \
+              --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --output "${ARTICLE_DIR}/agent_04/dri_report.json" || true
+            # SPRINT 2 (C): Gate G3 anti-repetition [BLOCKING] -- after writer, before QA.
+            echo "[${ARTICLE_NUM}] Phase 4.5: Anti-Repetition Gate G3 [BLOCKING]"
+            python scripts/g3_repetition_gate.py \
+              --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --output "${ARTICLE_DIR}/agent_04/g3_report.json" || {
+              echo "GATE G3 FAIL: repetition detected in article ${ARTICLE_NUM}"
+              ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
+            }
             # Phase 5: Fact Checking [BLOCKING GATE A]
             echo "[${ARTICLE_NUM}] Phase 5: Fact Checking [GATE A]"
             python -m agents.agent_05_fact_checker \
