@@ -233,8 +233,8 @@ def _build_digest(written_sections: List[str]) -> str:
     stated -- so the writer references rather than re-derives them."""
     if not written_sections:
         return ""
-    entities, numbers, covered, rules = [], [], [], []
-    seen_ent, seen_num, seen_rule = set(), set(), set()
+    entities, numbers, covered, rules, offers = [], [], [], [], []
+    seen_ent, seen_num, seen_rule, seen_offer = set(), set(), set(), set()
     for sec in written_sections:
         mt = re.search(r"^#{1,3}\s+(.+)$", sec, re.MULTILINE)
         if mt:
@@ -281,6 +281,19 @@ def _build_digest(written_sections: List[str]) -> str:
             if n2 and n2.lower() not in seen_num:
                 seen_num.add(n2.lower())
                 numbers.append(n2)
+        # SPRINT 2 (a'): capture PRODUCT/OFFER NAMES already described (e.g. "Signature No
+        # Limit Banking", "StartRight Program", "NewStart", cross-border) so the writer
+        # names them once and does not re-describe the same offer in a later section.
+        for m in re.finditer(r"\b([A-Z][A-Za-z0-9]+(?:\s+(?:No|[A-Z][A-Za-z0-9]+)){1,4}\s+(?:Program|Account|Banking|Plan|Offer|Package|Bundle|Chequing|Savings))\b", sec):
+            off = re.sub(r"\s+", " ", m.group(0).strip())[:60]
+            if off and off.lower() not in seen_offer:
+                seen_offer.add(off.lower())
+                offers.append(off)
+        for m in re.finditer(r"(?i)\b(StartRight|NewStart|Signature No Limit|cross[- ]border banking)\b", sec):
+            off = re.sub(r"\s+", " ", m.group(0).strip())
+            if off and off.lower() not in seen_offer:
+                seen_offer.add(off.lower())
+                offers.append(off)
     parts = []
     if covered:
         parts.append("SECTIONS ALREADY WRITTEN (do not re-introduce these topics):\n"
@@ -294,6 +307,9 @@ def _build_digest(written_sections: List[str]) -> str:
     if rules:
         parts.append("RULES/REFERENCES ALREADY EXPLAINED (do NOT re-define or re-explain; only refer back):\n"
                      + ", ".join(rules[:15]))
+    if offers:
+        parts.append("PRODUCT/OFFER NAMES ALREADY DESCRIBED (name them, do NOT re-describe the same offer):\n"
+                     + ", ".join(offers[:20]))
     digest = "\n".join(parts)
     if len(digest) > _DIGEST_MAX_TOTAL_CHARS:
         digest = digest[:_DIGEST_MAX_TOTAL_CHARS].rsplit(",", 1)[0] + " \u2026"
@@ -387,6 +403,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
                 "definition or explanation a second time. If you must mention one, refer back "
                 "in half a sentence (e.g. \"as noted above, CDIC insures...\") and move on. "
                 "This section must ADD NEW information; do not re-derive what is already covered. "
+                "If a product/offer above is relevant, refer to it BY NAME without repeating its full description. "
                 "Avoid reusing the same opening sentence patterns as earlier sections.\n"
             )
         try:
