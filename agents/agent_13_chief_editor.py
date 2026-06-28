@@ -344,6 +344,8 @@ def main():
     parser.add_argument("--article", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--mode", default="article", help="article or global-audit")
+    parser.add_argument("--article-type", default="STANDARD",
+                        choices=["STANDARD", "PILLAR", "OPPORTUNITY"])
     args = parser.parse_args()
 
     output_path = Path(args.output)
@@ -392,14 +394,18 @@ def main():
         qa_status = qa_report.get("status", "PASS")
         qa_score = qa_report.get("overall_score", qa_report.get("seo_score", 75))
         passes_qa = qa_status in ("PASS", "PASS_WITH_WARNINGS")
-        passes_words = word_count >= 5000
+        # SPRINT 1 (B/C): two-tier word floor (STANDARD>=1500, PILLAR>=3000).
+        # Hardcoded 5000 removed (Blueprint Partie 4, G2).
+        TIER_MIN_WORDS = {"STANDARD": 1500, "PILLAR": 3000, "OPPORTUNITY": 1500}
+        effective_min_words = TIER_MIN_WORDS.get(args.article_type, 1500)
+        passes_words = word_count >= effective_min_words
 
+        # SPRINT 1 (B): QA verdict is authoritative. READY_TO_PUBLISH requires
+        # passing QA AND meeting the word floor. Word count alone NEVER approves
+        # publication (was the RCA-005 defect: elif passes_words -> READY_TO_PUBLISH).
         if passes_qa and passes_words:
             decision = "READY_TO_PUBLISH"
             verdict = "APPROVE"
-        elif passes_words:
-            decision = "READY_TO_PUBLISH"
-            verdict = "APPROVE_WITH_NOTES"
         else:
             decision = "NEEDS_REVISION"
             verdict = "REQUEST_REVISION"
@@ -421,7 +427,8 @@ def main():
     output_path.write_text(json.dumps(editor_report, indent=2), encoding="utf-8")
     log.info(f"Editor report written: {output_path}")
     log.info(f"Decision: {editor_report.get('decision', 'UNKNOWN')}")
-    sys.exit(0)
+    # SPRINT 1 (B): Chief Editor is now BLOCKING. Non-zero exit on non-publish.
+    sys.exit(0 if editor_report.get("approved_for_publication") else 1)
 
 
 if __name__ == "__main__":
