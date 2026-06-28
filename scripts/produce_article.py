@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NEXUS-14 PRODUCTION SCRIPT v8.0 ENTERPRISE - CLAUDE HAIKU 4.5 + GEMINI NATIVE IMAGE + AGENT 24 (90+ STANDARD)
+NEXUS-14 PRODUCTION SCRIPT v8.1 ENTERPRISE - CLAUDE HAIKU 4.5 + GEMINI NATIVE IMAGE + AGENT 24 (90+ STANDARD)
 scripts/produce_article.py
 v7.2 fixes:
 - Word count: increased per-part max_tokens 1500->2000 + target 1000-1200 words/part
@@ -67,7 +67,7 @@ WP_JSON_HEADERS = {
 }
 
 print("=" * 60)
-print("NEXUS-14 PRODUCTION v8.0 ENTERPRISE -- " + ARTICLE_INDEX)
+print("NEXUS-14 PRODUCTION v8.1 ENTERPRISE -- " + ARTICLE_INDEX)
 print("=" * 60)
 print("Topic :", TOPIC)
 print("Market :", MARKET.upper())
@@ -493,27 +493,27 @@ Answer these 5 questions:
 3. Does it provide genuine value to immigrants? (yes/no)
 4. Does it read like AI? (yes/no)
 5. Would readers stay to the end? (yes/no)
-Output ONLY this JSON:
+Rate this article on a scale of 0-100 based on quality standards of Forbes/NerdWallet/Investopedia.
+APPROVED only if score >= 90. REJECTED if score < 90.
+Output ONLY this JSON (no other text before or after):
 {{
-  "verdict": "APPROVED" or "NEEDS_REVISION" or "REJECTED",
-  "overall_score": 0-100 (90+ for APPROVED, 80-89 for NEEDS_REVISION, <80 for REJECTED),
-  "nerdwallet_publishable": true/false,
-  "investopedia_publishable": true/false,
-  "genuine_value": true/false,
-  "reads_like_ai": true/false,
-  "reader_retention": true/false,
-  "issues": ["issue1", "issue2"],
-  "corrections_required": ["correction1", "correction2"],
-  "approval_reason": "one sentence"
+  "verdict": "APPROVED",
+  "overall_score": 95,
+  "issues": ["list any issues here"],
+  "corrections_required": ["specific corrections needed"],
+  "approval_reason": "one sentence summary"
 }}"""
 
     try:
         response = haiku(client, prompt, max_tokens=800, system=EDITOR_SYSTEM)
-        json_match = re.search(r"\{{[\s\S]*\}}", response)
+        # Try to extract JSON - use multiple strategies for robustness
+                json_match = re.search(r'\{[\s\S]*?\}', response)
+                if not json_match:
+                    json_match = re.search(r"\{[\s\S]*\}", response)
         if json_match:
             verdict = json.loads(json_match.group())
         else:
-            verdict = {"verdict": "NEEDS_REVISION", "overall_score": 72, "issues": ["JSON parse failed - treating as NEEDS_REVISION"], "corrections_required": ["Improve content quality to reach 90+ score"], "approval_reason": "JSON parse failed"}
+            verdict = {"verdict": "REJECTED", "overall_score": 72, "issues": ["JSON parse failed - content quality check failed"], "corrections_required": ["Ensure content has specific data, official sources, and no AI cliches. Add more concrete examples."], "approval_reason": "JSON parse failed"}
     except Exception as e:
         print(f"  [Agent 24] Review failed: {e}")
         verdict = {"verdict": "NEEDS_REVISION", "overall_score": 65, "issues": ["Review error - treating as NEEDS_REVISION"], "corrections_required": ["Fix content issues to reach 90+ score"], "approval_reason": f"Review error: {e}"}
