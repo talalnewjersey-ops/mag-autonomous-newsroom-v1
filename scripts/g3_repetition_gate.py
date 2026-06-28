@@ -147,6 +147,13 @@ def main():
     print("G3 FAIL: %d over-threshold pair(s), %d duplicate phrase(s)"
           % (len(result["over_threshold_pairs"]), len(result["duplicate_phrases"])),
           file=sys.stderr)
+    # CI VISIBILITY: list each violation in the logs so no artifact is needed to inspect repetition.
+    for _p in result["over_threshold_pairs"]:
+        print("  G3 COSINE: \"%s\" <-> \"%s\" cosine=%.4f"
+              % (_p["section_a"], _p["section_b"], _p["cosine"]), file=sys.stderr)
+    for _d in result["duplicate_phrases"]:
+        print("  G3 DUP: [%s] <-> [%s] | \"%s\""
+              % (_d["section_a"], _d["section_b"], _d["phrase"]), file=sys.stderr)
     sys.exit(1)
 
 
