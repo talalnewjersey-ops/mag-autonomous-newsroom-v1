@@ -49,6 +49,17 @@ _DOMAIN = {
 }
 
 
+# SPRINT 2 (metric): structural blocks that are SUPPOSED to appear once (disclaimer, author box)
+# are excluded from the repetition metric. This measures editorial prose, NOT boilerplate.
+# NOTE: this only affects MEASUREMENT. The writer itself must still emit them exactly once
+# (enforced at the source in agent_04); filtering here never licenses duplicated boilerplate.
+_BOILERPLATE_HEADINGS = (
+    "disclaimer", "about the author", "affiliate disclosure", "author box",
+    "legal disclaimer", "compliance disclaimer",
+)
+_URL_RE = re.compile(r"https?://\S+|www\.\S+|\bmoneyabroadguide\.com\S*", re.IGNORECASE)
+
+
 def _split_sections(markdown):
     md = re.sub(r"^---\n.*?\n---\n", "", markdown, count=1, flags=re.DOTALL)
     parts = re.split(r"(?m)^##\s+", md)
@@ -56,12 +67,17 @@ def _split_sections(markdown):
     if parts and len(parts[0].split()) > 30:
         sections.append(parts[0].strip())
     for p in parts[1:]:
-        _, _, rest = p.partition("\n")
+        head, _, rest = p.partition("\n")
+        # Skip blocks that are supposed to appear once (disclaimer, author box):
+        # measuring their repetition is meaningless. Source enforces single emission.
+        if head.strip().lower().lstrip("0123456789. )").strip() in _BOILERPLATE_HEADINGS:
+            continue
         sections.append(rest.strip())
     return sections
 
 
 def _content_tokens(text):
+    text = _URL_RE.sub(" ", text)  # drop URLs/CTA links: not editorial prose
     return [w for w in _WORD_RE.findall(text.lower())
             if w not in _STOP and w not in _DOMAIN and len(w) > 2]
 
