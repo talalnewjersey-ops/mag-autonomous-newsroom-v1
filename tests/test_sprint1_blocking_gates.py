@@ -42,7 +42,7 @@ def _run_agent(module, args, env_extra=None):
 
 
 def _write_article(path, words, faqs):
-    """Build a Markdown article with a given word count and FAQ question count.
+    r"""Build a Markdown article with a given word count and FAQ question count.
     FAQ questions are H3 lines ending in '?' (matches agent regex ^### .+\?)."""
     lines = ["title: Test Article", "", "# Test Article", ""]
     body_words = max(words - 4, 0)
