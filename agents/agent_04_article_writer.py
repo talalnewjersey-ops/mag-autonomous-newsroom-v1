@@ -193,7 +193,10 @@ EEAT REQUIREMENTS (Google E-E-A-T compliance — achieve score 90+/100):
 OUTPUT: Raw Markdown only — articles must score 85+ on EEAT validation."""
 
 async def _call_claude(api_key: str, prompt: str, system: str = None, max_tokens: int = 5000,
-                       model: str = "claude-haiku-4-5") -> str:
+                       model: str = None) -> str:
+    # SPRINT 2 (RCA-003): writer now uses Claude Sonnet for quality. Overridable via env.
+    if model is None:
+        model = os.getenv("ARTICLE_WRITER_MODEL", "claude-sonnet-4-6")
     import urllib.request
     payload_dict = {"model": model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]}
     if system:
