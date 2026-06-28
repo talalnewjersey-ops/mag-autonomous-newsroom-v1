@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NEXUS-14 PRODUCTION SCRIPT v8.1 ENTERPRISE - CLAUDE HAIKU 4.5 + GEMINI NATIVE IMAGE + AGENT 24 (90+ STANDARD)
+NEXUS-14 PRODUCTION SCRIPT v8.2 ENTERPRISE - CLAUDE HAIKU 4.5 + GEMINI NATIVE IMAGE + AGENT 24 (90+ STANDARD)
 scripts/produce_article.py
 v7.2 fixes:
 - Word count: increased per-part max_tokens 1500->2000 + target 1000-1200 words/part
@@ -67,7 +67,7 @@ WP_JSON_HEADERS = {
 }
 
 print("=" * 60)
-print("NEXUS-14 PRODUCTION v8.1 ENTERPRISE -- " + ARTICLE_INDEX)
+print("NEXUS-14 PRODUCTION v8.2 ENTERPRISE -- " + ARTICLE_INDEX)
 print("=" * 60)
 print("Topic :", TOPIC)
 print("Market :", MARKET.upper())
@@ -506,10 +506,7 @@ Output ONLY this JSON (no other text before or after):
 
     try:
         response = haiku(client, prompt, max_tokens=800, system=EDITOR_SYSTEM)
-        # Try to extract JSON - use multiple strategies for robustness
-                json_match = re.search(r'\{[\s\S]*?\}', response)
-                if not json_match:
-                    json_match = re.search(r"\{[\s\S]*\}", response)
+        json_match = re.search(r"\{[\s\S]*\}", response)
         if json_match:
             verdict = json.loads(json_match.group())
         else:
