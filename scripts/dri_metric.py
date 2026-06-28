@@ -108,6 +108,29 @@ def compute_dri(markdown, min_sections=MIN_SECTIONS, ngram=NGRAM):
     }
 
 
+# SPRINT 2 (b): UNFILTERED diagnostic. Proves the SOURCE is fixed (boilerplate confined to
+# one block), not merely hidden by the metric filter. Counts, over ALL sections, how many
+# distinct sections contain the disclaimer and the author box. Target after the source fix: 1 each.
+_DISCLAIMER_MARKERS = re.compile(
+    r"not\s+financial\s+advice|compliance\s+disclaimer|legal\s+disclaimer"
+    r"|consult\s+a?\s*licensed|this\s+(?:article|content)\s+is\s+for\s+informational",
+    re.IGNORECASE)
+_AUTHORBOX_MARKERS = re.compile(
+    r"about\s+the\s+author|author\s+box|talal\s+eddaouahiri|founder\s+of\s+moneyabroadguide",
+    re.IGNORECASE)
+
+def boilerplate_dispersion(markdown):
+    md = re.sub(r"^---\n.*?\n---\n", "", markdown, count=1, flags=re.DOTALL)
+    parts = re.split(r"(?m)^##\s+", md)
+    blocks = []
+    if parts:
+        blocks.append(parts[0])
+        blocks.extend(parts[1:])
+    disclaimer = sum(1 for b in blocks if _DISCLAIMER_MARKERS.search(b))
+    authorbox = sum(1 for b in blocks if _AUTHORBOX_MARKERS.search(b))
+    return {"disclaimer_sections": disclaimer, "authorbox_sections": authorbox}
+
+
 def main():
     ap = argparse.ArgumentParser(description="Diffuse Repetition Index (DRI)")
     ap.add_argument("--input", required=True, help="article_draft.md")
@@ -132,6 +155,9 @@ def main():
 
     print("DRI = %d (excess dispersion = %d) over %d sections"
           % (result["dri"], result["excess_dispersion"], result["section_count"]))
+    _disp = boilerplate_dispersion(markdown)
+    print("BOILERPLATE DISPERSION: disclaimer in %d section(s), author-box in %d section(s)"
+          % (_disp["disclaimer_sections"], _disp["authorbox_sections"]))
     # CI VISIBILITY: print the most-dispersed trigrams so DRI detail is readable in logs (no artifact needed).
     _top = result["top_diffuse_trigrams"]
     if _top:
