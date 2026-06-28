@@ -178,7 +178,7 @@ def _validate_tier_standard(article: str, word_count: int, tier: dict) -> list:
 SYSTEM_PROMPT = """You are Chief Content Officer for MoneyAbroadGuide.com, a licensed financial information platform.
 GLOBAL RULE: Maximum quality per dollar. No unnecessary padding. Satisfy search intent with authoritative financial content.
 Focus: newcomers, immigrants, expats in Canada and USA.
-MANDATORY STRUCTURE: comparison table | expert recommendation | compliance disclaimer | author box (Talal Eddaouahiri, founder MoneyAbroadGuide.com)
+ARTICLE-LEVEL STRUCTURE (each written ONCE, in its own dedicated end section — NEVER repeat inside body sections): comparison table | expert recommendation | compliance disclaimer | author box (Talal Eddaouahiri, founder MoneyAbroadGuide.com)
 EEAT REQUIREMENTS (Google E-E-A-T compliance — achieve score 90+/100):
 - EXPERTISE: Include technical terminology (FINTRAC, OSFI, FCAC, CRA, IFHP, provincial health authority, MSB, regulation, compliance, licensed)
   Include regulatory references with specific act names, regulatory bodies, official statistics
@@ -188,8 +188,8 @@ EEAT REQUIREMENTS (Google E-E-A-T compliance — achieve score 90+/100):
   Step-by-step processes, detailed how-to procedures, specific timelines and costs
 - AUTHORITY: Reference government sources (Canada.ca, CRA, IRCC, provincial health), link to official documents
   Cite industry reports, regulatory publications, licensed provider comparisons
-- TRUST: Include compliance disclaimer, regulatory notices, disclaimer about not being financial advice
-  Reference official regulatory oversight, mention licensed/regulated providers
+- TRUST: Reference official regulatory oversight and mention licensed/regulated providers.
+  (The compliance disclaimer and the author box are written ONCE, only in their dedicated end sections — do NOT insert them into body sections.)
 OUTPUT: Raw Markdown only — articles must score 85+ on EEAT validation."""
 
 async def _call_claude(api_key: str, prompt: str, system: str = None, max_tokens: int = 5000,
@@ -339,13 +339,18 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     else:
         topic_key = "default"
     links = INTERNAL_LINKS[topic_key]
-    links_block = "\n".join(f"- {l}" for l in links[:tier["min_links"]])
+    _links_sel = links[:tier["min_links"]]
+    links_block = "\n".join(f"- {l}" for l in _links_sel)
+    # SPRINT 2: split internal links so intro and Expert Recommendation never cite the SAME link verbatim.
+    _half = max(1, (len(_links_sel) + 1) // 2)
+    links_intro_block = "\n".join(f"- {l}" for l in _links_sel[:_half])
+    links_expert_block = "\n".join(f"- {l}" for l in _links_sel[_half:]) or links_intro_block
 
     logger.info(f"Writing {tier['tier']} article: {title} (target: {target_words}w)")
 
     intro = await _call_claude(api_key,
         f"Write introduction: {title} | {keyword} | {market} | Tier: {tier['tier']}\n"
-        f"300-400w. Quick Answer box (40-60w). 2-3 internal links:\n{links_block[:300]}\nBe concise.",
+        f"300-400w. Quick Answer box (40-60w). 2-3 internal links:\n{links_intro_block[:300]}\nBe concise.",
         SYSTEM_PROMPT, max_tokens=1200)
 
     written_sections = []
@@ -369,7 +374,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
             )
         try:
             sec_text = await _call_claude(api_key,
-                f"Write section ## {i+1}. {h2} for: {title} | {keyword}\n{sec_target}-{sec_target+150}w. Concise. No padding.{digest_block}",
+                f"Write section ## {i+1}. {h2} for: {title} | {keyword}\n{sec_target}-{sec_target+150}w. Concise. No padding. BODY ONLY: no compliance disclaimer, no author bio, no brand slogan, no 'not financial advice' notice, no internal-link CTA in this section — those are written elsewhere exactly once.{digest_block}",
                 SYSTEM_PROMPT, max_tokens=1800)
             written_sections.append(sec_text)
             await asyncio.sleep(0.2)
@@ -387,7 +392,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
         SYSTEM_PROMPT, max_tokens=n_cases * 500)
 
     expert_section = await _call_claude(api_key,
-        f"Write Expert Recommendation section for: {keyword} ({market}). H2. Top pick + runner-up. 300-400w. 2 internal links from: {links_block[:200]}",
+        f"Write Expert Recommendation section for: {keyword} ({market}). H2. Top pick + runner-up. 300-400w. 2 internal links from: {links_expert_block[:200]}",
         SYSTEM_PROMPT, max_tokens=1000)
 
     min_faqs = tier["min_faqs"]
