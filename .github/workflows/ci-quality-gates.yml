@@ -1,17 +1,22 @@
-# Sprint 1 — CI checks (compile + YAML lint + regression tests)
-# Runs ONLY on the sprint-1-arret-hemorragie branch and on manual dispatch.
-# Does not touch main. Proves Sprint 1 (RCA-005) before merge.
+# CI Quality Gates — durable guard rail (compile + YAML lint + regression tests).
+# Runs on every PR to main, on push to main, on the sprint-1 branch, and on manual
+# dispatch. Blocks any change that reintroduces a non-blocking sys.exit(0) or a
+# hardcoded word floor (RCA-005 regression guard).
 
-name: Sprint 1 Checks
+name: CI Quality Gates
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
+      - main
       - sprint-1-arret-hemorragie
   workflow_dispatch:
 
 jobs:
-  sprint1-checks:
+  quality-gates:
     name: compile + yaml lint + regression tests
     runs-on: ubuntu-latest
     steps:
