@@ -116,6 +116,12 @@ def main():
 
     print("DRI = %d (excess dispersion = %d) over %d sections"
           % (result["dri"], result["excess_dispersion"], result["section_count"]))
+    # CI VISIBILITY: print the most-dispersed trigrams so DRI detail is readable in logs (no artifact needed).
+    _top = result["top_diffuse_trigrams"]
+    if _top:
+        print("DRI DETAIL: top %d diffuse trigrams (trigram | # sections):" % min(15, len(_top)))
+        for _t in _top[:15]:
+            print("  - \"%s\" in %d sections" % (_t["trigram"], _t["sections"]))
     # DRI is a REPORTING metric, never blocking on its own. Always exit 0.
     sys.exit(0)
 
