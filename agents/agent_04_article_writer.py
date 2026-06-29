@@ -7,6 +7,7 @@ GLOBAL RULE: Maximum quality per dollar. Search intent satisfaction > article le
 """
 
 import argparse, asyncio, json, logging, os, re, sys
+from agents._source_pool import select_official_sources, has_curated_pool
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -415,22 +416,40 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     links_intro_block = "\n".join(f"- {l}" for l in _links_sel[:_half])
     links_expert_block = "\n".join(f"- {l}" for l in _links_sel[_half:]) or links_intro_block
 
+    # FIX(writer): for known verticals, hand the model a SHORT list of REAL,
+    # live-checked official sources (curated in agents/_source_pool.py) instead
+    # of relying on it to recall URLs from memory. Margin > tier minimum so the
+    # gate is reliably met. Unknown verticals fall back to the legacy prompt.
+    _official_sel = select_official_sources(topic_key, tier["min_sources"] + 3)
+    if has_curated_pool(topic_key) and _official_sel:
+        _official_block = "\n".join(f"- {s}" for s in _official_sel)
+        sourcing_block = (
+            f"SOURCING (YMYL/E-E-A-T): you MUST cite at least {tier['min_sources']} of these REAL, "
+            f"verified official sources as full https:// links. Do NOT invent or alter URLs -- copy "
+            f"them exactly as given, and INTEGRATE each one into the specific claim it supports "
+            f"(no orphan 'references' list). Use different sources for different claims; no duplicates.\n"
+            f"{_official_block}\n"
+            f"These official sources are REQUIRED and counted separately from internal "
+            f"moneyabroadguide.com links; off-list links (banks, financial press) are allowed but "
+            f"do NOT count toward the minimum."
+        )
+    else:
+        sourcing_block = (
+            f"SOURCING (YMYL/E-E-A-T): you MUST cite at least {tier['min_sources']} EXTERNAL official "
+            f"sources as full https:// links. These official authorities are SAFE, EXPECTED sources -- "
+            f"cite them confidently; do not invent or guess URLs, just link the real authority pages you "
+            f"know. For Canadian topics use real pages on canada.ca or *.gc.ca (FCAC, CRA, IRCC, FINTRAC); "
+            f"for US topics use *.gov (IRS, FDIC, CFPB, USCIS). Each source must be RELEVANT to the claim "
+            f"it supports -- no duplicates. These official sources are REQUIRED and counted separately "
+            f"from internal moneyabroadguide.com links; off-list links do NOT count toward the minimum."
+        )
+
     logger.info(f"Writing {tier['tier']} article: {title} (target: {target_words}w)")
 
     intro = await _call_claude(api_key,
         f"Write introduction: {title} | {keyword} | {market} | Tier: {tier['tier']}\n"
         f"300-400w. Quick Answer box (40-60w). 2-3 internal links:\n{links_intro_block[:300]}\nBe concise.\n"
-        f"SOURCING (YMYL/E-E-A-T): you MUST cite at least {tier['min_sources']} EXTERNAL official "
-        f"sources as full https:// links. These official authorities are SAFE, EXPECTED sources -- "
-        f"cite them confidently; do not invent or guess URLs, just link the real authority pages you "
-        f"know. For Canadian banking topics, link real pages on canada.ca or *.gc.ca such as: the "
-        f"Financial Consumer Agency of Canada (canada.ca/en/financial-consumer-agency.html), the Canada "
-        f"Revenue Agency (canada.ca/en/revenue-agency.html), Immigration, Refugees and Citizenship "
-        f"Canada (canada.ca/en/immigration-refugees-citizenship.html) and FINTRAC "
-        f"(fintrac-canafe.canada.ca). For US topics use *.gov (IRS, FDIC, CFPB, USCIS). Each source must "
-        f"be RELEVANT to the claim it supports -- no duplicates of the same page. These official sources "
-        f"are REQUIRED and counted separately from internal moneyabroadguide.com links; off-list links "
-        f"(banks, financial press) are allowed but do NOT count toward the minimum.",
+        f"{sourcing_block}\n",
         SYSTEM_PROMPT, max_tokens=1200)
 
     written_sections = []
