@@ -269,10 +269,20 @@ def _report(broken):
 
 
 def test_sources_module_is_single_source_of_truth():
-    # agent_04 imports the very same classifier object from the shared module.
-    assert agent_04._classify_url is _sources._classify_url
-    assert _sources.classify_url("https://www.canada.ca/x") == "official"
-    assert _sources.classify_url("https://example.com/x") == "offlist"
+    # agent_04's classifier is imported from the shared module (agents._sources),
+    # not a local copy. In production there is exactly one agents._sources, so
+    # both agents share one definition. (The test loader imports the file twice
+    # under different module names, so we assert provenance + behavior, not
+    # object identity.)
+    assert agent_04._classify_url.__module__ == "agents._sources"
+    for url, expected in [
+        ("https://www.canada.ca/x", "official"),
+        ("https://cra-arc.gc.ca/x", "official"),
+        ("https://example.com/x", "offlist"),
+        ("https://www.moneyabroadguide.com/x", "internal"),
+    ]:
+        assert agent_04._classify_url(url) == expected
+        assert _sources.classify_url(url) == expected
 
 
 def test_official_404_is_hard_fail():
