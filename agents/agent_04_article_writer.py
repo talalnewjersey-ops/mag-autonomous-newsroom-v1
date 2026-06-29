@@ -10,6 +10,34 @@ import argparse, asyncio, json, logging, os, re, sys
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+from urllib.parse import urlparse
+
+# --- YMYL source allow-list (Sprint 2 fix-sources) -------------------------
+# An "official external source" is one whose URL HOSTNAME (via urlparse, never
+# the raw URL string) ends with one of these suffixes. TLD/suffix matching on
+# the hostname covers 100% of the authorities named in SYSTEM_PROMPT cleanly:
+#   .gov     -> IRS, USCIS, FDIC, CFPB, HHS, CMS, healthcare.gov ...
+#   .gc.ca   -> CRA (cra-arc), IRCC, FINTRAC (fintrac-canafe), OSFI (osfi-bsif), FCAC (fcac-acfc)
+#   canada.ca + subdomains
+# Anchoring on the hostname trailing labels avoids substring false positives
+# (craigslist.com, theirsite.com, irs.gov.attacker.com all correctly rejected).
+# Off-list external links (banks like rbc.com, financial press) are ALLOWED in
+# the article but do NOT count toward tier["min_sources"]. Extensible: add a
+# suffix here if a new official authority must count. Internal moneyabroadguide.com
+# links are NEVER official sources.
+OFFICIAL_SOURCE_SUFFIXES = (".gov", ".gc.ca", ".canada.ca")
+_INTERNAL_HOST = "moneyabroadguide.com"
+
+
+def _classify_url(url: str) -> str:
+    """Return 'internal', 'official' or 'offlist' for a single URL.
+    Matching is done on the parsed HOSTNAME, not the raw URL string."""
+    host = (urlparse(url).hostname or "").lower().rstrip(".")
+    if host == _INTERNAL_HOST or host.endswith("." + _INTERNAL_HOST):
+        return "internal"
+    if host == "canada.ca" or any(host.endswith(s) for s in OFFICIAL_SOURCE_SUFFIXES):
+        return "official"
+    return "offlist"
 
 logger = logging.getLogger(__name__)
 
@@ -156,9 +184,19 @@ def _validate_tier_standard(article: str, word_count: int, tier: dict) -> list:
     faq_count = _count_faqs(article)
     if faq_count < tier["min_faqs"]:
         errors.append(f"FAQ count {faq_count} < minimum {tier['min_faqs']}")
-    source_count = len(re.findall(r"https?://\S+", article))
-    if source_count < tier["min_sources"]:
-        errors.append(f"Source count {source_count} < minimum {tier['min_sources']}")
+    # Sprint 2 fix-sources: count OFFICIAL EXTERNAL sources (host-based allow-list)
+    # separately. The tier minimum applies to official external sources only, so an
+    # article cannot satisfy it with internal links or off-list links alone
+    # (closes the YMYL false-E-E-A-T hole). Internal-link check below is UNCHANGED.
+    _all_urls = re.findall(r"https?://\S+", article)
+    official_sources = sum(1 for _u in _all_urls if _classify_url(_u) == "official")
+    offlist_sources = sum(1 for _u in _all_urls if _classify_url(_u) == "offlist")
+    if official_sources < tier["min_sources"]:
+        errors.append(
+            f"Official external sources {official_sources} < minimum {tier['min_sources']} "
+            f"(allow-list: *.gov, *.gc.ca, canada.ca). Off-list external links "
+            f"({offlist_sources}) and internal links do NOT count toward the minimum."
+        )
     internal_links = len(re.findall(r"\[.*?\]\(https?://moneyabroadguide\.com[^\)]*\)", article, re.IGNORECASE))
     if internal_links < tier["min_links"]:
         errors.append(f"Internal links {internal_links} < minimum {tier['min_links']}")
@@ -381,7 +419,18 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
 
     intro = await _call_claude(api_key,
         f"Write introduction: {title} | {keyword} | {market} | Tier: {tier['tier']}\n"
-        f"300-400w. Quick Answer box (40-60w). 2-3 internal links:\n{links_intro_block[:300]}\nBe concise.",
+        f"300-400w. Quick Answer box (40-60w). 2-3 internal links:\n{links_intro_block[:300]}\nBe concise.\n"
+        f"SOURCING (YMYL/E-E-A-T): you MUST cite at least {tier['min_sources']} EXTERNAL official "
+        f"sources as full https:// links. These official authorities are SAFE, EXPECTED sources -- "
+        f"cite them confidently; do not invent or guess URLs, just link the real authority pages you "
+        f"know. For Canadian banking topics, link real pages on canada.ca or *.gc.ca such as: the "
+        f"Financial Consumer Agency of Canada (canada.ca/en/financial-consumer-agency.html), the Canada "
+        f"Revenue Agency (canada.ca/en/revenue-agency.html), Immigration, Refugees and Citizenship "
+        f"Canada (canada.ca/en/immigration-refugees-citizenship.html) and FINTRAC "
+        f"(fintrac-canafe.canada.ca). For US topics use *.gov (IRS, FDIC, CFPB, USCIS). Each source must "
+        f"be RELEVANT to the claim it supports -- no duplicates of the same page. These official sources "
+        f"are REQUIRED and counted separately from internal moneyabroadguide.com links; off-list links "
+        f"(banks, financial press) are allowed but do NOT count toward the minimum.",
         SYSTEM_PROMPT, max_tokens=1200)
 
     written_sections = []

@@ -181,5 +181,53 @@ def test_digest_injected_into_section_prompt():
     assert "digest_block" in src
 
 
+# --- Sprint 2 fix-sources: official-source allow-list ----------------------
+
+def test_url_classifier_official_and_attacks():
+    c = agent_04._classify_url
+    # legitimate official sources count
+    assert c("https://www.irs.gov/forms") == "official"
+    assert c("https://cra-arc.gc.ca/charts") == "official"
+    assert c("https://fintrac-canafe.gc.ca/intel") == "official"
+    assert c("https://www.canada.ca/en/services.html") == "official"
+    assert c("https://canada.ca") == "official"
+    # internal is never official
+    assert c("https://moneyabroadguide.com/blog/irs-guide") == "internal"
+    # off-list legitimate-but-not-official does not count
+    assert c("https://www.rbc.com/accounts") == "offlist"
+    # ATTACK / false-positive cases MUST be rejected (offlist, never official)
+    assert c("https://craigslist.com") == "offlist"
+    assert c("https://theirsite.com") == "offlist"
+    assert c("https://irs.gov.attacker.com/phish") == "offlist"
+    assert c("https://mygov.com.attacker.net") == "offlist"
+    assert c("https://notgov.com") == "offlist"
+
+
+def test_gate_fails_with_internal_links_but_no_official_source():
+    # *** DECISIVE TEST: 4 internal links + 0 official external -> MUST FAIL ***
+    tier = agent_04._get_tier_config("STANDARD")  # min_sources = 4
+    article = (
+        "Body. https://moneyabroadguide.com/a https://moneyabroadguide.com/b "
+        "https://moneyabroadguide.com/c https://moneyabroadguide.com/d "
+        "https://www.rbc.com/x"  # off-list, must not count
+    )
+    errors = agent_04._validate_tier_standard(article, word_count=99999, tier=tier)
+    src_errs = [e for e in errors if "Official external sources" in e]
+    assert src_errs, "Gate MUST flag missing official sources (0 official < 4)"
+    assert "do NOT count" in src_errs[0]  # pedagogical message present
+
+
+def test_gate_passes_source_check_with_four_official_sources():
+    tier = agent_04._get_tier_config("STANDARD")
+    article = (
+        "Body. https://www.irs.gov/a https://cra-arc.gc.ca/b "
+        "https://www.canada.ca/c https://fdic.gov/d "
+        "https://moneyabroadguide.com/internal https://www.rbc.com/offlist"
+    )
+    errors = agent_04._validate_tier_standard(article, word_count=99999, tier=tier)
+    assert not [e for e in errors if "Official external sources" in e], \
+        "4 official sources must satisfy the source minimum"
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
