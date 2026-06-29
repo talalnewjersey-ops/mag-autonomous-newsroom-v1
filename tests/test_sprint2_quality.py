@@ -229,5 +229,56 @@ def test_gate_passes_source_check_with_four_official_sources():
         "4 official sources must satisfy the source minimum"
 
 
+# ------------------------------------------- FIX(writer): curated source pool
+# These tests are deterministic and require NO network: the pool is static data
+# and classification is pure string logic. They guard the root-cause fix for the
+# stochastic sourcing (writer was citing official URLs from memory).
+
+_source_pool = _load("agents/_source_pool.py", "_source_pool")
+
+
+def test_curated_pool_canada_newcomer_has_margin_over_minimum():
+    """Pool must offer strictly MORE official sources than the STANDARD min (4),
+    so a model that drops one still clears the gate (kills the zero-margin bug)."""
+    pool = _source_pool.OFFICIAL_SOURCE_POOL["canada_newcomer"]
+    assert len(pool) >= agent_04.STANDARD_MIN_SOURCES + 1, \
+        "curated pool must exceed the tier minimum to provide margin"
+
+
+def test_every_pool_url_is_classified_official():
+    """Every URL we inject must actually count as 'official' under the allow-list.
+    Otherwise we'd feed the writer sources the gate does not credit."""
+    for entry in _source_pool.OFFICIAL_SOURCE_POOL["canada_newcomer"]:
+        url = entry.split("|")[-1].strip()
+        assert agent_04._classify_url(url) == "official", \
+            f"pool URL not classified official: {url}"
+
+
+def test_select_official_sources_respects_n_and_order():
+    sel = _source_pool.select_official_sources("canada_newcomer", 4)
+    assert len(sel) == 4
+    full = _source_pool.OFFICIAL_SOURCE_POOL["canada_newcomer"]
+    assert sel == full[:4], "selection must be a stable prefix of the pool"
+    # Asking for more than the pool holds returns the whole pool, never more.
+    big = _source_pool.select_official_sources("canada_newcomer", 999)
+    assert big == full
+
+
+def test_unknown_vertical_falls_back_no_injection():
+    """Verticals without a curated pool must yield no sources (caller then uses
+    the legacy memory prompt). We must NEVER fabricate/inject an unverified URL."""
+    assert _source_pool.has_curated_pool("default") is False
+    assert _source_pool.has_curated_pool("canada_newcomer") is True
+    assert _source_pool.select_official_sources("default", 4) == []
+    assert _source_pool.select_official_sources("nonexistent_topic", 4) == []
+
+
+def test_pool_entries_carry_a_real_https_url():
+    """Defensive: each entry exposes a parseable https URL (no bare names)."""
+    for entry in _source_pool.OFFICIAL_SOURCE_POOL["canada_newcomer"]:
+        url = entry.split("|")[-1].strip()
+        assert url.startswith("https://"), f"entry has no https url: {entry}"
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
