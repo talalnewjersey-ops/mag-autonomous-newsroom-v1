@@ -381,7 +381,13 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
 
     intro = await _call_claude(api_key,
         f"Write introduction: {title} | {keyword} | {market} | Tier: {tier['tier']}\n"
-        f"300-400w. Quick Answer box (40-60w). 2-3 internal links:\n{links_intro_block[:300]}\nBe concise.",
+        f"300-400w. Quick Answer box (40-60w). 2-3 internal links:\n{links_intro_block[:300]}\nBe concise.\n"
+        f"SOURCING (YMYL/E-E-A-T): across the whole article cite AT LEAST {tier['min_sources']} "
+        f"EXTERNAL official sources as full https:// links, prioritising official government / "
+        f"regulator domains: *.gov (e.g. IRS, USCIS, FDIC, CFPB), *.gc.ca (e.g. CRA, IRCC, "
+        f"FINTRAC, OSFI, FCAC) and canada.ca. These are REQUIRED and are counted separately "
+        f"from internal moneyabroadguide.com links; off-list links (banks, press) do NOT count "
+        f"toward the minimum.",
         SYSTEM_PROMPT, max_tokens=1200)
 
     written_sections = []
