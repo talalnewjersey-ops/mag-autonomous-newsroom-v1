@@ -15,6 +15,7 @@ from pathlib import Path
 import aiohttp
 
 from agents.base_agent import BaseAgent
+from agents._sources import _classify_url  # shared official-source allow-list (single source of truth)
 
 logger = logging.getLogger(__name__)
 
@@ -241,22 +242,43 @@ class FactCheckerAgent(BaseAgent):
         results = {"live": [], "broken": [], "redirected": [], "untrusted": []}
 
         async def check_one(url: str):
-            try:
-                async with self.session.head(url, allow_redirects=True,
-                                             timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                    domain = re.sub(r"https?://(www\.)?", "", url).split("/")[0]
-                    is_trusted = any(d in domain for d in TRUSTED_DOMAINS)
-                    entry = {"url": url, "status_code": resp.status, "trusted": is_trusted}
-                    if resp.status == 200:
-                        results["live"].append(entry)
-                    elif resp.status in (301, 302, 307, 308):
-                        results["redirected"].append({**entry, "final_url": str(resp.url)})
-                    else:
-                        results["broken"].append(entry)
-                    if not is_trusted:
-                        results["untrusted"].append(entry)
-            except Exception as e:
-                results["broken"].append({"url": url, "error": str(e)[:100], "trusted": False})
+            # Sprint 4 fact-live-sources: classify each official source as live or
+            # broken. A definite 4xx/5xx (reason="http") is a hard failure (likely an
+            # invented/erroneous URL); a transport error/timeout after retries
+            # (reason="transport") is soft (the page may exist; never blocks prod).
+            last_err = None
+            for attempt in range(3):  # 1 try + 2 retries for transient transport errors
+                try:
+                    async with self.session.head(url, allow_redirects=True,
+                                                 timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                        status = resp.status
+                        # Some servers reject HEAD (405/501) but serve GET: fall back.
+                        if status in (405, 501):
+                            async with self.session.get(url, allow_redirects=True,
+                                                         timeout=aiohttp.ClientTimeout(total=10)) as gresp:
+                                status = gresp.status
+                                resp = gresp
+                        domain = re.sub(r"https?://(www\.)?", "", url).split("/")[0]
+                        is_trusted = any(d in domain for d in TRUSTED_DOMAINS)
+                        entry = {"url": url, "status_code": status, "trusted": is_trusted}
+                        if status == 200:
+                            results["live"].append(entry)
+                        elif status in (301, 302, 307, 308):
+                            results["redirected"].append({**entry, "final_url": str(resp.url)})
+                        else:
+                            results["broken"].append({**entry, "reason": "http"})
+                        if not is_trusted:
+                            results["untrusted"].append(entry)
+                    last_err = None
+                    break  # success (got an HTTP response) -> no more retries
+                except Exception as e:
+                    last_err = e
+                    if attempt < 2:
+                        await asyncio.sleep(0.5 * (attempt + 1))  # light backoff
+            if last_err is not None:
+                # Transport error/timeout persisted across retries: soft failure.
+                results["broken"].append({"url": url, "error": str(last_err)[:100],
+                                          "trusted": False, "reason": "transport"})
 
         await asyncio.gather(*[check_one(u) for u in urls])
         return results
@@ -295,7 +317,30 @@ class FactCheckerAgent(BaseAgent):
         broken_urls = len(url_results.get("broken", []))
         stats_flagged = len(stats.get("flagged", []))
         issues_count = disputed_count + unverified_count + flagged_count + broken_urls + stats_flagged
-        if issues_count == 0:
+        # Sprint 4 fact-live-sources: a broken URL that is an OFFICIAL source
+        # (allow-list .gov/.gc.ca/canada.ca) must block, but only on a definite
+        # HTTP failure (reason="http": 404/410/4xx/5xx -> likely invented). A
+        # transport error/timeout (reason="transport") stays a non-blocking
+        # warning, surfaced loudly for human review (residual: a permanently
+        # unreachable official URL could still be invented -> see WARNING below).
+        _broken = url_results.get("broken", [])
+        broken_official_hard = sum(
+            1 for b in _broken
+            if b.get("reason") == "http" and _classify_url(b.get("url", "")) == "official"
+        )
+        broken_official_soft = [
+            b for b in _broken
+            if b.get("reason") == "transport" and _classify_url(b.get("url", "")) == "official"
+        ]
+        for b in broken_official_soft:
+            logger.warning(
+                "official source unreachable after retries: %s - human review needed "
+                "(possibly invented)", b.get("url", "")
+            )
+        if broken_official_hard > 0:
+            # Official source returned a definite HTTP error -> block publication.
+            verdict = "FAIL"
+        elif issues_count == 0:
             verdict = "PASS"
         elif disputed_count > 0:
             verdict = "FAIL"
@@ -317,6 +362,8 @@ class FactCheckerAgent(BaseAgent):
                 "issues_count": issues_count,
                 "urls_checked": sum(len(v) for v in url_results.values()),
                 "broken_urls": broken_urls,
+                "broken_official_hard": broken_official_hard,
+                "broken_official_soft": len(broken_official_soft),
                 "redirected_urls": len(url_results.get("redirected", [])),
                 "stats_validated": len(stats.get("validated", [])),
                 "stats_flagged": stats_flagged,
@@ -396,7 +443,8 @@ def main():
         if verdict in ("FAIL", "DISPUTED"):
             broken_urls = report.get('summary', {}).get('broken_urls', 0)
             disputed = report.get('summary', {}).get('disputed_count', 0)
-            log.error(f"FACT CHECK GATE FAIL: verdict={verdict} | broken_urls={broken_urls} | disputed={disputed}")
+            broken_off = report.get('summary', {}).get('broken_official_hard', 0)
+            log.error(f"FACT CHECK GATE FAIL: verdict={verdict} | broken_urls={broken_urls} | broken_official_hard={broken_off} | disputed={disputed}")
             log.error("Publication BLOCKED: Fix all disputed claims and broken URLs before publishing.")
             sys.exit(1)
 
