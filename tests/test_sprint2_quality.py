@@ -280,5 +280,67 @@ def test_pool_entries_carry_a_real_https_url():
         assert url.startswith("https://"), f"entry has no https url: {entry}"
 
 
+# ---------------------------------------------------------------------------
+# FIX-WRITER: curated sources now injected into EACH section call (not only the
+# intro), and intro rebalanced. Static assembly tests -- no network, no API key.
+# ---------------------------------------------------------------------------
+
+
+def test_intro_rebalanced_no_must_cite_four():
+    """Intro no longer demands MUST-cite-4 (which contradicted 'be concise').
+    The article-wide minimum is now carried by the body sections."""
+    src = inspect.getsource(agent_04._write_article_standalone)
+    assert "you MUST cite at least {tier['min_sources']} of these REAL" not in src, \
+        "intro must not keep the concise-vs-MUST-4 contradiction"
+    assert "cite 1-2 of these key REAL" in src, "intro should ask for 1-2 key authorities"
+
+
+def test_section_call_injects_curated_sources():
+    """The curated source block must be added to EACH section prompt, behind the
+    curated-pool guard, alongside the existing anti-repetition digest."""
+    src = inspect.getsource(agent_04._write_article_standalone)
+    assert "section_sources_block" in src
+    assert "if has_curated_pool(topic_key) and _official_sel:" in src
+    assert "{digest_block}{section_sources_block}" in src, \
+        "section prompt must include the sources block next to the digest"
+
+
+def test_section_sources_block_balances_coverage_and_brake_without_cap():
+    """Section instruction must (a) incite finding the right attachment,
+    (b) brake off-topic/orphan links, (c) restate the global minimum, and
+    (d) carry NO per-section numeric cap (which would bridle coverage)."""
+    src = inspect.getsource(agent_04._write_article_standalone)
+    assert "actively look for which" in src            # coverage incentive
+    assert "without forcing any off-topic" in src       # off-topic brake
+    assert "orphan 'references' line" in src            # no orphan-link brake
+    assert "must cite at least {tier['min_sources']} DISTINCT" in src  # global min
+    assert "avoid repeating these; prefer an unused one" in src        # already-cited hint
+    assert "Use at most 1" not in src, "no per-section cap allowed"
+
+
+def test_curated_pool_assembles_all_urls_into_section_block():
+    """Reproduce the section-block assembly with the real pool and assert every
+    selected official URL is present (the writer SEES the full list each section)."""
+    sel = _source_pool.select_official_sources(
+        "canada_newcomer", agent_04.STANDARD_MIN_SOURCES + 3)
+    assert len(sel) >= agent_04.STANDARD_MIN_SOURCES + 1  # margin
+    pool_lines = "\n".join(f"- {u}" for u in sel)
+    assembled = (
+        "\n\n=== OFFICIAL SOURCES - use across the article (not all in one place) ===\n"
+        + pool_lines + "\n=== END OFFICIAL SOURCES ===\n")
+    for entry in sel:
+        url = entry.split("|")[-1].strip()
+        assert url in assembled, f"selected source missing from assembled block: {url}"
+        assert agent_04._classify_url(url) == "official"
+
+
+def test_section_sources_fallback_empty_for_noncurated_topic():
+    """A topic_key with no curated pool must NOT trigger the block -> writer keeps
+    its legacy from-memory behavior (degraded but functional, no fabricated URLs)."""
+    assert agent_04.has_curated_pool is not None
+    assert _source_pool.has_curated_pool("totally_unknown_vertical_xyz") is False, \
+        "non-curated topic must fall back (empty curated block)"
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
