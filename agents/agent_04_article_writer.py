@@ -420,18 +420,17 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     intro = await _call_claude(api_key,
         f"Write introduction: {title} | {keyword} | {market} | Tier: {tier['tier']}\n"
         f"300-400w. Quick Answer box (40-60w). 2-3 internal links:\n{links_intro_block[:300]}\nBe concise.\n"
-        f"SOURCING (YMYL/E-E-A-T): across the whole article cite AT LEAST {tier['min_sources']} "
-        f"EXTERNAL official sources as full https:// links. Each official source MUST be a REAL, "
-        f"currently-live page that you are confident exists -- NEVER invent or guess a plausible-looking "
-        f"URL to reach the quota; a fabricated official URL is a critical YMYL failure, far worse than "
-        f"too few sources. Each source must be directly RELEVANT to the specific claim it supports "
-        f"(no padding, no duplicates of the same page). Prioritise the official authority that actually "
-        f"governs THIS topic: for Canadian banking that means canada.ca and *.gc.ca regulators such as "
-        f"FCAC (Financial Consumer Agency of Canada), CRA, the Bank of Canada and FINTRAC; use *.gov "
-        f"(IRS, FDIC, CFPB, USCIS) only when the claim concerns the US. These official sources are "
-        f"REQUIRED and counted separately from internal moneyabroadguide.com links; off-list links "
-        f"(banks, financial press) are allowed but do NOT count toward the minimum. Prefer linking the "
-        f"exact authoritative page over a generic homepage.",
+        f"SOURCING (YMYL/E-E-A-T): you MUST cite at least {tier['min_sources']} EXTERNAL official "
+        f"sources as full https:// links. These official authorities are SAFE, EXPECTED sources -- "
+        f"cite them confidently; do not invent or guess URLs, just link the real authority pages you "
+        f"know. For Canadian banking topics, link real pages on canada.ca or *.gc.ca such as: the "
+        f"Financial Consumer Agency of Canada (canada.ca/en/financial-consumer-agency.html), the Canada "
+        f"Revenue Agency (canada.ca/en/revenue-agency.html), Immigration, Refugees and Citizenship "
+        f"Canada (canada.ca/en/immigration-refugees-citizenship.html) and FINTRAC "
+        f"(fintrac-canafe.canada.ca). For US topics use *.gov (IRS, FDIC, CFPB, USCIS). Each source must "
+        f"be RELEVANT to the claim it supports -- no duplicates of the same page. These official sources "
+        f"are REQUIRED and counted separately from internal moneyabroadguide.com links; off-list links "
+        f"(banks, financial press) are allowed but do NOT count toward the minimum.",
         SYSTEM_PROMPT, max_tokens=1200)
 
     written_sections = []
