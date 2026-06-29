@@ -13,6 +13,7 @@ Covers the four sprint guarantees:
 All tests are deterministic and require no network / no API key.
 """
 import importlib.util
+import inspect
 import os
 import sys
 
