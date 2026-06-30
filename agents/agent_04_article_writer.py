@@ -7,6 +7,7 @@ GLOBAL RULE: Maximum quality per dollar. Search intent satisfaction > article le
 """
 
 import argparse, asyncio, json, logging, os, re, sys
+from agents._source_pool import select_official_sources, has_curated_pool
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -16,6 +17,22 @@ from agents._sources import _classify_url  # shared source allow-list (single so
 # The official-source classifier and allow-list now live in agents/_sources.py
 # (single source of truth, shared with agent_05_fact_checker). _classify_url is
 # imported above. Internal-link / off-list handling in the gate is unchanged.
+
+
+def _normalize_source_url(url: str) -> str:
+    """Normalize a URL to a single PAGE identity for de-duplication.
+    The tier source minimum counts DISTINCT official pages, not raw link
+    occurrences: citing one authoritative page 4x must NOT satisfy a
+    minimum of 4. We collapse on scheme://host/path, stripping trailing
+    markdown punctuation captured by \\S+, the #fragment, the ?query and a
+    trailing slash, so the same page written several ways counts once."""
+    s = url.rstrip(").],.;\"\'>")
+    s = s.split("#", 1)[0]
+    s = s.split("?", 1)[0]
+    p = urlparse(s)
+    host = (p.hostname or "").lower()
+    path = (p.path or "").rstrip("/")
+    return f"{p.scheme.lower()}://{host}{path}"
 
 logger = logging.getLogger(__name__)
 
@@ -167,13 +184,24 @@ def _validate_tier_standard(article: str, word_count: int, tier: dict) -> list:
     # article cannot satisfy it with internal links or off-list links alone
     # (closes the YMYL false-E-E-A-T hole). Internal-link check below is UNCHANGED.
     _all_urls = re.findall(r"https?://\S+", article)
+    # official_sources = raw link OCCURRENCES (a page cited 4x counts 4); kept for the log.
     official_sources = sum(1 for _u in _all_urls if _classify_url(_u) == "official")
     offlist_sources = sum(1 for _u in _all_urls if _classify_url(_u) == "offlist")
-    if official_sources < tier["min_sources"]:
+    # The tier minimum is satisfied by DISTINCT official PAGES, not occurrences, so an
+    # article cannot pass by citing ONE authority N times (false E-E-A-T). De-dup on the
+    # normalized scheme://host/path. NOTE: dedup is by PAGE, not by host: several distinct
+    # pages on the same authority host (e.g. four different canada.ca pages) correctly
+    # count as four. Reliability-first: log occurrences AND distinct pages on EVERY run
+    # (pass OR fail) so runs report N without opening the artifact.
+    _official_pages = {_normalize_source_url(_u) for _u in _all_urls if _classify_url(_u) == "official"}
+    distinct_official = len(_official_pages)
+    logger.info(f"SOURCES: {official_sources} official occurrence(s), {distinct_official} distinct page(s), {offlist_sources} off-list")
+    if distinct_official < tier["min_sources"]:
         errors.append(
-            f"Official external sources {official_sources} < minimum {tier['min_sources']} "
-            f"(allow-list: *.gov, *.gc.ca, canada.ca). Off-list external links "
-            f"({offlist_sources}) and internal links do NOT count toward the minimum."
+            f"Distinct official sources {distinct_official} < minimum {tier['min_sources']} "
+            f"(allow-list: *.gov, *.canada.ca, canada.ca; counted by distinct page, not by "
+            f"repeated link). Off-list external links ({offlist_sources}) and internal links "
+            f"do NOT count toward the minimum."
         )
     internal_links = len(re.findall(r"\[.*?\]\(https?://moneyabroadguide\.com[^\)]*\)", article, re.IGNORECASE))
     if internal_links < tier["min_links"]:
@@ -393,22 +421,40 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     links_intro_block = "\n".join(f"- {l}" for l in _links_sel[:_half])
     links_expert_block = "\n".join(f"- {l}" for l in _links_sel[_half:]) or links_intro_block
 
+    # FIX(writer): for known verticals, hand the model a SHORT list of REAL,
+    # live-checked official sources (curated in agents/_source_pool.py) instead
+    # of relying on it to recall URLs from memory. Margin > tier minimum so the
+    # gate is reliably met. Unknown verticals fall back to the legacy prompt.
+    _official_sel = select_official_sources(topic_key, tier["min_sources"] + 3)
+    if has_curated_pool(topic_key) and _official_sel:
+        _official_block = "\n".join(f"- {s}" for s in _official_sel)
+        sourcing_block = (
+            f"SOURCING (YMYL/E-E-A-T): the full article MUST cite AT LEAST 4 DIFFERENT official pages from this list (different pages, not the same one repeated). Draw on these key REAL, "
+            f"verified official sources as full https:// links. Do NOT invent or alter URLs -- copy "
+            f"them exactly as given, and INTEGRATE each one into the specific claim it supports "
+            f"(no orphan 'references' list). Use a DIFFERENT page for each claim; the gate counts DISTINCT pages, NOT repeated links, so re-citing the same page does NOT help. NEVER force an irrelevant source just to reach 4 -- an honest shortfall (and gate FAIL) is better than a forced, off-topic link.\n"
+            f"{_official_block}\n"
+            f"These official sources count toward the article-wide minimum (carried mainly by the body sections) and are counted separately from internal "
+            f"moneyabroadguide.com links; off-list links (banks, financial press) are allowed but "
+            f"do NOT count toward the minimum."
+        )
+    else:
+        sourcing_block = (
+            f"SOURCING (YMYL/E-E-A-T): you MUST cite at least {tier['min_sources']} EXTERNAL official "
+            f"sources as full https:// links. These official authorities are SAFE, EXPECTED sources -- "
+            f"cite them confidently; do not invent or guess URLs, just link the real authority pages you "
+            f"know. For Canadian topics use real pages on canada.ca or *.gc.ca (FCAC, CRA, IRCC, FINTRAC); "
+            f"for US topics use *.gov (IRS, FDIC, CFPB, USCIS). Each source must be RELEVANT to the claim "
+            f"it supports -- no duplicates. These official sources are REQUIRED and counted separately "
+            f"from internal moneyabroadguide.com links; off-list links do NOT count toward the minimum."
+        )
+
     logger.info(f"Writing {tier['tier']} article: {title} (target: {target_words}w)")
 
     intro = await _call_claude(api_key,
         f"Write introduction: {title} | {keyword} | {market} | Tier: {tier['tier']}\n"
         f"300-400w. Quick Answer box (40-60w). 2-3 internal links:\n{links_intro_block[:300]}\nBe concise.\n"
-        f"SOURCING (YMYL/E-E-A-T): you MUST cite at least {tier['min_sources']} EXTERNAL official "
-        f"sources as full https:// links. These official authorities are SAFE, EXPECTED sources -- "
-        f"cite them confidently; do not invent or guess URLs, just link the real authority pages you "
-        f"know. For Canadian banking topics, link real pages on canada.ca or *.gc.ca such as: the "
-        f"Financial Consumer Agency of Canada (canada.ca/en/financial-consumer-agency.html), the Canada "
-        f"Revenue Agency (canada.ca/en/revenue-agency.html), Immigration, Refugees and Citizenship "
-        f"Canada (canada.ca/en/immigration-refugees-citizenship.html) and FINTRAC "
-        f"(fintrac-canafe.canada.ca). For US topics use *.gov (IRS, FDIC, CFPB, USCIS). Each source must "
-        f"be RELEVANT to the claim it supports -- no duplicates of the same page. These official sources "
-        f"are REQUIRED and counted separately from internal moneyabroadguide.com links; off-list links "
-        f"(banks, financial press) are allowed but do NOT count toward the minimum.",
+        f"{sourcing_block}\n",
         SYSTEM_PROMPT, max_tokens=1200)
 
     written_sections = []
@@ -419,6 +465,28 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
         # SPRINT 2 (B / RCA-004): cumulative context. Include the intro (where
         # entities/figures are first planted) plus all prior sections.
         digest = _build_digest([intro] + written_sections)
+        # FIX-WRITER: curated official sources available in EACH section call (not just intro);
+        # distributed via "already cited" hint so they spread instead of piling up. Gate unchanged.
+        section_sources_block = ""
+        if has_curated_pool(topic_key) and _official_sel:
+            _all_prior = intro + "\n" + "\n".join(written_sections)
+            _cited = [u for u in _official_sel if u in _all_prior]
+            _pool_lines = "\n".join(f"- {u}" for u in _official_sel)
+            _cited_line = ", ".join(_cited) if _cited else "none yet"
+            section_sources_block = (
+                "\n\n=== OFFICIAL SOURCES - use across the article (not all in one place) ===\n"
+                + _pool_lines + "\n"
+                + f"Already cited in earlier sections (DO NOT repeat these to pad the count -- the gate counts distinct pages only; pick a page NOT yet used): {_cited_line}\n"
+                "For THIS section: most factual sections (fees, rules, eligibility, steps, rights, "
+                "deadlines) CAN be supported by one of these authorities -- actively look for which "
+                "one backs a claim in this section before concluding none fits. If one genuinely "
+                "supports a factual claim here, cite it as a real inline https:// link on that claim. "
+                "Cite every relevant source you find for this section, without forcing any off-topic "
+                "one, and do NOT add an orphan 'references' line. Strongly prefer a page NOT yet cited so the article reaches at least 4 DISTINCT official pages overall -- but NEVER force an off-topic source just to hit the count; a relevant page or none.\n"
+                f"Reminder: the complete article must cite at least {tier['min_sources']} DISTINCT "
+                "official sources from this list, spread across sections -- if earlier sections cited "
+                "few, this section should carry one.\n=== END OFFICIAL SOURCES ===\n"
+            )
         digest_block = ""
         if digest:
             digest_block = (
@@ -435,7 +503,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
             )
         try:
             sec_text = await _call_claude(api_key,
-                f"Write section ## {i+1}. {h2} for: {title} | {keyword}\n{sec_target}-{sec_target+150}w. Concise. No padding. BODY ONLY: no compliance disclaimer, no author bio, no brand slogan, no 'not financial advice' notice, no internal-link CTA in this section — those are written elsewhere exactly once.{digest_block}",
+                f"Write section ## {i+1}. {h2} for: {title} | {keyword}\n{sec_target}-{sec_target+150}w. Concise. No padding. BODY ONLY: no compliance disclaimer, no author bio, no brand slogan, no 'not financial advice' notice, no internal-link CTA in this section — those are written elsewhere exactly once.{digest_block}{section_sources_block}",
                 SYSTEM_PROMPT, max_tokens=1800)
             written_sections.append(sec_text)
             await asyncio.sleep(0.2)
