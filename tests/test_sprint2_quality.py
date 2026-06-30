@@ -288,12 +288,13 @@ def test_pool_entries_carry_a_real_https_url():
 
 
 def test_intro_rebalanced_no_must_cite_four():
-    """Intro no longer demands MUST-cite-4 (which contradicted 'be concise').
-    The article-wide minimum is now carried by the body sections."""
+    """Intro now REQUIRES >=4 different official pages (fixes the prompt<->gate
+    contradiction where the intro asked for only 1-2 while the gate demands 4)."""
     src = inspect.getsource(agent_04._write_article_standalone)
     assert "you MUST cite at least {tier['min_sources']} of these REAL" not in src, \
         "intro must not keep the concise-vs-MUST-4 contradiction"
-    assert "cite 1-2 of these key REAL" in src, "intro should ask for 1-2 key authorities"
+    assert "cite 1-2 of these" not in src, "intro must no longer ask for only 1-2 sources (contradicted the gate's 4)"
+    assert "AT LEAST 4 DIFFERENT official pages" in src, "intro must now require at least 4 distinct official pages"
 
 
 def test_section_call_injects_curated_sources():
@@ -315,7 +316,7 @@ def test_section_sources_block_balances_coverage_and_brake_without_cap():
     assert "without forcing any off-topic" in src       # off-topic brake
     assert "orphan 'references' line" in src            # no orphan-link brake
     assert "must cite at least {tier['min_sources']} DISTINCT" in src  # global min
-    assert "avoid repeating these; prefer an unused one" in src        # already-cited hint
+    assert "pick a page NOT yet used" in src                           # already-cited rotation hint (firmer)
     assert "Use at most 1" not in src, "no per-section cap allowed"
 
 
