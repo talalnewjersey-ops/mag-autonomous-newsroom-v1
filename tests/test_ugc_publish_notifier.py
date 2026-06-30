@@ -17,6 +17,7 @@ import importlib.util
 import json
 import os
 import sys
+from datetime import datetime, timezone
 
 import pytest
 
@@ -62,6 +63,14 @@ def test_build_payload_maps_all_contract_fields():
 def test_iso_utc_is_idempotent_on_z_suffixed_value():
     assert notifier.iso_utc("2026-06-30T06:00:00Z") == "2026-06-30T06:00:00Z"
     assert notifier.iso_utc("") == ""
+
+
+# ----------------------------------------------------- recency floor (R1)
+
+def test_published_after_cutoff_subtracts_window():
+    now = datetime(2026, 6, 30, 12, 0, 0, tzinfo=timezone.utc)
+    assert notifier.published_after_cutoff(48, now) == "2026-06-28T12:00:00"
+    assert notifier.published_after_cutoff(0, now) == "2026-06-30T12:00:00"
 
 
 # --------------------------------------------------------------- selection
@@ -127,6 +136,7 @@ def test_dispatch_builds_correct_github_request():
     assert url == "https://api.github.com/repos/owner/ugc/dispatches"
     assert headers["Authorization"] == "Bearer secret-token"
     assert headers["X-GitHub-Api-Version"] == "2022-11-28"
+    assert headers["Content-Type"] == "application/json"
     parsed = json.loads(body)
     assert parsed["event_type"] == "nexus14_article_published"
     assert parsed["client_payload"]["article_id"] == "wp-1842"

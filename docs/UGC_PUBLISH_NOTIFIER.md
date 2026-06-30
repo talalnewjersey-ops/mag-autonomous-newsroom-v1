@@ -41,11 +41,16 @@ state file (`.ugc_notified_ids.json`) that is persisted between runs by the
 workflow's `actions/cache` step (rolling key + `restore-keys`). A post is never
 announced twice. No WordPress plugin or post meta is required.
 
+To bound the blast radius if the cache is ever lost, the WordPress query is also
+limited to a **recency window** (`UGC_PUBLISHED_AFTER_HOURS`, default `48`): an
+empty state set can only re-announce genuinely recent posts, never the entire
+back catalogue.
+
 > **Known limitation:** if the Actions cache is evicted (≈7 days of inactivity)
-> the state resets and the notifier could re-announce posts still returned by the
-> WordPress query (most-recent 100 published). With hourly runs the cache stays
-> warm, so this is unlikely. For a stronger guarantee, persist the state file via
-> a committed file or a registered WordPress post meta — see TODO in the script.
+> the state resets and the notifier could re-announce posts published *within the
+> recency window*. With hourly runs the cache stays warm, so this is unlikely.
+> For a stronger guarantee, persist the state file via a committed file or a
+> registered WordPress post meta — see TODO in the script.
 
 ## Required GitHub secret
 

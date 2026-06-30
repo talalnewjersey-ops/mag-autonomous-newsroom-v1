@@ -26,6 +26,7 @@ import json
 import os
 import sys
 from collections.abc import Iterable, Mapping
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,10 @@ DEFAULT_STATE_FILE = ".ugc_notified_ids.json"
 # WordPress returns at most 100 posts per page; we dedupe with the state file,
 # so a single page of the most-recent published posts is enough.
 PER_PAGE = 100
+# Only announce posts published within this lookback window. Bounds the
+# cold-start / cache-miss blast radius: an empty state set can never re-announce
+# the entire back catalogue, only what is genuinely recent.
+DEFAULT_PUBLISHED_AFTER_HOURS = 48
 
 
 def iso_utc(value: str) -> str:
@@ -100,14 +105,27 @@ def save_notified(path: str | Path, notified: set[str]) -> None:
     )
 
 
+def published_after_cutoff(hours: int, now: datetime) -> str:
+    """ISO-8601 cutoff (no tz suffix) ``hours`` before ``now`` for the WP filter."""
+    return (now - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S")
+
+
 def fetch_published_posts(
-    session: requests.Session, wp_url: str, user: str, app_password: str
+    session: requests.Session,
+    wp_url: str,
+    user: str,
+    app_password: str,
+    *,
+    published_after_hours: int = DEFAULT_PUBLISHED_AFTER_HOURS,
 ) -> list[dict[str, Any]]:
-    """Fetch the most-recent published posts from the WordPress REST API."""
+    """Fetch recently published posts (within the lookback window) from WordPress."""
     resp = session.get(
         f"{wp_url.rstrip('/')}/wp-json/wp/v2/posts",
         params={
             "status": "publish",
+            "after": published_after_cutoff(
+                published_after_hours, datetime.now(timezone.utc)
+            ),
             "per_page": PER_PAGE,
             "orderby": "date",
             "order": "desc",
@@ -131,6 +149,7 @@ def dispatch_to_ugc(
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}",
             "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type": "application/json",
             "User-Agent": "nexus14-ugc-publish-notifier",
         },
         data=json.dumps(payload).encode("utf-8"),
@@ -147,6 +166,11 @@ def main() -> int:
     token = os.environ.get("UGC_DISPATCH_TOKEN", "")
     repo = os.environ.get("UGC_REPO", DEFAULT_UGC_REPO)
     state_file = os.environ.get("UGC_NOTIFIED_STATE_FILE", DEFAULT_STATE_FILE)
+    after_hours_raw = os.environ.get("UGC_PUBLISHED_AFTER_HOURS", "").strip()
+    try:
+        after_hours = int(after_hours_raw) if after_hours_raw else DEFAULT_PUBLISHED_AFTER_HOURS
+    except ValueError:
+        after_hours = DEFAULT_PUBLISHED_AFTER_HOURS
 
     required = {
         "WORDPRESS_URL": wp_url,
@@ -165,14 +189,17 @@ def main() -> int:
     session = requests.Session()
     notified = load_notified(state_file)
     try:
-        posts = fetch_published_posts(session, wp_url, user, app_password)
+        posts = fetch_published_posts(
+            session, wp_url, user, app_password, published_after_hours=after_hours
+        )
     except requests.RequestException as exc:
         print(f"[notifier] WordPress fetch failed: {exc}", file=sys.stderr)
         return 1
 
     todo = select_to_notify(posts, notified)
     print(
-        f"[notifier] {len(posts)} published post(s) seen; {len(todo)} new to announce"
+        f"[notifier] {len(posts)} published post(s) in last {after_hours}h; "
+        f"{len(todo)} new to announce"
     )
 
     failures = 0
