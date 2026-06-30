@@ -213,7 +213,7 @@ def test_gate_fails_with_internal_links_but_no_official_source():
         "https://www.rbc.com/x"  # off-list, must not count
     )
     errors = agent_04._validate_tier_standard(article, word_count=99999, tier=tier)
-    src_errs = [e for e in errors if "Official external sources" in e]
+    src_errs = [e for e in errors if "Distinct official sources" in e]
     assert src_errs, "Gate MUST flag missing official sources (0 official < 4)"
     assert "do NOT count" in src_errs[0]  # pedagogical message present
 
@@ -226,7 +226,7 @@ def test_gate_passes_source_check_with_four_official_sources():
         "https://moneyabroadguide.com/internal https://www.rbc.com/offlist"
     )
     errors = agent_04._validate_tier_standard(article, word_count=99999, tier=tier)
-    assert not [e for e in errors if "Official external sources" in e], \
+    assert not [e for e in errors if "Distinct official sources" in e], \
         "4 official sources must satisfy the source minimum"
 
 
@@ -345,3 +345,62 @@ def test_section_sources_fallback_empty_for_noncurated_topic():
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+# --- Source de-duplication: gate must count DISTINCT official PAGES, not link ---
+# --- occurrences. Closes the "one authority cited N times = false E-E-A-T" hole. ---
+
+def test_normalize_collapses_same_page_written_several_ways():
+    n = agent_04._normalize_source_url
+    base = "https://www.canada.ca/en/services/finance/credit.html"
+    # trailing markdown ")", sentence ".", #fragment, ?query, trailing "/" all collapse
+    assert n(base + ")") == n(base)
+    assert n(base + ".") == n(base)
+    assert n(base + "#fees") == n(base)
+    assert n(base + "?lang=eng") == n(base)
+    assert n(base + "/") == n(base)
+    # a genuinely different page on the SAME host stays distinct
+    other = "https://www.canada.ca/en/services/immigration/sin.html"
+    assert n(other) != n(base)
+
+
+def test_gate_fails_when_one_official_page_is_cited_four_times():
+    # ONE real authority page, linked 4x, must NOT satisfy min_sources=4.
+    tier = agent_04._get_tier_config("standard")  # min_sources = 4
+    url = "https://www.canada.ca/en/services/finance/credit.html"
+    article = (
+        f"Intro with a claim ([FCAC]({url})).\n"
+        f"Section A says more ([FCAC]({url})).\n"
+        f"Section B repeats it ([FCAC]({url}#fees)).\n"
+        f"Section C again ([FCAC]({url}?lang=eng)).\n"
+        "Internal: [a](https://moneyabroadguide.com/a) [b](https://moneyabroadguide.com/b) "
+        "[c](https://moneyabroadguide.com/c)\n"
+        "case study one. real-world example two.\n"
+    )
+    errors = agent_04._validate_tier_standard(article, word_count=99999, tier=tier)
+    src_errs = [e for e in errors if "Distinct official sources" in e]
+    assert src_errs, "one page cited 4x must FAIL the distinct-source minimum"
+    assert "1 < minimum 4" in src_errs[0]
+
+
+def test_gate_passes_with_four_distinct_pages_on_same_official_host():
+    # Mirrors run #179: 4 DIFFERENT canada.ca pages (one host) must PASS.
+    tier = agent_04._get_tier_config("standard")  # min_sources = 4
+    p1 = "https://www.canada.ca/en/financial-consumer-agency/services/rights.html"
+    p2 = "https://www.canada.ca/en/financial-consumer-agency/services/credit.html"
+    p3 = "https://www.canada.ca/en/employment-social-development/services/sin.html"
+    p4 = "https://www.canada.ca/en/immigration-refugees-citizenship/services/newcomers.html"
+    article = (
+        f"Intro ([FCAC]({p1})).\n"
+        f"Credit basics ([FCAC]({p2})), cited again later ([FCAC]({p2})).\n"
+        f"Get a SIN ([Service Canada]({p3})).\n"
+        f"Newcomer programs ([IRCC]({p4})).\n"
+        "Internal: [a](https://moneyabroadguide.com/a) [b](https://moneyabroadguide.com/b) "
+        "[c](https://moneyabroadguide.com/c)\n"
+        "case study one. real-world example two.\n"
+    )
+    errors = agent_04._validate_tier_standard(article, word_count=99999, tier=tier)
+    src_errs = [e for e in errors if "Distinct official sources" in e]
+    assert not src_errs, (
+        "four distinct pages on one official host must PASS (host dedup would wrongly fail this)"
+    )
