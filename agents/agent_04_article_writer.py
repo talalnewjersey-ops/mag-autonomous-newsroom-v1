@@ -451,10 +451,10 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     if has_curated_pool(topic_key) and _official_sel:
         _official_block = "\n".join(f"- {s}" for s in _official_sel)
         sourcing_block = (
-            f"SOURCING (YMYL/E-E-A-T): cite 1-2 of these key REAL, "
+            f"SOURCING (YMYL/E-E-A-T): the full article MUST cite AT LEAST 4 DIFFERENT official pages from this list (different pages, not the same one repeated). Draw on these key REAL, "
             f"verified official sources as full https:// links. Do NOT invent or alter URLs -- copy "
             f"them exactly as given, and INTEGRATE each one into the specific claim it supports "
-            f"(no orphan 'references' list). Use different sources for different claims; no duplicates.\n"
+            f"(no orphan 'references' list). Use a DIFFERENT page for each claim; the gate counts DISTINCT pages, NOT repeated links, so re-citing the same page does NOT help. NEVER force an irrelevant source just to reach 4 -- an honest shortfall (and gate FAIL) is better than a forced, off-topic link.\n"
             f"{_official_block}\n"
             f"These official sources count toward the article-wide minimum (carried mainly by the body sections) and are counted separately from internal "
             f"moneyabroadguide.com links; off-list links (banks, financial press) are allowed but "
@@ -498,13 +498,13 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
             section_sources_block = (
                 "\n\n=== OFFICIAL SOURCES - use across the article (not all in one place) ===\n"
                 + _pool_lines + "\n"
-                + f"Already cited in earlier sections (avoid repeating these; prefer an unused one): {_cited_line}\n"
+                + f"Already cited in earlier sections (DO NOT repeat these to pad the count -- the gate counts distinct pages only; pick a page NOT yet used): {_cited_line}\n"
                 "For THIS section: most factual sections (fees, rules, eligibility, steps, rights, "
                 "deadlines) CAN be supported by one of these authorities -- actively look for which "
                 "one backs a claim in this section before concluding none fits. If one genuinely "
                 "supports a factual claim here, cite it as a real inline https:// link on that claim. "
                 "Cite every relevant source you find for this section, without forcing any off-topic "
-                "one, and do NOT add an orphan 'references' line. Prefer a source not yet cited above.\n"
+                "one, and do NOT add an orphan 'references' line. Strongly prefer a page NOT yet cited so the article reaches at least 4 DISTINCT official pages overall -- but NEVER force an off-topic source just to hit the count; a relevant page or none.\n"
                 f"Reminder: the complete article must cite at least {tier['min_sources']} DISTINCT "
                 "official sources from this list, spread across sections -- if earlier sections cited "
                 "few, this section should carry one.\n=== END OFFICIAL SOURCES ===\n"
