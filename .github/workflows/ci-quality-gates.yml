@@ -37,6 +37,7 @@ jobs:
           python -m py_compile agents/agent_12_quality_assurance.py
           python -m py_compile agents/agent_13_chief_editor.py
           python -m py_compile agents/agent_04_article_writer.py
+          python -m py_compile agents/_source_pool.py
           python -m py_compile scripts/g3_repetition_gate.py
           python -m py_compile scripts/dri_metric.py
           python -m py_compile scripts/ugc_publish_notifier.py

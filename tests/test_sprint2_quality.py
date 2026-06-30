@@ -13,6 +13,7 @@ Covers the four sprint guarantees:
 All tests are deterministic and require no network / no API key.
 """
 import importlib.util
+import inspect
 import os
 import sys
 
@@ -212,7 +213,7 @@ def test_gate_fails_with_internal_links_but_no_official_source():
         "https://www.rbc.com/x"  # off-list, must not count
     )
     errors = agent_04._validate_tier_standard(article, word_count=99999, tier=tier)
-    src_errs = [e for e in errors if "Official external sources" in e]
+    src_errs = [e for e in errors if "Distinct official sources" in e]
     assert src_errs, "Gate MUST flag missing official sources (0 official < 4)"
     assert "do NOT count" in src_errs[0]  # pedagogical message present
 
@@ -225,9 +226,182 @@ def test_gate_passes_source_check_with_four_official_sources():
         "https://moneyabroadguide.com/internal https://www.rbc.com/offlist"
     )
     errors = agent_04._validate_tier_standard(article, word_count=99999, tier=tier)
-    assert not [e for e in errors if "Official external sources" in e], \
+    assert not [e for e in errors if "Distinct official sources" in e], \
         "4 official sources must satisfy the source minimum"
+
+
+# ------------------------------------------- FIX(writer): curated source pool
+# These tests are deterministic and require NO network: the pool is static data
+# and classification is pure string logic. They guard the root-cause fix for the
+# stochastic sourcing (writer was citing official URLs from memory).
+
+_source_pool = _load("agents/_source_pool.py", "_source_pool")
+
+
+def test_curated_pool_canada_newcomer_has_margin_over_minimum():
+    """Pool must offer strictly MORE official sources than the STANDARD min (4),
+    so a model that drops one still clears the gate (kills the zero-margin bug)."""
+    pool = _source_pool.OFFICIAL_SOURCE_POOL["canada_newcomer"]
+    assert len(pool) >= agent_04.STANDARD_MIN_SOURCES + 1, \
+        "curated pool must exceed the tier minimum to provide margin"
+
+
+def test_every_pool_url_is_classified_official():
+    """Every URL we inject must actually count as 'official' under the allow-list.
+    Otherwise we'd feed the writer sources the gate does not credit."""
+    for entry in _source_pool.OFFICIAL_SOURCE_POOL["canada_newcomer"]:
+        url = entry.split("|")[-1].strip()
+        assert agent_04._classify_url(url) == "official", \
+            f"pool URL not classified official: {url}"
+
+
+def test_select_official_sources_respects_n_and_order():
+    sel = _source_pool.select_official_sources("canada_newcomer", 4)
+    assert len(sel) == 4
+    full = _source_pool.OFFICIAL_SOURCE_POOL["canada_newcomer"]
+    assert sel == full[:4], "selection must be a stable prefix of the pool"
+    # Asking for more than the pool holds returns the whole pool, never more.
+    big = _source_pool.select_official_sources("canada_newcomer", 999)
+    assert big == full
+
+
+def test_unknown_vertical_falls_back_no_injection():
+    """Verticals without a curated pool must yield no sources (caller then uses
+    the legacy memory prompt). We must NEVER fabricate/inject an unverified URL."""
+    assert _source_pool.has_curated_pool("default") is False
+    assert _source_pool.has_curated_pool("canada_newcomer") is True
+    assert _source_pool.select_official_sources("default", 4) == []
+    assert _source_pool.select_official_sources("nonexistent_topic", 4) == []
+
+
+def test_pool_entries_carry_a_real_https_url():
+    """Defensive: each entry exposes a parseable https URL (no bare names)."""
+    for entry in _source_pool.OFFICIAL_SOURCE_POOL["canada_newcomer"]:
+        url = entry.split("|")[-1].strip()
+        assert url.startswith("https://"), f"entry has no https url: {entry}"
+
+
+# ---------------------------------------------------------------------------
+# FIX-WRITER: curated sources now injected into EACH section call (not only the
+# intro), and intro rebalanced. Static assembly tests -- no network, no API key.
+# ---------------------------------------------------------------------------
+
+
+def test_intro_rebalanced_no_must_cite_four():
+    """Intro now REQUIRES >=4 different official pages (fixes the prompt<->gate
+    contradiction where the intro asked for only 1-2 while the gate demands 4)."""
+    src = inspect.getsource(agent_04._write_article_standalone)
+    assert "you MUST cite at least {tier['min_sources']} of these REAL" not in src, \
+        "intro must not keep the concise-vs-MUST-4 contradiction"
+    assert "cite 1-2 of these" not in src, "intro must no longer ask for only 1-2 sources (contradicted the gate's 4)"
+    assert "AT LEAST 4 DIFFERENT official pages" in src, "intro must now require at least 4 distinct official pages"
+
+
+def test_section_call_injects_curated_sources():
+    """The curated source block must be added to EACH section prompt, behind the
+    curated-pool guard, alongside the existing anti-repetition digest."""
+    src = inspect.getsource(agent_04._write_article_standalone)
+    assert "section_sources_block" in src
+    assert "if has_curated_pool(topic_key) and _official_sel:" in src
+    assert "{digest_block}{section_sources_block}" in src, \
+        "section prompt must include the sources block next to the digest"
+
+
+def test_section_sources_block_balances_coverage_and_brake_without_cap():
+    """Section instruction must (a) incite finding the right attachment,
+    (b) brake off-topic/orphan links, (c) restate the global minimum, and
+    (d) carry NO per-section numeric cap (which would bridle coverage)."""
+    src = inspect.getsource(agent_04._write_article_standalone)
+    assert "actively look for which" in src            # coverage incentive
+    assert "without forcing any off-topic" in src       # off-topic brake
+    assert "orphan 'references' line" in src            # no orphan-link brake
+    assert "must cite at least {tier['min_sources']} DISTINCT" in src  # global min
+    assert "pick a page NOT yet used" in src                           # already-cited rotation hint (firmer)
+    assert "Use at most 1" not in src, "no per-section cap allowed"
+
+
+def test_curated_pool_assembles_all_urls_into_section_block():
+    """Reproduce the section-block assembly with the real pool and assert every
+    selected official URL is present (the writer SEES the full list each section)."""
+    sel = _source_pool.select_official_sources(
+        "canada_newcomer", agent_04.STANDARD_MIN_SOURCES + 3)
+    assert len(sel) >= agent_04.STANDARD_MIN_SOURCES + 1  # margin
+    pool_lines = "\n".join(f"- {u}" for u in sel)
+    assembled = (
+        "\n\n=== OFFICIAL SOURCES - use across the article (not all in one place) ===\n"
+        + pool_lines + "\n=== END OFFICIAL SOURCES ===\n")
+    for entry in sel:
+        url = entry.split("|")[-1].strip()
+        assert url in assembled, f"selected source missing from assembled block: {url}"
+        assert agent_04._classify_url(url) == "official"
+
+
+def test_section_sources_fallback_empty_for_noncurated_topic():
+    """A topic_key with no curated pool must NOT trigger the block -> writer keeps
+    its legacy from-memory behavior (degraded but functional, no fabricated URLs)."""
+    assert agent_04.has_curated_pool is not None
+    assert _source_pool.has_curated_pool("totally_unknown_vertical_xyz") is False, \
+        "non-curated topic must fall back (empty curated block)"
 
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
+
+
+# --- Source de-duplication: gate must count DISTINCT official PAGES, not link ---
+# --- occurrences. Closes the "one authority cited N times = false E-E-A-T" hole. ---
+
+def test_normalize_collapses_same_page_written_several_ways():
+    n = agent_04._normalize_source_url
+    base = "https://www.canada.ca/en/services/finance/credit.html"
+    # trailing markdown ")", sentence ".", #fragment, ?query, trailing "/" all collapse
+    assert n(base + ")") == n(base)
+    assert n(base + ".") == n(base)
+    assert n(base + "#fees") == n(base)
+    assert n(base + "?lang=eng") == n(base)
+    assert n(base + "/") == n(base)
+    # a genuinely different page on the SAME host stays distinct
+    other = "https://www.canada.ca/en/services/immigration/sin.html"
+    assert n(other) != n(base)
+
+
+def test_gate_fails_when_one_official_page_is_cited_four_times():
+    # ONE real authority page, linked 4x, must NOT satisfy min_sources=4.
+    tier = agent_04._get_tier_config("standard")  # min_sources = 4
+    url = "https://www.canada.ca/en/services/finance/credit.html"
+    article = (
+        f"Intro with a claim ([FCAC]({url})).\n"
+        f"Section A says more ([FCAC]({url})).\n"
+        f"Section B repeats it ([FCAC]({url}#fees)).\n"
+        f"Section C again ([FCAC]({url}?lang=eng)).\n"
+        "Internal: [a](https://moneyabroadguide.com/a) [b](https://moneyabroadguide.com/b) "
+        "[c](https://moneyabroadguide.com/c)\n"
+        "case study one. real-world example two.\n"
+    )
+    errors = agent_04._validate_tier_standard(article, word_count=99999, tier=tier)
+    src_errs = [e for e in errors if "Distinct official sources" in e]
+    assert src_errs, "one page cited 4x must FAIL the distinct-source minimum"
+    assert "1 < minimum 4" in src_errs[0]
+
+
+def test_gate_passes_with_four_distinct_pages_on_same_official_host():
+    # Mirrors run #179: 4 DIFFERENT canada.ca pages (one host) must PASS.
+    tier = agent_04._get_tier_config("standard")  # min_sources = 4
+    p1 = "https://www.canada.ca/en/financial-consumer-agency/services/rights.html"
+    p2 = "https://www.canada.ca/en/financial-consumer-agency/services/credit.html"
+    p3 = "https://www.canada.ca/en/employment-social-development/services/sin.html"
+    p4 = "https://www.canada.ca/en/immigration-refugees-citizenship/services/newcomers.html"
+    article = (
+        f"Intro ([FCAC]({p1})).\n"
+        f"Credit basics ([FCAC]({p2})), cited again later ([FCAC]({p2})).\n"
+        f"Get a SIN ([Service Canada]({p3})).\n"
+        f"Newcomer programs ([IRCC]({p4})).\n"
+        "Internal: [a](https://moneyabroadguide.com/a) [b](https://moneyabroadguide.com/b) "
+        "[c](https://moneyabroadguide.com/c)\n"
+        "case study one. real-world example two.\n"
+    )
+    errors = agent_04._validate_tier_standard(article, word_count=99999, tier=tier)
+    src_errs = [e for e in errors if "Distinct official sources" in e]
+    assert not src_errs, (
+        "four distinct pages on one official host must PASS (host dedup would wrongly fail this)"
+    )
