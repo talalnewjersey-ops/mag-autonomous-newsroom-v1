@@ -1,0 +1,62 @@
+name: UGC Publish Notifier
+
+# Decoupled sender for the NEXUS-14 -> UGC integration.
+# The production pipeline (production_v2.yml) stops at a WordPress *draft*; a
+# human publishes it later. This workflow watches WordPress for posts that have
+# actually gone live (status=publish) and fires a repository_dispatch
+# (event_type: nexus14_article_published) to nexus-ugc-enterprise so it can
+# produce promotional short-form content for the live canonical URL.
+#
+# It does NOT modify the article pipeline. Idempotency is provided by a small
+# JSON state file persisted across runs via the Actions cache, so re-runs never
+# re-announce the same article. See docs/UGC_PUBLISH_NOTIFIER.md.
+
+on:
+  schedule:
+    # Hourly; the state-file guard makes overlapping windows safe.
+    - cron: "30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ugc-publish-notifier
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    name: Announce newly published articles to UGC
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install runtime dependency
+        run: pip install "requests==2.31.0"
+
+      # Persist the notified-id state file between runs. A rolling key writes a
+      # fresh cache each run; restore-keys pulls the most recent prior state.
+      - name: Restore notified-id state
+        uses: actions/cache@v4
+        with:
+          path: .ugc_notified_ids.json
+          key: ugc-notified-ids-${{ github.run_id }}
+          restore-keys: |
+            ugc-notified-ids-
+
+      - name: Notify UGC of newly published articles
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          # Fine-grained PAT, Contents: R/W, limited to nexus-ugc-enterprise.
+          UGC_DISPATCH_TOKEN: ${{ secrets.UGC_DISPATCH_TOKEN }}
+          UGC_REPO: talalnewjersey-ops/nexus-ugc-enterprise
+        run: python scripts/ugc_publish_notifier.py
