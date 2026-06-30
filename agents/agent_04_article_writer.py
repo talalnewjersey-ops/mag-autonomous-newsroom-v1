@@ -192,6 +192,11 @@ def _validate_tier_standard(article: str, word_count: int, tier: dict) -> list:
     _all_urls = re.findall(r"https?://\S+", article)
     official_sources = sum(1 for _u in _all_urls if _classify_url(_u) == "official")
     offlist_sources = sum(1 for _u in _all_urls if _classify_url(_u) == "offlist")
+    # Reliability-first: log the source count on EVERY run (pass OR fail), not only on
+    # failure. Gives N directly in run logs without opening the artifact. Pure logging:
+    # does NOT touch the gate threshold, the errors list, or control flow below.
+    _official_hosts = {urlparse(_u).hostname for _u in _all_urls if _classify_url(_u) == "official"}
+    logger.info(f"SOURCES: {official_sources} official ({len(_official_hosts)} distinct host(s)), {offlist_sources} off-list")
     if official_sources < tier["min_sources"]:
         errors.append(
             f"Official external sources {official_sources} < minimum {tier['min_sources']} "
