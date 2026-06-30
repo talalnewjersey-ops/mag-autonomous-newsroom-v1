@@ -11,6 +11,7 @@ from agents._source_pool import select_official_sources, has_curated_pool
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+from urllib.parse import urlparse  # used by _normalize_source_url (restored after main<-sprint4 merge)
 from agents._sources import _classify_url  # shared source allow-list (single source of truth)
 
 # --- YMYL source allow-list -----------------------------------------------
