@@ -40,6 +40,22 @@ def _classify_url(url: str) -> str:
         return "official"
     return "offlist"
 
+
+def _normalize_source_url(url: str) -> str:
+    """Normalize a URL to a single PAGE identity for de-duplication.
+    The tier source minimum counts DISTINCT official pages, not raw link
+    occurrences: citing one authoritative page 4x must NOT satisfy a
+    minimum of 4. We collapse on scheme://host/path, stripping trailing
+    markdown punctuation captured by \\S+, the #fragment, the ?query and a
+    trailing slash, so the same page written several ways counts once."""
+    s = url.rstrip(").],.;\"\'>")
+    s = s.split("#", 1)[0]
+    s = s.split("?", 1)[0]
+    p = urlparse(s)
+    host = (p.hostname or "").lower()
+    path = (p.path or "").rstrip("/")
+    return f"{p.scheme.lower()}://{host}{path}"
+
 logger = logging.getLogger(__name__)
 
 PILLAR_MIN_WORDS = 3800
@@ -190,18 +206,24 @@ def _validate_tier_standard(article: str, word_count: int, tier: dict) -> list:
     # article cannot satisfy it with internal links or off-list links alone
     # (closes the YMYL false-E-E-A-T hole). Internal-link check below is UNCHANGED.
     _all_urls = re.findall(r"https?://\S+", article)
+    # official_sources = raw link OCCURRENCES (a page cited 4x counts 4); kept for the log.
     official_sources = sum(1 for _u in _all_urls if _classify_url(_u) == "official")
     offlist_sources = sum(1 for _u in _all_urls if _classify_url(_u) == "offlist")
-    # Reliability-first: log the source count on EVERY run (pass OR fail), not only on
-    # failure. Gives N directly in run logs without opening the artifact. Pure logging:
-    # does NOT touch the gate threshold, the errors list, or control flow below.
-    _official_hosts = {urlparse(_u).hostname for _u in _all_urls if _classify_url(_u) == "official"}
-    logger.info(f"SOURCES: {official_sources} official ({len(_official_hosts)} distinct host(s)), {offlist_sources} off-list")
-    if official_sources < tier["min_sources"]:
+    # The tier minimum is satisfied by DISTINCT official PAGES, not occurrences, so an
+    # article cannot pass by citing ONE authority N times (false E-E-A-T). De-dup on the
+    # normalized scheme://host/path. NOTE: dedup is by PAGE, not by host: several distinct
+    # pages on the same authority host (e.g. four different canada.ca pages) correctly
+    # count as four. Reliability-first: log occurrences AND distinct pages on EVERY run
+    # (pass OR fail) so runs report N without opening the artifact.
+    _official_pages = {_normalize_source_url(_u) for _u in _all_urls if _classify_url(_u) == "official"}
+    distinct_official = len(_official_pages)
+    logger.info(f"SOURCES: {official_sources} official occurrence(s), {distinct_official} distinct page(s), {offlist_sources} off-list")
+    if distinct_official < tier["min_sources"]:
         errors.append(
-            f"Official external sources {official_sources} < minimum {tier['min_sources']} "
-            f"(allow-list: *.gov, *.gc.ca, canada.ca). Off-list external links "
-            f"({offlist_sources}) and internal links do NOT count toward the minimum."
+            f"Distinct official sources {distinct_official} < minimum {tier['min_sources']} "
+            f"(allow-list: *.gov, *.canada.ca, canada.ca; counted by distinct page, not by "
+            f"repeated link). Off-list external links ({offlist_sources}) and internal links "
+            f"do NOT count toward the minimum."
         )
     internal_links = len(re.findall(r"\[.*?\]\(https?://moneyabroadguide\.com[^\)]*\)", article, re.IGNORECASE))
     if internal_links < tier["min_links"]:
