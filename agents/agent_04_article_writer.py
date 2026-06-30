@@ -11,34 +11,13 @@ from agents._source_pool import select_official_sources, has_curated_pool
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse  # used by _normalize_source_url (restored after main<-sprint4 merge)
+from agents._sources import _classify_url  # shared source allow-list (single source of truth)
 
-# --- YMYL source allow-list (Sprint 2 fix-sources) -------------------------
-# An "official external source" is one whose URL HOSTNAME (via urlparse, never
-# the raw URL string) ends with one of these suffixes. TLD/suffix matching on
-# the hostname covers 100% of the authorities named in SYSTEM_PROMPT cleanly:
-#   .gov     -> IRS, USCIS, FDIC, CFPB, HHS, CMS, healthcare.gov ...
-#   .gc.ca   -> CRA (cra-arc), IRCC, FINTRAC (fintrac-canafe), OSFI (osfi-bsif), FCAC (fcac-acfc)
-#   canada.ca + subdomains
-# Anchoring on the hostname trailing labels avoids substring false positives
-# (craigslist.com, theirsite.com, irs.gov.attacker.com all correctly rejected).
-# Off-list external links (banks like rbc.com, financial press) are ALLOWED in
-# the article but do NOT count toward tier["min_sources"]. Extensible: add a
-# suffix here if a new official authority must count. Internal moneyabroadguide.com
-# links are NEVER official sources.
-OFFICIAL_SOURCE_SUFFIXES = (".gov", ".gc.ca", ".canada.ca")
-_INTERNAL_HOST = "moneyabroadguide.com"
-
-
-def _classify_url(url: str) -> str:
-    """Return 'internal', 'official' or 'offlist' for a single URL.
-    Matching is done on the parsed HOSTNAME, not the raw URL string."""
-    host = (urlparse(url).hostname or "").lower().rstrip(".")
-    if host == _INTERNAL_HOST or host.endswith("." + _INTERNAL_HOST):
-        return "internal"
-    if host == "canada.ca" or any(host.endswith(s) for s in OFFICIAL_SOURCE_SUFFIXES):
-        return "official"
-    return "offlist"
+# --- YMYL source allow-list -----------------------------------------------
+# The official-source classifier and allow-list now live in agents/_sources.py
+# (single source of truth, shared with agent_05_fact_checker). _classify_url is
+# imported above. Internal-link / off-list handling in the gate is unchanged.
 
 
 def _normalize_source_url(url: str) -> str:

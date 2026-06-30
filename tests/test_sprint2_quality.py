@@ -230,6 +230,136 @@ def test_gate_passes_source_check_with_four_official_sources():
         "4 official sources must satisfy the source minimum"
 
 
+# ---------------------------------------------------------------- Sprint 4: live-source gate
+# agent_05 imports aiohttp at module top; CI does not install it, so we stub a
+# minimal aiohttp before loading the module. All network is mocked: zero real I/O.
+import asyncio as _asyncio
+import types as _types
+
+if "aiohttp" not in sys.modules:
+    _aio = _types.ModuleType("aiohttp")
+    class _ClientTimeout:
+        def __init__(self, *a, **k):
+            pass
+    class _ClientSession:
+        pass
+    class _ClientError(Exception):
+        pass
+    _aio.ClientTimeout = _ClientTimeout
+    _aio.ClientSession = _ClientSession
+    _aio.ClientError = _ClientError
+    sys.modules["aiohttp"] = _aio
+
+agent_05 = _load("agents/agent_05_fact_checker.py", "agent_05_fact_checker")
+_sources = _load("agents/_sources.py", "agent_sources")
+
+
+class _StubSelf:
+    """Minimal self for calling _build_report without constructing the agent."""
+    def _generate_recommendations(self, *a, **k):
+        return []
+
+
+def _report(broken):
+    """Build a fact-check report from a list of broken-url dicts (no network)."""
+    url_results = {"live": [], "broken": list(broken), "redirected": [], "untrusted": []}
+    from datetime import datetime as _dt
+    return agent_05.FactCheckerAgent._build_report(
+        _StubSelf(), verified=[], url_results=url_results, stats={}, start_time=_dt.now()
+    )
+
+
+def test_sources_module_is_single_source_of_truth():
+    # agent_04's classifier is imported from the shared module (agents._sources),
+    # not a local copy. In production there is exactly one agents._sources, so
+    # both agents share one definition. (The test loader imports the file twice
+    # under different module names, so we assert provenance + behavior, not
+    # object identity.)
+    assert agent_04._classify_url.__module__ == "agents._sources"
+    for url, expected in [
+        ("https://www.canada.ca/x", "official"),
+        ("https://cra-arc.gc.ca/x", "official"),
+        ("https://example.com/x", "offlist"),
+        ("https://www.moneyabroadguide.com/x", "internal"),
+    ]:
+        assert agent_04._classify_url(url) == expected
+        assert _sources.classify_url(url) == expected
+
+
+def test_official_404_is_hard_fail():
+    # 1. Official source with a definite HTTP error -> blocking FAIL.
+    rep = _report([{"url": "https://www.canada.ca/nope", "status_code": 404, "reason": "http"}])
+    assert rep["summary"]["broken_official_hard"] == 1
+    assert rep["verdict"] == "FAIL"
+
+
+def test_offlist_404_is_warning_not_fail():
+    # 2. Off-list source 404 -> not hard, single issue -> PASS_WITH_WARNINGS.
+    rep = _report([{"url": "https://somebank.com/nope", "status_code": 404, "reason": "http"}])
+    assert rep["summary"]["broken_official_hard"] == 0
+    assert rep["verdict"] == "PASS_WITH_WARNINGS"
+
+
+def test_official_redirect_is_not_broken():
+    # 3. A followed redirect ends up in 'redirected'/'live', never in 'broken'.
+    url_results = {"live": [{"url": "https://www.canada.ca/x", "status_code": 200}],
+                   "broken": [], "redirected": [], "untrusted": []}
+    from datetime import datetime as _dt
+    rep = agent_05.FactCheckerAgent._build_report(
+        _StubSelf(), verified=[], url_results=url_results, stats={}, start_time=_dt.now())
+    assert rep["summary"]["broken_official_hard"] == 0
+    assert rep["verdict"] == "PASS"
+
+
+def test_official_live_passes():
+    # 5. Official source 200 and nothing else wrong -> PASS.
+    rep = _report([])
+    assert rep["summary"]["broken_official_hard"] == 0
+    assert rep["verdict"] == "PASS"
+
+
+def test_official_systematic_timeout_is_soft_warning_with_visible_log(caplog):
+    # 6. Official source unreachable after retries -> soft, NOT a FAIL, but a
+    #    loud 'human review needed' WARNING is emitted for the draft reviewer.
+    import logging as _logging
+    with caplog.at_level(_logging.WARNING):
+        rep = _report([{"url": "https://www.canada.ca/ghost", "error": "timeout",
+                        "trusted": False, "reason": "transport"}])
+    assert rep["summary"]["broken_official_hard"] == 0
+    assert rep["summary"]["broken_official_soft"] == 1
+    assert rep["verdict"] != "FAIL"  # never blocks prod on transport error
+    assert any("human review needed" in r.getMessage() for r in caplog.records)
+
+
+def test_check_one_retries_transport_then_succeeds():
+    # 4. A transient transport error on the first HEAD, then a 200 -> 'live',
+    #    no broken entry (retry recovers). Fully mocked session, no real I/O.
+    class _Resp:
+        def __init__(self, status, url):
+            self.status = status
+            self.url = url
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+
+    class _FlakySession:
+        def __init__(self):
+            self.calls = 0
+        def head(self, url, **k):
+            self.calls += 1
+            if self.calls == 1:
+                raise sys.modules["aiohttp"].ClientError("boom")
+            return _Resp(200, url)
+        def get(self, url, **k):
+            return _Resp(200, url)
+
+    fc = agent_05.FactCheckerAgent.__new__(agent_05.FactCheckerAgent)
+    fc.session = _FlakySession()
+    out = _asyncio.run(fc._check_urls(["https://www.canada.ca/ok"]))
+    assert len(out["live"]) == 1
+    assert out["broken"] == []
+    assert fc.session.calls == 2  # 1 failure + 1 retry success
 # ------------------------------------------- FIX(writer): curated source pool
 # These tests are deterministic and require NO network: the pool is static data
 # and classification is pure string logic. They guard the root-cause fix for the
