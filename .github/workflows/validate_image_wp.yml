@@ -1,0 +1,111 @@
+name: "VALIDATE image + WordPress (isolated, no quality gates)"
+
+# Purpose: prove the two never-exercised links — Gemini image production (agent_10)
+# and the WordPress draft with a featured image (agent_11) — end to end, WITHOUT
+# the upstream quality gates (fact-check / EEAT / G3 / QA / editor) that keep
+# blocking on real content defects. Produces a real DRAFT (status=draft, PR-10)
+# for human review and prints its post_id. Manual dispatch only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: "Topic override (must map to a curated source vertical, e.g. a Canada newcomer topic)"
+        required: true
+        default: "Best Newcomer Bank Accounts in Canada"
+
+env:
+  PYTHON_VERSION: "3.11"
+  MIN_IMAGES: 4
+  ARTICLE_TYPE: "STANDARD"
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+  WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+  WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+
+jobs:
+  validate-image-wp:
+    name: "Isolated image + WordPress draft"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run isolated pipeline (write -> image -> WordPress draft)
+        env:
+          TOPIC_OVERRIDE: ${{ github.event.inputs.topic }}
+        run: |
+          set -e
+          export ARTICLE_DIR="output/article_1"
+          mkdir -p "${ARTICLE_DIR}/"{agent_01,agent_02,agent_03,agent_04,agent_09,agent_10,agent_11,agent_16}
+
+          echo "::group::Phase 1-4: topic -> keyword -> plan -> write"
+          ARTICLE_NUM=1 python -m agents.agent_01_seo_research \
+            --max-topics 1 --topic "${TOPIC_OVERRIDE}" --output "${ARTICLE_DIR}/agent_01/topics.json"
+          python -m agents.agent_02_keyword_validation \
+            --input "${ARTICLE_DIR}/agent_01/topics.json" \
+            --output "${ARTICLE_DIR}/agent_02/validated_topics.json"
+          python -m agents.agent_03_content_planner \
+            --input "${ARTICLE_DIR}/agent_02/validated_topics.json" \
+            --output "${ARTICLE_DIR}/agent_03/article_outline.json"
+          ARTICLE_TYPE=${ARTICLE_TYPE} python -m agents.agent_04_article_writer \
+            --input "${ARTICLE_DIR}/agent_03/article_outline.json" \
+            --output "${ARTICLE_DIR}/agent_04/article_draft.md" \
+            --article-type "${ARTICLE_TYPE}"
+          echo "::endgroup::"
+
+          # NOTE: quality gates (agent_05 fact-check, agent_06 EEAT, G3, QA, editor)
+          # are intentionally SKIPPED here. This workflow only validates the image +
+          # WordPress mechanics, not content quality.
+
+          echo "::group::Phase 9-10: image prompts -> Gemini image production"
+          python -m agents.agent_09_image_prompt_generator \
+            --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
+            --output "${ARTICLE_DIR}/agent_09/image_prompts.json" \
+            --count ${MIN_IMAGES}
+          python -m agents.agent_10_image_production \
+            --input "${ARTICLE_DIR}/agent_09/image_prompts.json" \
+            --output "${ARTICLE_DIR}/agent_10/" \
+            --validation-report "${ARTICLE_DIR}/agent_10/image_validation_report.json" \
+            --min-images ${MIN_IMAGES} \
+            --provider gemini
+          echo "::endgroup::"
+
+          echo "::group::Phase 16: publishing optimization (non-blocking)"
+          python -m agents.agent_16_publishing_optimization \
+            --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
+            --faq-data "${ARTICLE_DIR}/agent_03/article_outline.json" \
+            --image-url "${ARTICLE_DIR}/agent_10/featured_image_url.txt" \
+            --output "${ARTICLE_DIR}/agent_16/publishing_optimizer.json" || true
+          echo "::endgroup::"
+
+          echo "::group::Phase 11: WordPress DRAFT [GATE C]"
+          python -m agents.agent_11_wordpress_integration \
+            --article "${ARTICLE_DIR}/agent_04/article_draft.md" \
+            --images "${ARTICLE_DIR}/agent_10/" \
+            --rank-math "${ARTICLE_DIR}/agent_16/publishing_optimizer.json" \
+            --output "${ARTICLE_DIR}/agent_11/wordpress_report.json" \
+            --validation-report "${ARTICLE_DIR}/agent_11/wordpress_validation_report.json"
+          echo "::endgroup::"
+
+          echo "===================== RESULT ====================="
+          python3 -c "import json; r=json.load(open('${ARTICLE_DIR}/agent_11/wordpress_report.json')); print('status      :', r.get('status')); print('post_id     :', r.get('post_id')); print('post_status :', r.get('post_status')); print('draft_url   :', r.get('post_url')); print('featured_id :', r.get('featured_image_id')); print('image_count :', r.get('image_count'))"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: "validate-image-wp-${{ github.run_id }}"
+          retention-days: 7
+          path: output/article_1/
