@@ -77,6 +77,7 @@ jobs:
       - name: Sprint 5 topic engine tests (offline) -- no network, no API key
         env:
           ANTHROPIC_API_KEY: ""
+          PYTHONPATH: "."   # repo root on sys.path so `import agents...` resolves under bare pytest
         run: |
           pytest -v tests/test_sprint5_topic_engine.py
 
