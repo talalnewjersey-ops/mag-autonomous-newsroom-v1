@@ -40,6 +40,7 @@ jobs:
           python -m py_compile agents/_sources.py
           python -m py_compile agents/agent_05_fact_checker.py
           python -m py_compile agents/_source_pool.py
+          python -m py_compile agents/agent_01_seo_research.py
           python -m py_compile scripts/g3_repetition_gate.py
           python -m py_compile scripts/dri_metric.py
           python -m py_compile scripts/ugc_publish_notifier.py
@@ -72,6 +73,13 @@ jobs:
           ANTHROPIC_API_KEY: ""
         run: |
           pytest -v tests/test_sprint2_quality.py
+
+      - name: Sprint 5 topic engine tests (offline) -- no network, no API key
+        env:
+          ANTHROPIC_API_KEY: ""
+          PYTHONPATH: "."   # repo root on sys.path so `import agents...` resolves under bare pytest
+        run: |
+          pytest -v tests/test_sprint5_topic_engine.py
 
       - name: Workflow blocking semantics test
         run: |

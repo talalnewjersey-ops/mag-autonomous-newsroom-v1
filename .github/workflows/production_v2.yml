@@ -90,6 +90,8 @@ jobs:
       needs.route-trigger.outputs.mode == 'batch_2' ||
       needs.route-trigger.outputs.mode == 'end_to_end_test'
     timeout-minutes: 120
+    permissions:
+      contents: write   # Sprint 5: push the updated topic registry back (anti-repetition)
 
     steps:
       - name: Checkout repository
@@ -331,6 +333,20 @@ jobs:
             output/article_1/
             output/article_2/
             output/article_3/
+
+      - name: Commit-back topic registry (anti-repetition persistence)
+        if: always()   # persist selected topics even if an article fails downstream
+        run: |
+          if git diff --quiet -- data/topic_registry.json; then
+            echo "Topic registry unchanged (manual override / fallback) — nothing to commit"
+          else
+            git config user.name  "nexus14-bot"
+            git config user.email "actions@users.noreply.github.com"
+            git add data/topic_registry.json
+            git commit -m "chore(topics): mark selected topics in_progress [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+            echo "Topic registry committed and pushed to ${GITHUB_REF_NAME}"
+          fi
 
   global-audit:
     name: "Global Quality Audit"
