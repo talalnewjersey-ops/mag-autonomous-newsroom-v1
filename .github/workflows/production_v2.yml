@@ -334,18 +334,19 @@ jobs:
             output/article_2/
             output/article_3/
 
-      - name: Commit-back topic registry (anti-repetition persistence)
-        if: always()   # persist selected topics even if an article fails downstream
+      - name: Reconcile topic registry (published on success, rollback on failure)
+        if: always()   # terminal reconciliation: guarantees no in_progress is ever committed
         run: |
+          PYTHONPATH=. python -m agents.agent_01_seo_research --reconcile --output-dir output
           if git diff --quiet -- data/topic_registry.json; then
-            echo "Topic registry unchanged (manual override / fallback) — nothing to commit"
+            echo "Topic registry unchanged (no successful publish / manual override) — nothing to commit"
           else
             git config user.name  "nexus14-bot"
             git config user.email "actions@users.noreply.github.com"
             git add data/topic_registry.json
-            git commit -m "chore(topics): mark selected topics in_progress [skip ci]"
+            git commit -m "chore(topics): reconcile registry — published/rollback [skip ci]"
             git push origin "HEAD:${GITHUB_REF_NAME}"
-            echo "Topic registry committed and pushed to ${GITHUB_REF_NAME}"
+            echo "Topic registry reconciled and pushed to ${GITHUB_REF_NAME}"
           fi
 
   global-audit:
