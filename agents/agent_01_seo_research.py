@@ -15,6 +15,9 @@ import asyncio
 import json
 import logging
 import os
+import re
+import difflib
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -173,6 +176,12 @@ BUILTIN_TOPIC_DATABASE = [
 ]
 
 
+# Sprint 5 topic engine configuration
+DEFAULT_TOPIC_REGISTRY_PATH = "data/topic_registry.json"
+TOPIC_SIMILARITY_THRESHOLD = 0.80   # reject a candidate too close to an already-used title
+MIN_CATEGORIES_PER_DAY = 3          # variety target (blueprint 7.2 category matrix)
+
+
 class SEOResearchAgent:
     AGENT_ID = "agent_01"
     AGENT_NAME = "SEO Research Agent V3.4"
@@ -184,9 +193,10 @@ class SEOResearchAgent:
         self.semrush_key = os.getenv("SEMRUSH_API_KEY", "")
         self.max_topics = self.config.get("max_topics", 1)
         self.article_num = int(os.getenv("ARTICLE_NUM", "1"))
+        self.registry_path = os.getenv("TOPIC_REGISTRY_PATH", DEFAULT_TOPIC_REGISTRY_PATH)
         logger.info(f"ARTICLE_NUM={self.article_num} | SERPAPI: {'ON' if self.serpapi_key else 'OFF'} | SEMRUSH: {'ON' if self.semrush_key else 'OFF'}")
 
-    async def run(self, max_topics: int = 1, output_path: str = "output/agent_01/topics.json", topic_override: str = "") -> Dict:
+    async def run(self, max_topics: int = 1, output_path: str = "output/agent_01/topics.json", topic_override: str = "", dry_run: bool = False) -> Dict:
         logger.info("=" * 60)
         logger.info(f"NEXUS-14 V3.4 — Agent 01: SEO Research | ARTICLE_NUM={self.article_num}")
         logger.info("=" * 60)
@@ -232,6 +242,46 @@ class SEOResearchAgent:
             output_file.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
             logger.info(f"TOPIC OVERRIDE — wrote 1 topic to {output_path}")
             return output
+
+        # Sprint 5 — the curated registry is the PRIMARY topic engine (no external SEO API).
+        # Lexicographic priority: monetization > traffic > variety, and never a
+        # published/in_progress topic. Falls back to legacy research only if the
+        # registry is missing or fully exhausted.
+        registry_selection = self._select_from_registry(max_topics)
+        if registry_selection:
+            topics = [self._registry_to_topic(e) for e in registry_selection]
+            for i, t in enumerate(topics):
+                t["rank"] = i + 1
+            if dry_run:
+                logger.info("Topic registry DRY-RUN: selection made, registry NOT mutated")
+            else:
+                self._mark_selected([e["id"] for e in registry_selection])
+                logger.info(f"Topic registry: {len(registry_selection)} topic(s) marked in_progress, "
+                            f"saved {self.registry_path}")
+            distinct_categories = len({e.get("category") for e in registry_selection})
+            if len(registry_selection) >= MIN_CATEGORIES_PER_DAY and distinct_categories < MIN_CATEGORIES_PER_DAY:
+                logger.warning(f"Category matrix: only {distinct_categories} distinct categories for "
+                               f"{len(registry_selection)} topics (target >= {MIN_CATEGORIES_PER_DAY}); "
+                               f"monetization priority kept (no compensation).")
+            output = {
+                "agent": self.AGENT_NAME,
+                "timestamp": datetime.utcnow().isoformat(),
+                "version": "V5.0",
+                "research_mode": "topic_registry",
+                "article_num": self.article_num,
+                "markets": ["USA", "Canada"],
+                "total_topics": len(topics),
+                "usa_count": len([t for t in topics if t.get("market") == "USA"]),
+                "canada_count": len([t for t in topics if t.get("market") == "Canada"]),
+                "topics": topics,
+            }
+            output_file = Path(output_path)
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
+            logger.info(f"Topics saved: {output_path} | {len(topics)} topics "
+                        f"(registry engine, mode={'dry-run' if dry_run else 'live'})")
+            return output
+        logger.warning("Topic registry empty/exhausted/missing — falling back to legacy research")
 
         if self.serpapi_key or self.semrush_key:
             try:
@@ -367,6 +417,104 @@ Return ONLY a valid JSON array with fields: keyword, market, search_volume, keyw
                     f"topic: {selected[0]['keyword'] if selected else 'none'}")
         return [self._normalize_topic(t) for t in selected]
 
+    # ----- Sprint 5: curated topic registry engine -----
+    def _load_registry(self) -> Optional[Dict]:
+        path = Path(self.registry_path)
+        if not path.exists():
+            logger.warning(f"Topic registry not found at {self.registry_path}")
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.error(f"Topic registry unreadable ({self.registry_path}): {e}")
+            return None
+
+    def _save_registry(self, registry: Dict) -> None:
+        path = Path(self.registry_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    @staticmethod
+    def _norm_title(s: str) -> str:
+        return " ".join(re.sub(r"[^a-z0-9 ]", " ", (s or "").lower()).split())
+
+    def _is_near_duplicate(self, title: str, existing_titles: List[str]) -> bool:
+        """True if `title` is >= threshold similar to any already-used title.
+        Guards against re-publishing the same page worded differently."""
+        nt = self._norm_title(title)
+        for e in existing_titles:
+            if difflib.SequenceMatcher(None, nt, self._norm_title(e)).ratio() >= TOPIC_SIMILARITY_THRESHOLD:
+                return True
+        return False
+
+    def _select_from_registry(self, count: int) -> List[Dict]:
+        """Pick up to `count` topics by the fixed priority rule:
+        monetization_score (desc) > traffic_score (desc) > variety (least-used
+        category, then id for determinism). NEVER selects a published/in_progress
+        topic, nor a candidate too similar to an already-used title. Variety is a
+        pure tie-breaker: monetization always dominates (no compensation)."""
+        registry = self._load_registry()
+        if not registry:
+            return []
+        topics = registry.get("topics", [])
+        used = [t for t in topics if t.get("status") in ("published", "in_progress")]
+        used_titles = [t.get("title", "") for t in used]
+        pool = [t for t in topics
+                if t.get("status") not in ("published", "in_progress")
+                and not self._is_near_duplicate(t.get("title", ""), used_titles)]
+        cat_usage = Counter(t.get("category") for t in used)
+        chosen: List[Dict] = []
+        for _ in range(min(count, len(pool))):
+            pool.sort(key=lambda t: (
+                -int(t.get("monetization_score", 0)),
+                -int(t.get("traffic_score", 0)),
+                cat_usage[t.get("category")],
+                t.get("id", ""),
+            ))
+            pick = pool.pop(0)
+            chosen.append(pick)
+            cat_usage[pick.get("category")] += 1  # rotate category among equal-tier picks
+        if chosen:
+            logger.info("Registry selection order: " + ", ".join(
+                f"{c['id']}(M{c.get('monetization_score')}/T{c.get('traffic_score')})" for c in chosen))
+        return chosen
+
+    def _registry_to_topic(self, entry: Dict) -> Dict:
+        """Map a registry entry to the standard topics.json schema so Agents 02-18
+        run unchanged, while carrying the monetization/traffic/category signals."""
+        out = self._normalize_topic({
+            "id": entry.get("id"),
+            "keyword": entry.get("keyword", ""),
+            "title": entry.get("title", ""),
+            "market": entry.get("market", "Canada"),
+            "affiliate_programs": entry.get("affiliate_programs", []),
+            "content_type": "guide",
+            "estimated_word_count": 5000,
+            "newcomer_priority": True,
+            "source": "topic_registry",
+        })
+        out["category"] = entry.get("category")
+        out["monetization_score"] = entry.get("monetization_score")
+        out["traffic_score"] = entry.get("traffic_score")
+        # Lexicographic display score: monetization dominates, traffic breaks ties.
+        out["priority_score"] = int(entry.get("monetization_score", 0)) * 10 + int(entry.get("traffic_score", 0))
+        return out
+
+    def _mark_selected(self, ids: List[str]) -> None:
+        """Commit-back: flag selected topics as in_progress so they are never
+        re-selected (this run or future runs). The registry file is the durable
+        source of truth; a workflow step commits it back after the run."""
+        registry = self._load_registry()
+        if not registry:
+            return
+        wanted = set(ids)
+        stamp = datetime.utcnow().isoformat() + "Z"
+        for t in registry.get("topics", []):
+            if t.get("id") in wanted and t.get("status") == "candidate":
+                t["status"] = "in_progress"
+                t["selected_at"] = stamp
+        self._save_registry(registry)
+
     def _parse_serp_result(self, query: str, data: Dict) -> Optional[Dict]:
         return {
             "keyword": query, "market": "Canada" if "canada" in query.lower() else "USA",
@@ -426,12 +574,17 @@ def main():
     parser.add_argument("--output", type=str, default="output/agent_01/topics.json")
     parser.add_argument("--market", type=str, default="all", choices=["all", "usa", "canada"])
     parser.add_argument("--topic", type=str, default="", help="Manual topic override; bypasses auto topic selection when set")
+    parser.add_argument("--registry", type=str, default="", help="Path to topic_registry.json (default: data/topic_registry.json)")
+    parser.add_argument("--dry-run", action="store_true", help="Select a topic but do NOT mutate the registry")
     args = parser.parse_args()
     topic_override = args.topic or os.getenv("TOPIC_OVERRIDE", "")
+    if args.registry:
+        os.environ["TOPIC_REGISTRY_PATH"] = args.registry
+    dry_run = args.dry_run or os.getenv("TOPIC_ENGINE_DRY_RUN", "").lower() in ("1", "true", "yes")
     from config.config_loader import ConfigLoader
     config = ConfigLoader.load()
     agent = SEOResearchAgent(config=config.get("agents", {}).get("agent_01", {}))
-    result = asyncio.run(agent.run(max_topics=args.max_topics, output_path=args.output, topic_override=topic_override))
+    result = asyncio.run(agent.run(max_topics=args.max_topics, output_path=args.output, topic_override=topic_override, dry_run=dry_run))
     print(f"[Agent 01] Research complete — {result['total_topics']} topics saved to {args.output}")
 
 
