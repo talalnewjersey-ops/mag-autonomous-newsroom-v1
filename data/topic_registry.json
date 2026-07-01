@@ -13,10 +13,10 @@
       "category": "cartes",
       "monetization_score": 5,
       "traffic_score": 5,
-      "status": "in_progress",
+      "status": "candidate",
       "published_at": null,
       "post_id": null,
-      "selected_at": "2026-07-01T09:39:58.426894Z"
+      "selected_at": null
     },
     {
       "id": "us-car-insurance-foreign-drivers-students",
@@ -26,10 +26,10 @@
       "category": "assurance auto",
       "monetization_score": 5,
       "traffic_score": 5,
-      "status": "in_progress",
+      "status": "candidate",
       "published_at": null,
       "post_id": null,
-      "selected_at": "2026-07-01T09:31:12.777031Z"
+      "selected_at": null
     },
     {
       "id": "us-best-banks-immigrants-no-ssn",
@@ -51,10 +51,10 @@
       "category": "transferts",
       "monetization_score": 5,
       "traffic_score": 5,
-      "status": "in_progress",
+      "status": "candidate",
       "published_at": null,
       "post_id": null,
-      "selected_at": "2026-07-01T09:35:02.594995Z"
+      "selected_at": null
     },
     {
       "id": "us-send-money-to-mexico",
@@ -88,10 +88,10 @@
       "category": "assurance sante",
       "monetization_score": 5,
       "traffic_score": 4,
-      "status": "in_progress",
+      "status": "candidate",
       "published_at": null,
       "post_id": null,
-      "selected_at": "2026-07-01T15:46:56.247605Z"
+      "selected_at": null
     },
     {
       "id": "ca-best-newcomer-bank-accounts",
@@ -101,10 +101,10 @@
       "category": "banques",
       "monetization_score": 5,
       "traffic_score": 4,
-      "status": "in_progress",
+      "status": "candidate",
       "published_at": null,
       "post_id": null,
-      "selected_at": "2026-07-01T15:43:12.707562Z"
+      "selected_at": null
     },
     {
       "id": "ca-car-insurance-newcomers",
@@ -114,10 +114,10 @@
       "category": "assurance auto",
       "monetization_score": 5,
       "traffic_score": 4,
-      "status": "in_progress",
+      "status": "candidate",
       "published_at": null,
       "post_id": null,
-      "selected_at": "2026-07-01T15:47:30.614543Z"
+      "selected_at": null
     },
     {
       "id": "ca-send-money-to-from-canada",
@@ -127,10 +127,10 @@
       "category": "transferts",
       "monetization_score": 5,
       "traffic_score": 4,
-      "status": "in_progress",
+      "status": "candidate",
       "published_at": null,
       "post_id": null,
-      "selected_at": "2026-07-01T17:22:07.018918Z"
+      "selected_at": null
     },
     {
       "id": "ca-best-credit-cards-newcomers",
