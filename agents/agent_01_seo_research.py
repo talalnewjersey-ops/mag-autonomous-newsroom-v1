@@ -501,9 +501,11 @@ Return ONLY a valid JSON array with fields: keyword, market, search_volume, keyw
         return out
 
     def _mark_selected(self, ids: List[str]) -> None:
-        """Commit-back: flag selected topics as in_progress so they are never
-        re-selected (this run or future runs). The registry file is the durable
-        source of truth; a workflow step commits it back after the run."""
+        """Claim selected topics as in_progress so the SAME batch does not re-pick
+        them (in-memory / working-tree only). `in_progress` is TRANSIENT and must
+        never be committed: the terminal state is decided at end-of-run by
+        reconcile_registry(), which promotes successes to published and rolls every
+        remaining in_progress back to candidate."""
         registry = self._load_registry()
         if not registry:
             return
@@ -514,6 +516,75 @@ Return ONLY a valid JSON array with fields: keyword, market, search_volume, keyw
                 t["status"] = "in_progress"
                 t["selected_at"] = stamp
         self._save_registry(registry)
+
+    def _mark_published(self, registry: Dict, topic_id: str, post_id) -> bool:
+        """Promote a topic to published with its WordPress post_id. Never downgrades
+        an already-published topic. Returns True if a transition was applied."""
+        for t in registry.get("topics", []):
+            if t.get("id") == topic_id:
+                if t.get("status") == "published":
+                    return False
+                t["status"] = "published"
+                t["post_id"] = post_id
+                t["published_at"] = datetime.utcnow().isoformat() + "Z"
+                return True
+        return False
+
+    def reconcile_registry(self, output_dir: str = "output") -> Dict[str, List[str]]:
+        """Terminal registry reconciliation — run ONCE at end-of-batch (if: always()).
+
+        Lifecycle: candidate --(selection, IN MEMORY)--> in_progress -->
+        {published | candidate}. `in_progress` is a purely transient claim used to
+        de-duplicate topics within one batch and must NEVER reach git. This method
+        derives the terminal state from run artifacts and guarantees the invariant
+        "no in_progress is ever committed":
+          * a topic whose article produced a valid WordPress post_id
+            (output/article_*/agent_11/wordpress_report.json) -> published, with
+            post_id + published_at recorded;
+          * every other in_progress topic is rolled back to candidate, so a run that
+            failed at ANY step never burns its topic — it stays re-pickable.
+        Manual --topic overrides (non-registry ids) are ignored; already-published
+        topics are never touched.
+        """
+        registry = self._load_registry()
+        if not registry:
+            logger.warning("reconcile: registry missing, nothing to do")
+            return {"published": [], "rolled_back": []}
+        ids_in_registry = {t.get("id") for t in registry.get("topics", [])}
+        published: List[str] = []
+        out = Path(output_dir)
+        for art_dir in sorted(out.glob("article_*")):
+            topics_file = art_dir / "agent_01" / "topics.json"
+            report_file = art_dir / "agent_11" / "wordpress_report.json"
+            if not topics_file.exists():
+                continue
+            try:
+                selected = json.loads(topics_file.read_text(encoding="utf-8")).get("topics", [])
+            except Exception as e:
+                logger.warning(f"reconcile: unreadable {topics_file}: {e}")
+                continue
+            post_id = None
+            if report_file.exists():
+                try:
+                    post_id = json.loads(report_file.read_text(encoding="utf-8")).get("post_id")
+                except Exception as e:
+                    logger.warning(f"reconcile: unreadable {report_file}: {e}")
+            if not post_id:
+                continue  # failure / missing report -> handled by the in_progress sweep
+            for st in selected:
+                tid = st.get("id")
+                if tid in ids_in_registry and self._mark_published(registry, tid, post_id):
+                    published.append(tid)
+        # SWEEP: no in_progress may ever be committed
+        rolled_back: List[str] = []
+        for t in registry.get("topics", []):
+            if t.get("status") == "in_progress":
+                t["status"] = "candidate"
+                t["selected_at"] = None
+                rolled_back.append(t.get("id"))
+        self._save_registry(registry)
+        logger.info(f"reconcile: published={published} rolled_back={rolled_back}")
+        return {"published": published, "rolled_back": rolled_back}
 
     def _parse_serp_result(self, query: str, data: Dict) -> Optional[Dict]:
         return {
@@ -576,10 +647,19 @@ def main():
     parser.add_argument("--topic", type=str, default="", help="Manual topic override; bypasses auto topic selection when set")
     parser.add_argument("--registry", type=str, default="", help="Path to topic_registry.json (default: data/topic_registry.json)")
     parser.add_argument("--dry-run", action="store_true", help="Select a topic but do NOT mutate the registry")
+    parser.add_argument("--reconcile", action="store_true",
+                        help="Reconcile the registry from run artifacts (mark published / roll back in_progress), then exit")
+    parser.add_argument("--output-dir", type=str, default="output",
+                        help="Root directory holding article_* artifacts (used with --reconcile)")
     args = parser.parse_args()
-    topic_override = args.topic or os.getenv("TOPIC_OVERRIDE", "")
     if args.registry:
         os.environ["TOPIC_REGISTRY_PATH"] = args.registry
+    if args.reconcile:
+        agent = SEOResearchAgent(config={})
+        res = agent.reconcile_registry(output_dir=args.output_dir)
+        print(f"[Agent 01] Reconcile complete — published={res['published']} rolled_back={res['rolled_back']}")
+        return
+    topic_override = args.topic or os.getenv("TOPIC_OVERRIDE", "")
     dry_run = args.dry_run or os.getenv("TOPIC_ENGINE_DRY_RUN", "").lower() in ("1", "true", "yes")
     from config.config_loader import ConfigLoader
     config = ConfigLoader.load()

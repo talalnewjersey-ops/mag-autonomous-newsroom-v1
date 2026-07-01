@@ -81,6 +81,13 @@ jobs:
         run: |
           pytest -v tests/test_sprint5_topic_engine.py
 
+      - name: Sprint 6 registry lifecycle tests (offline) -- no network, no API key
+        env:
+          ANTHROPIC_API_KEY: ""
+          PYTHONPATH: "."   # repo root on sys.path so `import agents...` resolves under bare pytest
+        run: |
+          pytest -v tests/test_sprint6_registry_lifecycle.py
+
       - name: Workflow blocking semantics test
         run: |
           chmod +x tests/test_workflow_blocking.sh
