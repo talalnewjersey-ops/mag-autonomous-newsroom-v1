@@ -21,10 +21,16 @@ from typing import Dict, List, Any
 
 logger = logging.getLogger(__name__)
 
+# NEXUS-14 model panachage: outline planning is structured, Sonnet 5 is
+# a net upgrade over the previous Haiku/Sonnet 4.6 pair (adaptive thinking
+# on by default). Opus 4.8 as fallback. Overridable via env.
+# See docs/NEXUS14_MODEL_PANACHAGE.md.
 CLAUDE_MODELS = [
-    "claude-haiku-4-5",
-    "claude-sonnet-4-6",
+    os.getenv("OUTLINE_MODEL", os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")),
+    os.getenv("ANTHROPIC_MODEL_FALLBACK", "claude-opus-4-8"),
 ]
+# Deduplicate while preserving order (primary is never tried twice).
+CLAUDE_MODELS = list(dict.fromkeys(CLAUDE_MODELS))
 
 
 def main():

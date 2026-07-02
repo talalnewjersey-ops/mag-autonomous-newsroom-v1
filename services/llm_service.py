@@ -48,9 +48,12 @@ class LLMService:
         self.total_cost = 0.0
         
         # Default models per provider
+        # NEXUS-14 model panachage: sonnet-5 is the default for structured
+        # tasks (research/keyword/outline/reporting). Per-agent overrides
+        # live in .env — see docs/NEXUS14_MODEL_PANACHAGE.md.
         self.models = {
             LLMProvider.OPENAI: config.get("openai_model", "gpt-4-turbo-preview"),
-            LLMProvider.ANTHROPIC: config.get("anthropic_model", os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")),
+            LLMProvider.ANTHROPIC: config.get("anthropic_model", os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")),
             LLMProvider.GEMINI: config.get("gemini_model", "gemini-1.5-pro")
         }
         
@@ -90,6 +93,17 @@ class LLMService:
             logger.warning(f"Provider {provider.value} failed: {e}. Trying fallback...")
             return await self._complete_with_fallback(prompt, system, model, max_tokens, temperature, provider)
     
+    # Models that REJECT `temperature`/`top_p`/`top_k` (400) — new model
+    # family since Opus 4.7. Sampling params must be omitted for these.
+    # See docs/NEXUS14_MODEL_PANACHAGE.md and shared/model-migration.md.
+    _NEW_MODEL_PREFIXES = (
+        "claude-fable-",
+        "claude-mythos-",
+        "claude-opus-4-7",
+        "claude-opus-4-8",
+        "claude-sonnet-5",
+    )
+
     async def _complete_anthropic(self, prompt: str, system: str = None,
                                    model: str = None, max_tokens: int = 4096,
                                    temperature: float = 0.7) -> str:
@@ -98,6 +112,10 @@ class LLMService:
         NEXUS-14 P1 FIX: model now read from env with new model family.
         Tries primary then fallback, deduplicated so the same model is
         never tried twice.
+
+        NEXUS-14 model panachage: sampling params (temperature/top_p/top_k)
+        are omitted on the new model family (Fable 5, Opus 4.7/4.8, Sonnet 5)
+        because they now 400. temperature is passed to legacy models only.
         """
         client = await self._get_anthropic_client()
 
@@ -105,7 +123,7 @@ class LLMService:
             models_to_try = [model]
         else:
             primary = os.getenv("ANTHROPIC_MODEL", self.models[LLMProvider.ANTHROPIC])
-            fallback = os.getenv("ANTHROPIC_MODEL_FALLBACK", "claude-sonnet-4-6")
+            fallback = os.getenv("ANTHROPIC_MODEL_FALLBACK", "claude-opus-4-8")
             models_to_try = list(dict.fromkeys([primary, fallback]))
 
         messages = [{"role": "user", "content": prompt}]
@@ -116,8 +134,10 @@ class LLMService:
                 "model": model_name,
                 "max_tokens": max_tokens,
                 "messages": messages,
-                "temperature": temperature
             }
+            # Only send temperature to models that still accept it.
+            if not model_name.startswith(self._NEW_MODEL_PREFIXES):
+                kwargs["temperature"] = temperature
 
             if system:
                 kwargs["system"] = system

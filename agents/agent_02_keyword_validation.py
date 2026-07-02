@@ -242,10 +242,11 @@ Return ONLY a JSON array:
             "content-type": "application/json",
         }
 
-        # NEXUS-14 P1 FIX: model now read from env with new model family.
-        # Primary + fallback, deduplicated so the same model is never tried twice.
-        primary = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
-        fallback = os.getenv("ANTHROPIC_MODEL_FALLBACK", "claude-sonnet-4-6")
+        # NEXUS-14 model panachage: keyword validation is structured,
+        # Sonnet 5 handles it well; Opus 4.8 as fallback.
+        # See docs/NEXUS14_MODEL_PANACHAGE.md.
+        primary = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
+        fallback = os.getenv("ANTHROPIC_MODEL_FALLBACK", "claude-opus-4-8")
         models_to_try = list(dict.fromkeys([primary, fallback]))
         last_error = None
 

@@ -365,10 +365,12 @@ class SEOResearchAgent:
 PRIORITY: Canada newcomer/immigrant/international student topics.
 Return ONLY a valid JSON array with fields: keyword, market, search_volume, keyword_difficulty, cpc, intent, opportunity_types, affiliate_programs, content_type, estimated_word_count (max 5000)."""
         headers = {"x-api-key": self.anthropic_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
-        # NEXUS-14 P1 FIX: model now read from env with new model family.
-        # Primary + fallback, deduplicated so the same model is never tried twice.
-        primary = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
-        fallback = os.getenv("ANTHROPIC_MODEL_FALLBACK", "claude-sonnet-4-6")
+        # NEXUS-14 model panachage: structured SEO research runs on
+        # Sonnet 5 (fast, cheap, adaptive thinking on by default) with
+        # Opus 4.8 as fallback. Never tries the same model twice.
+        # See docs/NEXUS14_MODEL_PANACHAGE.md.
+        primary = os.getenv("RESEARCH_MODEL", os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5"))
+        fallback = os.getenv("ANTHROPIC_MODEL_FALLBACK", "claude-opus-4-8")
         models_to_try = list(dict.fromkeys([primary, fallback]))
         last_error = None
         async with aiohttp.ClientSession() as session:

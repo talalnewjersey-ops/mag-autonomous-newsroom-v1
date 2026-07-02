@@ -239,20 +239,82 @@ OUTPUT: Raw Markdown only — articles must score 85+ on EEAT validation."""
 
 async def _call_claude(api_key: str, prompt: str, system: str = None, max_tokens: int = 5000,
                        model: str = None) -> str:
-    # SPRINT 2 (RCA-003): writer now uses Claude Sonnet for quality. Overridable via env.
+    """Writer LLM call.
+
+    NEXUS-14 model panachage (v2): writer now defaults to Claude Fable 5,
+    Anthropic's most capable widely released model — justified only on this
+    ONE agent because article quality IS the product (YMYL / Google ranking).
+    Everything else runs on cheaper tiers. See docs/NEXUS14_MODEL_PANACHAGE.md.
+
+    For Fable 5 / Opus 4.7+ / Sonnet 5:
+      - `temperature` is REJECTED (400) — not sent.
+      - `budget_tokens` is REJECTED (400) — not used here.
+      - Fable 5 last-turn assistant prefill is REJECTED (400) — we never prefill.
+      - Fable 5 may return `stop_reason: "refusal"` on safety-classifier
+        blocks (rare on financial content but not impossible). We opt into
+        server-side refusal fallbacks (`fallbacks` + beta header) so a
+        declined request is transparently re-served by Opus 4.8 in the
+        same call.
+    """
+    # SPRINT 2 (RCA-003) → NEXUS-14 panachage v2: writer defaults to Fable 5.
     if model is None:
-        model = os.getenv("ARTICLE_WRITER_MODEL", "claude-sonnet-4-6")
+        model = os.getenv("ARTICLE_WRITER_MODEL", "claude-fable-5")
+
+    # Models on the new API surface (Fable 5, Opus 4.7/4.8, Sonnet 5) reject
+    # sampling params. Everything below is safe for older models too.
+    is_new_family = model.startswith((
+        "claude-fable-", "claude-mythos-",
+        "claude-opus-4-7", "claude-opus-4-8", "claude-sonnet-5",
+    ))
+    is_fable = model.startswith(("claude-fable-", "claude-mythos-"))
+
     import urllib.request
-    payload_dict = {"model": model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]}
+    payload_dict: Dict[str, Any] = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": prompt}],
+    }
     if system:
         payload_dict["system"] = system
+
+    # Server-side refusal fallback — opt-in but recommended per Anthropic
+    # docs when calling Fable 5 from application code. A safety-classifier
+    # decline is transparently re-served by Opus 4.8, no application logic
+    # required (billed at fallback rates).
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    if is_fable:
+        headers["anthropic-beta"] = "server-side-fallback-2026-06-01"
+        payload_dict["fallbacks"] = [{"model": "claude-opus-4-8"}]
+
     payload = json.dumps(payload_dict).encode("utf-8")
-    req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=payload,
-                                 headers={"x-api-key": api_key, "anthropic-version": "2023-06-01",
-                                          "content-type": "application/json"}, method="POST")
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=payload,
+        headers=headers,
+        method="POST",
+    )
     with urllib.request.urlopen(req, timeout=300) as resp:
         data = json.loads(resp.read().decode("utf-8"))
-    return data["content"][0]["text"]
+
+    # Guard against a refusal that survived all fallbacks (whole chain declined).
+    if data.get("stop_reason") == "refusal":
+        details = data.get("stop_details") or {}
+        raise RuntimeError(
+            f"writer request refused by safety classifiers "
+            f"(category={details.get('category')}) — chain declined by {data.get('model')}"
+        )
+
+    # Fable 5 responses may lead with thinking blocks (empty text under
+    # display=omitted, non-empty under display=summarized). Pick the first
+    # text block rather than blindly reading content[0].
+    for block in data.get("content", []):
+        if block.get("type") == "text":
+            return block.get("text", "")
+    raise RuntimeError(f"writer response has no text block (model={data.get('model')})")
 
 # SPRINT 2 (B / RCA-004): cumulative-context digest.
 # Deterministic, no LLM (cost ~0). Bounded reinjection so the section prompt never
