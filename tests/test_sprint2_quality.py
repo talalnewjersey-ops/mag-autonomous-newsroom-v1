@@ -432,7 +432,7 @@ def test_section_call_injects_curated_sources():
     curated-pool guard, alongside the existing anti-repetition digest."""
     src = inspect.getsource(agent_04._write_article_standalone)
     assert "section_sources_block" in src
-    assert "if has_curated_pool(topic_key) and _official_sel:" in src
+    assert "if has_curated_pool(source_vertical) and _official_sel:" in src
     assert "{digest_block}{section_sources_block}" in src, \
         "section prompt must include the sources block next to the digest"
 
