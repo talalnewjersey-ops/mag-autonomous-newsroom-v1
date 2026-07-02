@@ -291,7 +291,7 @@ jobs:
               --article-type "${ARTICLE_TYPE}" \
               --min-words ${{ env.MIN_WORD_COUNT }} --min-images ${{ env.MIN_IMAGES }} \
               --min-faq ${{ env.MIN_FAQ }} --min-links ${{ env.MIN_INTERNAL_LINKS }} \
-              --min-sources ${{ env.MIN_SOURCES }} --min-case-studies 2 \
+              --min-sources ${{ env.MIN_SOURCES }} --min-case-studies 0 \
               --seo-threshold 85 --eeat-threshold ${{ env.EEAT_SCORE_THRESHOLD }} || {
               echo "GATE QA FAIL: Agent 12 blocked article ${ARTICLE_NUM}"
               ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue

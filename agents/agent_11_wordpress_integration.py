@@ -198,6 +198,17 @@ class WordPressIntegrationAgent(BaseAgent):
         logger.warning(f"No images report found. Tried: {candidates}")
         return []
 
+    @staticmethod
+    def _strip_frontmatter(content):
+        """Remove a leading YAML frontmatter block (---\\n...\\n---) so its raw
+        fields never render as visible <p> paragraphs. Belt for RCA-007: the
+        writer must not emit frontmatter, but the render boundary guarantees it."""
+        if content.lstrip().startswith("---"):
+            m = re.match(r'^\s*---\s*\n.*?\n---\s*(?:\n|$)', content, re.DOTALL)
+            if m:
+                return content[m.end():]
+        return content
+
     def _render_inline(self, text):
         """Convert inline markdown (bold, italic, links, code) to HTML."""
         text = re.sub(r'\[(.+?)\]\((.+?)\)', r'<a href="\2">\1</a>', text)
@@ -216,6 +227,7 @@ class WordPressIntegrationAgent(BaseAgent):
         rules into valid HTML so no raw markdown reaches WordPress.
         """
         content = article_data.get("content", "") or ""
+        content = self._strip_frontmatter(content)   # drop leading YAML frontmatter block
         lines = content.split("\n")
         html_parts = []
         i = 0
@@ -233,7 +245,12 @@ class WordPressIntegrationAgent(BaseAgent):
         heading_re = re.compile(r'^(#{1,6})[ \t]+(.+?)[ \t]*#*$')
         ul_re = re.compile(r'^[-*+][ \t]+')
         ol_re = re.compile(r'^\d+[.)][ \t]+')
-        html_block_re = re.compile(r'^<(/?)(h[1-6]|div|table|ul|ol|li|p|figure|img|section|blockquote|script|iframe)\b')
+        # Markdown table: a row of pipes followed by a |---|---| separator row.
+        tbl_sep_re = re.compile(r'^\s*\|?[\s:|-]*-{2,}[\s:|-]*\|?\s*$')
+        # figure/img are emitted only by our own image insertion (balanced);
+        # script/iframe are dropped for safety -- so raw writer HTML cannot
+        # inject unbalanced/unsafe blocks.
+        html_block_re = re.compile(r'^<(/?)(h[1-6]|div|table|thead|tbody|tr|td|th|ul|ol|li|p|section|blockquote)\b')
 
         while i < n:
             line = lines[i]
@@ -244,18 +261,37 @@ class WordPressIntegrationAgent(BaseAgent):
                 i += 1
                 continue
 
-            if hr_re.match(stripped + "$"):
+            if hr_re.match(stripped):
                 close_para(para)
                 html_parts.append("<hr />")
                 i += 1
                 continue
 
-            m = heading_re.match(stripped + "$")
+            m = heading_re.match(stripped)
             if m:
                 close_para(para)
-                level = len(m.group(1))
+                # Body carries NO <h1>: the WordPress post title is the page H1.
+                # Demote any H1 to H2 so there is exactly one H1 on the page.
+                level = max(2, len(m.group(1)))
                 html_parts.append("<h" + str(level) + ">" + self._render_inline(m.group(2)) + "</h" + str(level) + ">")
                 i += 1
+                continue
+
+            # Markdown table -> responsive HTML table (never leak raw | a | b | rows).
+            if "|" in stripped and i + 1 < n and tbl_sep_re.match(lines[i + 1].strip()):
+                close_para(para)
+                header_cells = [c.strip() for c in stripped.strip().strip("|").split("|")]
+                i += 2  # consume header + separator rows
+                body_rows = []
+                while i < n and "|" in lines[i] and lines[i].strip():
+                    body_rows.append([c.strip() for c in lines[i].strip().strip("|").split("|")])
+                    i += 1
+                thead = "<thead><tr>" + "".join(
+                    "<th>" + self._render_inline(c) + "</th>" for c in header_cells) + "</tr></thead>"
+                tbody = "<tbody>" + "".join(
+                    "<tr>" + "".join("<td>" + self._render_inline(c) + "</td>" for c in row) + "</tr>"
+                    for row in body_rows) + "</tbody>"
+                html_parts.append('<div style="overflow-x:auto"><table>' + thead + tbody + "</table></div>")
                 continue
 
             if stripped.startswith(">"):
@@ -326,13 +362,20 @@ class WordPressIntegrationAgent(BaseAgent):
                 try:
                     with open(p) as f:
                         recs = json.load(f).get("recommendations", [])[:3]
-                    if recs:
+                    # Keep only ACTIONABLE recommendations (a real affiliate URL).
+                    # Status placeholders (e.g. "No affiliate opportunities detected")
+                    # carry no url and must NEVER render as content.
+                    actionable = []
+                    for r in recs:
+                        if isinstance(r, str):
+                            r = {"name": r}
+                        if not isinstance(r, dict):
+                            continue
+                        if str(r.get("url", "")).strip().lower().startswith("http"):
+                            actionable.append(r)
+                    if actionable:
                         aff = '<div class="mag-affiliate-box"><p><em>Affiliate disclosure: We earn a commission at no cost to you.</em></p>'
-                        for r in recs:
-                            if isinstance(r, str):
-                                r = {"name": r}
-                            if not isinstance(r, dict):
-                                continue
+                        for r in actionable:
                             aff += f'<p><strong>{r.get("name","")}</strong>: {r.get("description","")} <a href="{r.get("url","#")}" rel="nofollow sponsored" target="_blank">Learn More</a></p>'
                         aff += '</div>'
                         pos = html.find('</h2>')
@@ -403,9 +446,12 @@ class WordPressIntegrationAgent(BaseAgent):
         def figure_html(img):
             url = img.get("wp_url", "")
             alt = (img.get("alt_text", "") or "").replace('"', "'")
-            caption = img.get("caption", "") or ""
             media_id = img.get("wp_media_id")
             cls = "wp-image-" + str(media_id) if media_id else ""
+            # Caption derives from the per-image alt text (topic-specific), NEVER a
+            # separate generic 'caption' field that can be off-topic (e.g. an
+            # "immigration guide" caption on a car-insurance article).
+            caption = alt
             cap_html = "<figcaption>" + self._render_inline(caption) + "</figcaption>" if caption else ""
             return (
                 '<figure class="mag-article-image">'
