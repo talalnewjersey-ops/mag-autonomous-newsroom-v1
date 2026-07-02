@@ -15,9 +15,14 @@
 name: "NEXUS-14 PRODUCTION v4.0 -- Reliability-First"
 
 on:
-  schedule:
-    - cron: "0 6 * * *"
-    - cron: "0 13 * * *"
+  # SAFETY HOLD (until sprint-9-publish-invariant is merged): scheduled auto-runs
+  # are PAUSED so no cron can create a QA-failed draft or mis-promote a topic to
+  # "published" (the Sprint 6 reconcile currently keys on agent_11's post_id, which
+  # is written BEFORE the agent_12 QA / agent_13 editor gates). workflow_dispatch
+  # stays enabled for controlled, manual verification runs only.
+  # schedule:
+  #   - cron: "0 6 * * *"
+  #   - cron: "0 13 * * *"
   workflow_dispatch:
     inputs:
       mode:
