@@ -155,6 +155,9 @@ jobs:
             # Extract topic metadata -- single-line python for YAML safety
             TOPIC=$(python3 -c "import json; d=json.load(open('${ARTICLE_DIR}/agent_02/validated_topics.json')); t=d.get('topics',d if isinstance(d,list) else [d]); item=t[0] if t else {}; print(item.get('title',item.get('keyword','newcomer guide')) if isinstance(item,dict) else str(item))" 2>/dev/null || echo "newcomer banking guide")
             KEYWORDS=$(python3 -c "import json; d=json.load(open('${ARTICLE_DIR}/agent_02/validated_topics.json')); t=d.get('topics',d if isinstance(d,list) else [d]); item=t[0] if t else {}; print(item.get('keyword','') if isinstance(item,dict) else '')" 2>/dev/null || echo "")
+            # SPRINT 7: registry category + market -> routes Agent 04 official-source vertical
+            CATEGORY=$(python3 -c "import json; d=json.load(open('${ARTICLE_DIR}/agent_02/validated_topics.json')); t=d.get('topics',d if isinstance(d,list) else [d]); item=t[0] if t else {}; print(item.get('category','') if isinstance(item,dict) else '')" 2>/dev/null || echo "")
+            MARKET=$(python3 -c "import json; d=json.load(open('${ARTICLE_DIR}/agent_02/validated_topics.json')); t=d.get('topics',d if isinstance(d,list) else [d]); item=t[0] if t else {}; print(item.get('market','') if isinstance(item,dict) else '')" 2>/dev/null || echo "")
             # FIX 1a: Pass real SV/CPC from topic DB with defaults to Agent 18
             SV=$(python3 -c "import json; d=json.load(open('${ARTICLE_DIR}/agent_02/validated_topics.json')); t=d.get('topics',d if isinstance(d,list) else [d]); item=t[0] if t else {}; print(int(item.get('search_volume',2000)) if isinstance(item,dict) else 2000)" 2>/dev/null || echo "2000")
             CPC=$(python3 -c "import json; d=json.load(open('${ARTICLE_DIR}/agent_02/validated_topics.json')); t=d.get('topics',d if isinstance(d,list) else [d]); item=t[0] if t else {}; print(float(item.get('cpc',3.50)) if isinstance(item,dict) else 3.50)" 2>/dev/null || echo "3.50")
@@ -195,7 +198,8 @@ jobs:
             ARTICLE_TYPE=${ARTICLE_TYPE} python -m agents.agent_04_article_writer \
               --input "${ARTICLE_DIR}/agent_03/article_outline.json" \
               --output "${ARTICLE_DIR}/agent_04/article_draft.md" \
-              --article-type "${ARTICLE_TYPE}" || {
+              --article-type "${ARTICLE_TYPE}" \
+              --category "${CATEGORY}" --market "${MARKET}" || {
               echo "Agent 04 FAILED"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
             }
 

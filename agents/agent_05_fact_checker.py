@@ -19,6 +19,13 @@ from agents._sources import _classify_url  # shared official-source allow-list (
 
 logger = logging.getLogger(__name__)
 
+# Some official sites (state DOI/DMV, FTC) return 403 to non-browser User-Agents.
+# The live-source gate must NOT false-positive those real, live pages, so it
+# presents a real browser UA (verified: with this UA dmv.ny.gov / consumer.ftc.gov
+# / studentaid.gov return 200; the default aiohttp UA gets 403).
+_BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+               "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+
 TRUSTED_DOMAINS = [
     "canada.ca", "gc.ca", "cic.gc.ca", "cra-arc.gc.ca",
     "usa.gov", "irs.gov", "state.gov", "dol.gov", "federalreserve.gov",
@@ -64,7 +71,8 @@ class FactCheckerAgent(BaseAgent):
         article_text = draft_path.read_text(encoding="utf-8")
         self.logger.info(f"Loaded article: {len(article_text)} chars")
 
-        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+        async with aiohttp.ClientSession(timeout=self.timeout,
+                                         headers={"User-Agent": _BROWSER_UA}) as session:
             self.session = session
             claims = await self._extract_claims(article_text)
             self.logger.info(f"Extracted {len(claims)} claims to verify")
@@ -252,8 +260,9 @@ class FactCheckerAgent(BaseAgent):
                     async with self.session.head(url, allow_redirects=True,
                                                  timeout=aiohttp.ClientTimeout(total=10)) as resp:
                         status = resp.status
-                        # Some servers reject HEAD (405/501) but serve GET: fall back.
-                        if status in (405, 501):
+                        # Some servers reject HEAD (405/501) or bot-block it (403)
+                        # but serve GET: fall back before treating it as broken.
+                        if status in (403, 405, 501):
                             async with self.session.get(url, allow_redirects=True,
                                                          timeout=aiohttp.ClientTimeout(total=10)) as gresp:
                                 status = gresp.status

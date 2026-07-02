@@ -59,10 +59,13 @@ jobs:
           python -m agents.agent_03_content_planner \
             --input "${ARTICLE_DIR}/agent_02/validated_topics.json" \
             --output "${ARTICLE_DIR}/agent_03/article_outline.json"
+          CATEGORY=$(python3 -c "import json; d=json.load(open('${ARTICLE_DIR}/agent_02/validated_topics.json')); t=d.get('topics',[{}]); print((t[0] if t else {}).get('category',''))" 2>/dev/null || echo "")
+          MARKET=$(python3 -c "import json; d=json.load(open('${ARTICLE_DIR}/agent_02/validated_topics.json')); t=d.get('topics',[{}]); print((t[0] if t else {}).get('market',''))" 2>/dev/null || echo "")
           ARTICLE_TYPE=${ARTICLE_TYPE} python -m agents.agent_04_article_writer \
             --input "${ARTICLE_DIR}/agent_03/article_outline.json" \
             --output "${ARTICLE_DIR}/agent_04/article_draft.md" \
-            --article-type "${ARTICLE_TYPE}"
+            --article-type "${ARTICLE_TYPE}" \
+            --category "${CATEGORY}" --market "${MARKET}"
           echo "::endgroup::"
 
           # NOTE: quality gates (agent_05 fact-check, agent_06 EEAT, G3, QA, editor)

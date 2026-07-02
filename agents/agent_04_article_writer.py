@@ -7,7 +7,7 @@ GLOBAL RULE: Maximum quality per dollar. Search intent satisfaction > article le
 """
 
 import argparse, asyncio, json, logging, os, re, sys
-from agents._source_pool import select_official_sources, has_curated_pool
+from agents._source_pool import select_official_sources, has_curated_pool, resolve_vertical
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -96,6 +96,8 @@ def main():
     parser.add_argument("--min-words", type=int, default=0)
     parser.add_argument("--target-words", type=int, default=0)
     parser.add_argument("--article-type", type=str, default="")
+    parser.add_argument("--category", type=str, default="", help="Registry category (routes the official-source vertical)")
+    parser.add_argument("--market", type=str, default="", help="Registry market USA/Canada (routes the official-source vertical)")
     args = parser.parse_args()
     anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not anthropic_api_key:
@@ -112,7 +114,15 @@ def main():
         sys.exit(1)
     with open(input_path, "r", encoding="utf-8") as f:
         outline = json.load(f)
-    logger.info(f"Loaded outline: {outline.get('title', 'Unknown')}")
+    # Propagate registry market + category (CLI > env > outline) so the official-
+    # source vertical is routed deterministically instead of guessed from keywords.
+    resolved_category = args.category or os.environ.get("ARTICLE_CATEGORY", "") or outline.get("category", "")
+    resolved_market = args.market or os.environ.get("ARTICLE_MARKET", "") or outline.get("market", "")
+    if resolved_category:
+        outline["category"] = resolved_category
+    if resolved_market:
+        outline["market"] = resolved_market
+    logger.info(f"Loaded outline: {outline.get('title', 'Unknown')} | market={outline.get('market','')} category={outline.get('category','')}")
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -400,6 +410,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     title = outline.get("title", "Article")
     keyword = outline.get("primary_keyword", "")
     market = outline.get("market", "Canada")
+    category = outline.get("category", "")
     target_audience = outline.get("target_audience", "newcomers and immigrants in Canada")
     sections = outline.get("sections", [])
     faq_questions = outline.get("faq", [])
@@ -414,6 +425,11 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
         topic_key = "banking"
     else:
         topic_key = "default"
+    # Source vertical (official-source pool) is routed on the registry market +
+    # category (deterministic) and is SEPARATE from topic_key (which drives
+    # INTERNAL_LINKS). US topics resolve to a us_* vertical or us_default; non-US
+    # topics fall back to the keyword-derived topic_key (e.g. canada_newcomer).
+    source_vertical = resolve_vertical(market, category) or topic_key
     links = INTERNAL_LINKS[topic_key]
     _links_sel = links[:tier["min_links"]]
     links_block = "\n".join(f"- {l}" for l in _links_sel)
@@ -426,8 +442,8 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     # live-checked official sources (curated in agents/_source_pool.py) instead
     # of relying on it to recall URLs from memory. Margin > tier minimum so the
     # gate is reliably met. Unknown verticals fall back to the legacy prompt.
-    _official_sel = select_official_sources(topic_key, tier["min_sources"] + 3)
-    if has_curated_pool(topic_key) and _official_sel:
+    _official_sel = select_official_sources(source_vertical, tier["min_sources"] + 3)
+    if has_curated_pool(source_vertical) and _official_sel:
         _official_block = "\n".join(f"- {s}" for s in _official_sel)
         sourcing_block = (
             f"SOURCING (YMYL/E-E-A-T): the full article MUST cite AT LEAST 4 DIFFERENT official pages from this list (different pages, not the same one repeated). Draw on these key REAL, "
@@ -469,7 +485,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
         # FIX-WRITER: curated official sources available in EACH section call (not just intro);
         # distributed via "already cited" hint so they spread instead of piling up. Gate unchanged.
         section_sources_block = ""
-        if has_curated_pool(topic_key) and _official_sel:
+        if has_curated_pool(source_vertical) and _official_sel:
             _all_prior = intro + "\n" + "\n".join(written_sections)
             _cited = [u for u in _official_sel if u in _all_prior]
             _pool_lines = "\n".join(f"- {u}" for u in _official_sel)
