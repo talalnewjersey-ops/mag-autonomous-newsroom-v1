@@ -43,7 +43,7 @@ PILLAR_MAX_WORDS = 4200
 PILLAR_MIN_FAQS = 12
 PILLAR_MIN_SOURCES = 6
 PILLAR_MIN_INTERNAL_LINKS = 8
-PILLAR_MIN_CASE_STUDIES = 3
+PILLAR_MIN_CASE_STUDIES = 0  # Sprint 8: case studies removed (anti-fabrication). DEBT: reintroduce REAL sourced ones in phase C.
 
 STANDARD_MIN_WORDS = 3500
 STANDARD_TARGET_WORDS = 4000
@@ -51,7 +51,7 @@ STANDARD_MAX_WORDS = 4000
 STANDARD_MIN_FAQS = 10
 STANDARD_MIN_SOURCES = 4
 STANDARD_MIN_INTERNAL_LINKS = 3
-STANDARD_MIN_CASE_STUDIES = 2
+STANDARD_MIN_CASE_STUDIES = 0  # Sprint 8: see PILLAR_MIN_CASE_STUDIES note
 
 OPPORTUNITY_MIN_WORDS = 3500
 OPPORTUNITY_TARGET_WORDS = 4000
@@ -59,7 +59,7 @@ OPPORTUNITY_MAX_WORDS = 4000
 OPPORTUNITY_MIN_FAQS = 8
 OPPORTUNITY_MIN_SOURCES = 3
 OPPORTUNITY_MIN_INTERNAL_LINKS = 4
-OPPORTUNITY_MIN_CASE_STUDIES = 1
+OPPORTUNITY_MIN_CASE_STUDIES = 0  # Sprint 8: see PILLAR_MIN_CASE_STUDIES note
 
 GOLD_MIN_WORDS = STANDARD_MIN_WORDS
 GOLD_TARGET_WORDS = STANDARD_TARGET_WORDS
@@ -531,11 +531,12 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
         f"Write comparison table section for: {keyword} ({market}). H2 header. 4+ cols 6+ rows. 200-300w context.",
         SYSTEM_PROMPT, max_tokens=1200)
 
-    n_cases = tier["min_case_studies"]
-    case_studies = await _call_claude(api_key,
-        f"Write {n_cases} case {'study' if n_cases == 1 else 'studies'} for: {keyword} ({market}).\n"
-        f"H2: ## Real-World Examples. 150-200w each. Specific names, outcomes, numbers.",
-        SYSTEM_PROMPT, max_tokens=n_cases * 500)
+    # Sprint 8 (anti-fabrication, YMYL no human review): the invented case-study
+    # section is REMOVED. It used to prompt for specific personas and figures with
+    # no sourcing -- a Helpful-Content/AdSense liability. DEBT (phase C): reintroduce
+    # case studies built ONLY from REAL, sourced material (anonymized regulator
+    # examples, public rate schedules).
+    case_studies = ""
 
     expert_section = await _call_claude(api_key,
         f"Write Expert Recommendation section for: {keyword} ({market}). H2. Top pick + runner-up. 300-400w. 2 internal links from: {links_expert_block[:200]}",
@@ -557,9 +558,10 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
         f"3. ## About the Author (Talal Eddaouahiri, founder MoneyAbroadGuide.com, 100-150w)",
         SYSTEM_PROMPT, max_tokens=1200)
 
-    body = "\n\n".join([intro, "\n\n".join(written_sections) if written_sections else "",
+    _updated = datetime.utcnow().strftime("%B %Y")
+    body = "\n\n".join([s for s in [intro, "\n\n".join(written_sections) if written_sections else "",
                           comparison, case_studies, expert_section, faq, closing,
-                          f"\n---\n> **Last Updated**: June 2026 | **Tier**: {tier['tier']} | NEXUS-14 V5.0\n"])
+                          f"> **Last Updated**: {_updated} | **Tier**: {tier['tier']} | NEXUS-14 V5.0"] if s])
     word_count = len(body.split())
     if word_count < min_words:
         try:
@@ -570,12 +572,11 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
         except Exception as e:
             logger.warning(f"Expansion failed: {e}")
 
-    word_count = len(body.split())
-    date_str = datetime.utcnow().strftime("%Y-%m-%d")
-    header = (f"---\ntitle: \"{title}\"\nprimary_keyword: \"{keyword}\"\nmarket: \"{market}\"\n"
-              f"word_count: {word_count}\ndate_written: \"{date_str}\"\ntier: {tier['tier'].lower()}\n"
-              f"status: draft\nagent: NEXUS-14 Agent 04 V5.0\n---\n\n# {title}\n\n")
-    return header + body
+    # Sprint 8: emit NO YAML frontmatter and NO body-level title heading. Frontmatter
+    # fields used to render as visible <p> paragraphs (RCA-007) and a body title
+    # heading produced a SECOND page H1 on top of the WordPress post title. The post
+    # title is the single page H1; metadata lives in article_metadata.json / outline.
+    return body
 
 
 try:
