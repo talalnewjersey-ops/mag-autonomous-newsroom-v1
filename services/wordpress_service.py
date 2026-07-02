@@ -210,6 +210,23 @@ class WordPressService:
                     return await response.json()
                 return None
 
+    async def find_posts(self, search: str, per_page: int = 20) -> List[Dict]:
+        """Search existing posts (published + drafts) by text -- used for the
+        Sprint 9 pre-publish duplicate check. Returns [] on any error."""
+        import urllib.parse
+        q = urllib.parse.urlencode({"search": search[:120], "status": "publish,draft",
+                                    "per_page": per_page, "context": "edit"})
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.api_url}/posts?{q}", headers=self._get_headers(),
+                                       timeout=aiohttp.ClientTimeout(total=30)) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    return []
+        except Exception as e:
+            logger.warning(f"find_posts failed for {search!r}: {e}")
+            return []
+
     async def publish_post(self, post_id: int) -> Dict:
         return await self.update_post(post_id, {"status": "publish"})
 

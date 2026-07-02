@@ -60,6 +60,11 @@ def _write_artifacts(tmp_path, topic_id, post_id):
         (art / "agent_11" / "wordpress_report.json").write_text(
             json.dumps({"status": "COMPLETE", "post_id": post_id, "draft_created": True}),
             encoding="utf-8")
+        # Sprint 9 contract: reconcile promotes on the terminal PRODUCED.json marker
+        # (written only after QA+editor+production_gate pass), not on agent_11's
+        # pre-QA post_id. A success case therefore carries PRODUCED.json.
+        (art / "PRODUCED.json").write_text(
+            json.dumps({"post_id": post_id, "produced": True}), encoding="utf-8")
     return str(tmp_path / "output")
 
 

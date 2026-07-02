@@ -41,9 +41,10 @@ def test_registry_file_valid_28_topics_one_published():
     d = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
     topics = d["topics"]
     assert len(topics) == 28, "curated table must hold 28 topics"
-    published = [t for t in topics if t["status"] == "published"]
-    assert len(published) == 1, "exactly one seed topic must be pre-marked published"
-    assert published[0]["id"] == PUBLISHED_SEED_ID
+    published_ids = {t["id"] for t in topics if t["status"] == "published"}
+    # Production legitimately publishes topics over time -> do NOT hard-code the
+    # count. The stable invariant is that the pre-marked seed is (and stays) published.
+    assert PUBLISHED_SEED_ID in published_ids, "the seed topic must be among published"
     # every candidate carries the two scoring axes 1-5
     for t in topics:
         assert 1 <= t["monetization_score"] <= 5
@@ -54,10 +55,14 @@ def test_registry_file_valid_28_topics_one_published():
 
 def test_published_seed_is_never_selected():
     agent = _agent(REAL_REGISTRY)
-    chosen = agent._select_from_registry(99)  # ask for everything
-    ids = {c["id"] for c in chosen}
-    assert PUBLISHED_SEED_ID not in ids, "published topic must never be re-selected"
-    assert len(chosen) == 27, "27 candidates remain after the 1 published seed"
+    d = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
+    candidate_ids = {t["id"] for t in d["topics"] if t["status"] == "candidate"}
+    chosen_ids = {c["id"] for c in agent._select_from_registry(99)}  # ask for everything
+    # Robust invariant (no hard-coded count): only candidates are ever selected and
+    # the published/seed topic is never re-selected -- true for any published count.
+    assert PUBLISHED_SEED_ID not in chosen_ids, "published/seed topic must never be re-selected"
+    assert chosen_ids <= candidate_ids, "only candidate topics may be selected"
+    assert chosen_ids, "at least one candidate must be selectable"
 
 
 def test_mark_selected_persists_and_excludes_next_run(tmp_path):

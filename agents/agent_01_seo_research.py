@@ -538,9 +538,11 @@ Return ONLY a valid JSON array with fields: keyword, market, search_volume, keyw
         de-duplicate topics within one batch and must NEVER reach git. This method
         derives the terminal state from run artifacts and guarantees the invariant
         "no in_progress is ever committed":
-          * a topic whose article produced a valid WordPress post_id
-            (output/article_*/agent_11/wordpress_report.json) -> published, with
-            post_id + published_at recorded;
+          * a topic whose article was TRULY PRODUCED -- i.e. passed ALL blocking
+            gates (QA agent_12 + editor agent_13 + production_gate), signalled by the
+            terminal marker output/article_*/PRODUCED.json -> published (post_id +
+            published_at). NOT agent_11's wordpress_report.json, whose post_id exists
+            BEFORE the QA/editor gates (that promoted QA-failed drafts, e.g. 48418);
           * every other in_progress topic is rolled back to candidate, so a run that
             failed at ANY step never burns its topic — it stays re-pickable.
         Manual --topic overrides (non-registry ids) are ignored; already-published
@@ -555,7 +557,11 @@ Return ONLY a valid JSON array with fields: keyword, market, search_volume, keyw
         out = Path(output_dir)
         for art_dir in sorted(out.glob("article_*")):
             topics_file = art_dir / "agent_01" / "topics.json"
-            report_file = art_dir / "agent_11" / "wordpress_report.json"
+            # SPRINT 9 publish-invariant: PRODUCED.json is written by the workflow
+            # ONLY after QA + editor + production_gate all pass. A run that created a
+            # draft but failed QA leaves NO PRODUCED.json -> no promotion -> the sweep
+            # below rolls its topic back to candidate.
+            produced_file = art_dir / "PRODUCED.json"
             if not topics_file.exists():
                 continue
             try:
@@ -564,13 +570,13 @@ Return ONLY a valid JSON array with fields: keyword, market, search_volume, keyw
                 logger.warning(f"reconcile: unreadable {topics_file}: {e}")
                 continue
             post_id = None
-            if report_file.exists():
+            if produced_file.exists():
                 try:
-                    post_id = json.loads(report_file.read_text(encoding="utf-8")).get("post_id")
+                    post_id = json.loads(produced_file.read_text(encoding="utf-8")).get("post_id")
                 except Exception as e:
-                    logger.warning(f"reconcile: unreadable {report_file}: {e}")
+                    logger.warning(f"reconcile: unreadable {produced_file}: {e}")
             if not post_id:
-                continue  # failure / missing report -> handled by the in_progress sweep
+                continue  # not truly produced (QA/editor/gate failed or no marker) -> sweep rolls back
             for st in selected:
                 tid = st.get("id")
                 if tid in ids_in_registry and self._mark_published(registry, tid, post_id):
