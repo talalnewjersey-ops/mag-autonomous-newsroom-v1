@@ -8,6 +8,7 @@ GLOBAL RULE: Maximum quality per dollar. Search intent satisfaction > article le
 
 import argparse, asyncio, json, logging, os, re, sys
 from agents._source_pool import select_official_sources, has_curated_pool, resolve_vertical
+from agents._vertical_facts import VERTICAL_FACTS  # Couche 1: verified .gov facts to cite
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -403,6 +404,40 @@ INTERNAL_LINKS = {
     ]
 }
 
+def _build_facts_block(source_vertical: str) -> str:
+    """Couche 1 (SUPPLY, not a guarantee): hand the writer VERIFIED .gov facts so it
+    cites real figures instead of inventing them. This lowers the invention RATE; it
+    does NOT block hallucination -- the real run on 2026-07-03 proved the writer
+    ignores prompt rules. The deterministic blockers are Couche 2 (soften) and
+    Couche 3 (G-Substance gate), NOT this text. Returns "" when the vertical has no
+    fact sheet (graceful fallback to source-pool-only; no regression).
+
+    VOLATILE facts are SOURCE-ONLY: neither `value` nor `note` is injected, because
+    the note may carry the very moving figure we withhold (e.g. CA "30/60/25",
+    Reg CC "$225->$275"). The writer is told to stay qualitative and just link the
+    source -- never handed a number to parrot or a gap that invites inventing one.
+    """
+    facts = VERTICAL_FACTS.get(source_vertical)
+    if not facts:
+        return ""
+    lines = []
+    for f in facts:
+        url = f["source_url"]
+        if f.get("status") == "VOLATILE":
+            lines.append(
+                f"- {f['claim']}: this figure changes over time -- do NOT state a specific "
+                f"number; describe it qualitatively and link {url} ."
+            )
+        elif f.get("value"):
+            lines.append(f"- {f['claim']}: {f['value']} -- cite {url} on the same sentence.")
+        else:  # STABLE qualitative: the note is safe, non-numeric guidance
+            lines.append(f"- {f['claim']}: {f.get('note', '')} (link {url} ).")
+    return (
+        "\nVERIFIED FACTS (use THESE for any figure; never invent one outside this list; "
+        "for source-only items stay qualitative and just link):\n" + "\n".join(lines)
+    )
+
+
 async def _write_article_standalone(outline: Dict, api_key: str, min_words: int = STANDARD_MIN_WORDS,
                                      target_words: int = STANDARD_TARGET_WORDS, tier: dict = None) -> str:
     if tier is None:
@@ -443,6 +478,10 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     # of relying on it to recall URLs from memory. Margin > tier minimum so the
     # gate is reliably met. Unknown verticals fall back to the legacy prompt.
     _official_sel = select_official_sources(source_vertical, tier["min_sources"] + 3)
+    # SPRINT/COUCHE 1: verified .gov figures for this vertical, so the writer cites
+    # real numbers instead of inventing. SUPPLY only -- the deterministic anti-
+    # hallucination blockers are Couche 2 (soften) + Couche 3 (G-Substance), not this.
+    _facts_block = _build_facts_block(source_vertical)
     # SPRINT 10 anti-hallucination (levier A): no fabricated numbers or attributions.
     # Applies to EVERY section (intro, body, comparison table). Enforced by agent_05
     # (claim<->citation) + the agent_12 QA penalty.
@@ -467,7 +506,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
             f"These official sources count toward the article-wide minimum (carried mainly by the body sections) and are counted separately from internal "
             f"moneyabroadguide.com links; off-list links (banks, financial press) are allowed but "
             f"do NOT count toward the minimum."
-            + _anti_fab
+            + _anti_fab + _facts_block
         )
     else:
         sourcing_block = (
@@ -478,7 +517,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
             f"for US topics use *.gov (IRS, FDIC, CFPB, USCIS). Each source must be RELEVANT to the claim "
             f"it supports -- no duplicates. These official sources are REQUIRED and counted separately "
             f"from internal moneyabroadguide.com links; off-list links do NOT count toward the minimum."
-            + _anti_fab
+            + _anti_fab + _facts_block
         )
 
     logger.info(f"Writing {tier['tier']} article: {title} (target: {target_words}w)")
@@ -518,6 +557,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
                 f"Reminder: the complete article must cite at least {tier['min_sources']} DISTINCT "
                 "official sources from this list, spread across sections -- if earlier sections cited "
                 "few, this section should carry one.\n=== END OFFICIAL SOURCES ===\n"
+                + _facts_block
             )
         digest_block = ""
         if digest:
