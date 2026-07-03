@@ -42,7 +42,7 @@ jobs:
           python3 - <<'PY'
           import json
           filler = ("Newcomers to the United States face many banking and insurance decisions. "
-                    "This guide explains the practical steps in plain language. ") * 60
+                    "This guide explains the practical steps in plain language. ") * 110
           faq = "\n\n## Frequently Asked Questions\n" + "".join(
               f"\n### Question number {i}?\nA clear, useful answer for newcomers about US finance and insurance basics.\n"
               for i in range(1, 10))
