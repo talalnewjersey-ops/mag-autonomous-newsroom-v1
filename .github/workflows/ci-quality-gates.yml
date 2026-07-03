@@ -41,6 +41,7 @@ jobs:
           python -m py_compile agents/agent_05_fact_checker.py
           python -m py_compile agents/_claims.py
           python -m py_compile scripts/soften_claims.py
+          python -m py_compile scripts/g_substance_gate.py
           python -m py_compile agents/_source_pool.py
           python -m py_compile agents/_vertical_facts.py
           python -m py_compile agents/agent_01_seo_research.py
@@ -132,6 +133,13 @@ jobs:
           PYTHONPATH: "."   # repo root on sys.path so `import agents...` resolves under bare pytest
         run: |
           pytest -v tests/test_couche2_soften.py
+
+      - name: Couche 3 G-Substance gate tests (offline) -- no network, no API key
+        env:
+          ANTHROPIC_API_KEY: ""
+          PYTHONPATH: "."   # repo root on sys.path so `import agents...` resolves under bare pytest
+        run: |
+          pytest -v tests/test_couche3_g_substance.py
 
       - name: Workflow blocking semantics test
         run: |
