@@ -217,6 +217,20 @@ jobs:
               --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
               --report "${ARTICLE_DIR}/agent_04/soften_report.json" || true
 
+            # COUCHE 3: G-Substance gate [BLOCKING] -- after soften, before every phase
+            # that can reach WordPress (Phase 11). Rejects a HOLLOW article so we never
+            # trade hallucinated for hollow. On FAIL: continue -> agent_11 never runs, no
+            # WP object created, no PRODUCED.json -> topic stays candidate (never published).
+            echo "[${ARTICLE_NUM}] Phase 4.45: G-Substance Gate [BLOCKING]"
+            python scripts/g_substance_gate.py \
+              --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --soften-report "${ARTICLE_DIR}/agent_04/soften_report.json" \
+              --article-type "${ARTICLE_TYPE}" \
+              --output "${ARTICLE_DIR}/agent_04/g_substance_report.json" || {
+              echo "GATE G-SUBSTANCE FAIL: hollow article ${ARTICLE_NUM} (never reaches WordPress)"
+              ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
+            }
+
             # SPRINT 2 (C): DRI metric [REPORTING, non-blocking] -- diffuse repetition proof.
             python scripts/dri_metric.py \
               --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
