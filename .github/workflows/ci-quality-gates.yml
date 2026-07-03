@@ -39,6 +39,8 @@ jobs:
           python -m py_compile agents/agent_04_article_writer.py
           python -m py_compile agents/_sources.py
           python -m py_compile agents/agent_05_fact_checker.py
+          python -m py_compile agents/_claims.py
+          python -m py_compile scripts/soften_claims.py
           python -m py_compile agents/_source_pool.py
           python -m py_compile agents/_vertical_facts.py
           python -m py_compile agents/agent_01_seo_research.py
@@ -123,6 +125,13 @@ jobs:
           PYTHONPATH: "."   # repo root on sys.path so `import agents...` resolves under bare pytest
         run: |
           pytest -v tests/test_couche1_facts_injection.py
+
+      - name: Couche 2 soften tests (offline) -- no network, no API key
+        env:
+          ANTHROPIC_API_KEY: ""
+          PYTHONPATH: "."   # repo root on sys.path so `import agents...` resolves under bare pytest
+        run: |
+          pytest -v tests/test_couche2_soften.py
 
       - name: Workflow blocking semantics test
         run: |
