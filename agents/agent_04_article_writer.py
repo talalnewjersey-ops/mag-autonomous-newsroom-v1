@@ -443,6 +443,19 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     # of relying on it to recall URLs from memory. Margin > tier minimum so the
     # gate is reliably met. Unknown verticals fall back to the legacy prompt.
     _official_sel = select_official_sources(source_vertical, tier["min_sources"] + 3)
+    # SPRINT 10 anti-hallucination (levier A): no fabricated numbers or attributions.
+    # Applies to EVERY section (intro, body, comparison table). Enforced by agent_05
+    # (claim<->citation) + the agent_12 QA penalty.
+    _anti_fab = (
+        "\nNUMBERS & ATTRIBUTIONS — ANTI-FABRICATION (YMYL, no human review): every hard "
+        "statistic (a %, a $ amount, 'N times', 'X out of Y') MUST be backed by one of the "
+        "official links above ON THE SAME SENTENCE, OR written qualitatively ('varies by "
+        "state', 'typically', 'often') — never a fabricated precise figure. NEVER attribute a "
+        "statistic to a named organisation (e.g. 'according to X', 'X reports', 'X (2024)') "
+        "unless X is one of the official sources above AND linked on that claim. This applies "
+        "to the comparison table too (sourced or qualitative figures only). An unsourced number "
+        "or an unbacked named attribution FAILS the fact-check gate and lowers the QA score."
+    )
     if has_curated_pool(source_vertical) and _official_sel:
         _official_block = "\n".join(f"- {s}" for s in _official_sel)
         sourcing_block = (
@@ -454,6 +467,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
             f"These official sources count toward the article-wide minimum (carried mainly by the body sections) and are counted separately from internal "
             f"moneyabroadguide.com links; off-list links (banks, financial press) are allowed but "
             f"do NOT count toward the minimum."
+            + _anti_fab
         )
     else:
         sourcing_block = (
@@ -464,6 +478,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
             f"for US topics use *.gov (IRS, FDIC, CFPB, USCIS). Each source must be RELEVANT to the claim "
             f"it supports -- no duplicates. These official sources are REQUIRED and counted separately "
             f"from internal moneyabroadguide.com links; off-list links do NOT count toward the minimum."
+            + _anti_fab
         )
 
     logger.info(f"Writing {tier['tier']} article: {title} (target: {target_words}w)")

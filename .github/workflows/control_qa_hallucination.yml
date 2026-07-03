@@ -1,0 +1,120 @@
+name: "CONTROL: QA rejects hallucinations (anti-hallucination exit proof)"
+
+# Deterministic real-world proof of Sprint 10 BEFORE re-enabling the crons. Two
+# fixtures (no LLM generation) go through the REAL agent_05 (detection + live URL
+# check) then the REAL agent_12 heuristic QA (no ANTHROPIC_API_KEY -> deterministic
+# path; the hallucination penalty applies there too):
+#
+#   ASSERTION 1 (recalage): a fixture with UNSOURCED stats -> agent_05 flags them ->
+#     agent_12 status != PASS. (Via the Sprint 9 invariant already proven, a non-PASS
+#     QA leaves no PRODUCED.json -> the topic stays candidate.)
+#   ASSERTION 2 (no false positive): a fixture where every stat is backed by a live
+#     .gov link -> agent_05 flags 0 -> penalty 0 -> agent_12 status == PASS.
+#
+# Includes a MASSIVELY hallucinated variant (5 unsourced stats + 1 false attribution)
+# to prove the -40 cap still lands below the 85 gate. Manual dispatch only.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  control:
+    name: "Prove the QA rejects hallucinations"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Prove QA recalibrates for hallucinations (both assertions)
+        env:
+          PYTHONPATH: .
+          ANTHROPIC_API_KEY: ""   # force the deterministic heuristic QA path
+        run: |
+          set -e
+          mkdir -p out/bad/agent_05 out/bad/agent_10 out/bad/agent_12 \
+                   out/good/agent_05 out/good/agent_10 out/good/agent_12
+
+          echo "::group::Build fixtures (form-adequate; differ only in sourcing)"
+          python3 - <<'PY'
+          import json
+          filler = ("Newcomers to the United States face many banking and insurance decisions. "
+                    "This guide explains the practical steps in plain language. ") * 60
+          faq = "\n\n## Frequently Asked Questions\n" + "".join(
+              f"\n### Question number {i}?\nA clear, useful answer for newcomers about US finance and insurance basics.\n"
+              for i in range(1, 10))
+          SRC = "https://www.consumerfinance.gov/consumer-tools/bank-accounts/"
+          # BAD: 5 unsourced stats + 1 false attribution, NO links on the claims.
+          bad = ("## Overview\n" + filler +
+                 "\n\nDrivers pay 25% more without US history. Roughly 60% of newcomers lack a credit file. "
+                 "Deposits can reach $500 with some insurers. Premiums rose 15% last year. "
+                 "About 74% of applicants overpay. According to J.D. Power, 40% never compare quotes.\n" + faq)
+          # GOOD: same figures, each backed by a live .gov link on the same claim.
+          good = ("## Overview\n" + filler +
+                  f"\n\nDrivers pay 25% more without US history ({SRC}). Roughly 60% of newcomers lack a credit file ({SRC}). "
+                  f"Deposits can reach $500 with some insurers ({SRC}). Premiums rose 15% last year ({SRC}). "
+                  f"About 74% of applicants overpay ({SRC}). Comparing quotes helps, per {SRC}.\n" + faq)
+          open("out/bad/agent_04_article_draft.md", "w").write(bad)
+          open("out/good/agent_04_article_draft.md", "w").write(good)
+          for d in ("bad", "good"):
+              json.dump({"images_produced": 4, "total_images": 4},
+                        open(f"out/{d}/agent_10/image_validation_report.json", "w"))
+          print("fixtures written | bad words:", len(bad.split()), "| good words:", len(good.split()))
+          PY
+          echo "::endgroup::"
+
+          run_case () {
+            D=$1
+            python -m agents.agent_05_fact_checker \
+              --input out/$D/agent_04_article_draft.md \
+              --output out/$D/agent_05/fact_check_report.json --min-sources 4 || true
+            # agent_05 writes to <output_dir>/fact_check_report.json
+            FC=$(find out/$D -name fact_check_report.json | head -1)
+            python -m agents.agent_12_quality_assurance \
+              --article out/$D/agent_04_article_draft.md \
+              --image-validation out/$D/agent_10/image_validation_report.json \
+              --fact-check "$FC" \
+              --output out/$D/agent_12/qa_report.json --article-type STANDARD || true
+          }
+
+          echo "::group::ASSERTION 1 — hallucinated fixture is RECALIBRATED by QA"
+          run_case bad
+          python3 - <<'PY'
+          import json, glob, sys
+          fc = json.load(open(glob.glob("out/bad/**/fact_check_report.json", recursive=True)[0]))
+          qa = json.load(open("out/bad/agent_12/qa_report.json"))
+          s = fc["summary"]
+          print("OBSERVED agent_05: unsourced_stat_count=%s unbacked_attribution_count=%s verdict=%s"
+                % (s["unsourced_stat_count"], s["unbacked_attribution_count"], fc["verdict"]))
+          print("OBSERVED agent_12: status=%s hallucination_penalty=%s" % (qa["status"], qa.get("hallucination_penalty")))
+          assert s["unsourced_stat_count"] >= 5, "detection must flag the unsourced stats"
+          assert qa["status"] != "PASS", "ASSERTION 1 VIOLATED: hallucinated article must not PASS the QA"
+          print("ASSERTION 1 PROVEN: hallucinated article is recalibrated (QA != PASS) -> stays candidate")
+          PY
+          echo "::endgroup::"
+
+          echo "::group::ASSERTION 2 — fully-sourced fixture PASSES QA (no false positive)"
+          run_case good
+          python3 - <<'PY'
+          import json, glob
+          fc = json.load(open(glob.glob("out/good/**/fact_check_report.json", recursive=True)[0]))
+          qa = json.load(open("out/good/agent_12/qa_report.json"))
+          s = fc["summary"]
+          print("OBSERVED agent_05: unsourced_stat_count=%s unbacked_attribution_count=%s"
+                % (s["unsourced_stat_count"], s["unbacked_attribution_count"]))
+          print("OBSERVED agent_12: status=%s hallucination_penalty=%s" % (qa["status"], qa.get("hallucination_penalty")))
+          assert s["unsourced_stat_count"] == 0 and s["unbacked_attribution_count"] == 0, \
+              "sourced stats must NOT be flagged (no false positive)"
+          assert qa.get("hallucination_penalty", 0) == 0, "no hallucination penalty on a sourced article"
+          assert qa["status"] == "PASS", "ASSERTION 2 VIOLATED: a fully-sourced article must PASS"
+          print("ASSERTION 2 PROVEN: fully-sourced article passes the QA (no false positive)")
+          PY
+          echo "::endgroup::"
+
+          echo "===================================================="
+          echo "BOTH ASSERTIONS PROVEN — the QA now rejects hallucinations and"
+          echo "still passes properly-sourced articles."
+          echo "===================================================="
