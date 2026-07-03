@@ -33,6 +33,28 @@ class WordPressIntegrationAgent(BaseAgent):
         super().__init__(config, llm_service, storage_service)
         self.wp = wordpress_service
 
+    @staticmethod
+    def _norm_title(t):
+        """Normalize a title (str or WP {'raw'/'rendered'}) for duplicate matching."""
+        if isinstance(t, dict):
+            t = t.get("raw") or t.get("rendered") or ""
+        return " ".join(re.sub(r"[^a-z0-9 ]", " ", (t or "").lower()).split())
+
+    @classmethod
+    def _duplicate_of(cls, existing, title):
+        """Return an existing WP post that is a title-duplicate of `title`, else None.
+        Sprint 9 dedup: stops the GATED pipeline from creating a second post for a
+        topic already published/drafted on WP (the 48384/48412 class). NOTE: the
+        legacy scripts/produce_article.py path creates posts on its own and bypasses
+        this check -- neutralizing it is tracked separately."""
+        nt = cls._norm_title(title)
+        if not nt:
+            return None
+        for p in existing or []:
+            if cls._norm_title(p.get("title")) == nt:
+                return p
+        return None
+
     async def run(self, context=None):
         self.log_start()
         try:
@@ -53,6 +75,20 @@ class WordPressIntegrationAgent(BaseAgent):
                 raise ValueError(f"PRE-PUBLISH GATE FAIL: word count too low — {content_words} words < 4000 minimum")
 
             logger.info(f"PRE-PUBLISH GATE PASS: title='{title}' chars={content_chars} words={content_words}")
+
+            # SPRINT 9 dedup: never create a second post for a title already on WP
+            # (published or draft). Covers the gated pipeline (the 48384/48412 class);
+            # the legacy produce_article.py path bypasses this and is neutralized
+            # separately. Best-effort: a lookup error must not block a real article.
+            try:
+                existing = await self.wp.find_posts(title)
+            except Exception as e:
+                logger.warning(f"dedup lookup failed (continuing): {e}")
+                existing = []
+            dup = self._duplicate_of(existing, title)
+            if dup:
+                raise ValueError(f"DEDUP: '{title}' already exists on WP as post {dup.get('id')} "
+                                 f"(status={dup.get('status')}) — skipping duplicate creation")
 
             html_content = await self._convert_to_html(article_data)
             html_with_faq = await self._add_faq_schema(html_content, article_data)

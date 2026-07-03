@@ -102,6 +102,13 @@ jobs:
         run: |
           pytest -v tests/test_sprint8_sanitization.py
 
+      - name: Sprint 9 publish-invariant tests (offline) -- no network, no API key
+        env:
+          ANTHROPIC_API_KEY: ""
+          PYTHONPATH: "."   # repo root on sys.path so `import agents...` resolves under bare pytest
+        run: |
+          pytest -v tests/test_sprint9_publish_invariant.py
+
       - name: Workflow blocking semantics test
         run: |
           chmod +x tests/test_workflow_blocking.sh
