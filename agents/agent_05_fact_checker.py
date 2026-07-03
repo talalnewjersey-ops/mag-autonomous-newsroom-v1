@@ -16,6 +16,7 @@ import aiohttp
 
 from agents.base_agent import BaseAgent
 from agents._sources import _classify_url  # shared official-source allow-list (single source of truth)
+from agents._claims import _NUM_RE, _ATTR_RE, _URL_IN  # shared claim regexes (also used by Couche 2 soften)
 
 logger = logging.getLogger(__name__)
 
@@ -50,12 +51,8 @@ CLAIM_PATTERNS = [
 ]
 
 # Sprint 10 anti-hallucination: numeric-claim <-> citation detection.
-_NUM_RE = re.compile(
-    r"(?:\d+(?:\.\d+)?\s?%|\$\s?\d[\d,]*(?:\.\d+)?|\bCAD\s?\d[\d,]*|"
-    r"\b\d+(?:\.\d+)?\s?(?:times|x)\b|\b\d+\s+out of\s+\d+\b)", re.I)
-_ATTR_RE = re.compile(
-    r"(?i)\b(?:according to|per|based on|reports?|survey|study|found by|data from|says?)\b|\([12]\d{3}\)")
-_URL_IN = re.compile(r"https?://[^\s\)\]>,;]+")
+# _NUM_RE / _ATTR_RE / _URL_IN now live in agents/_claims.py (single source of
+# truth) so this detection and the Couche 2 soften pass can never diverge.
 
 
 def detect_unsourced_claims(text):

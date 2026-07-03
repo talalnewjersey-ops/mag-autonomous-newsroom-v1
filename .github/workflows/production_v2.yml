@@ -208,6 +208,15 @@ jobs:
               echo "Agent 04 FAILED"; ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
             }
 
+            # COUCHE 2: deterministic soften [NON-BLOCKING] -- strip unsourced figures
+            # the writer invented so honest articles are not blocked at the gate for
+            # fabrication. Rewrites the draft + emits soften_report.json (consumed by
+            # Couche 3 later). Blocking stays with Couche 3 (G-Substance) + fact-check.
+            echo "[${ARTICLE_NUM}] Phase 4.4: Couche 2 soften [non-blocking]"
+            python scripts/soften_claims.py \
+              --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --report "${ARTICLE_DIR}/agent_04/soften_report.json" || true
+
             # SPRINT 2 (C): DRI metric [REPORTING, non-blocking] -- diffuse repetition proof.
             python scripts/dri_metric.py \
               --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
