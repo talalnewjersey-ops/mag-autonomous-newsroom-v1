@@ -48,10 +48,12 @@ jobs:
               for i in range(1, 10))
           SRC = "https://www.consumerfinance.gov/consumer-tools/bank-accounts/"
           # BAD: 5 unsourced stats + 1 false attribution, NO links on the claims.
+          # BAD: 6 UNSOURCED numeric stats, NO attribution -> passes GATE A, so the
+          # ONLY thing that can reject it is the agent_12 QA-SCORE penalty (Sprint 10).
           bad = ("## Overview\n" + filler +
                  "\n\nDrivers pay 25% more without US history. Roughly 60% of newcomers lack a credit file. "
                  "Deposits can reach $500 with some insurers. Premiums rose 15% last year. "
-                 "About 74% of applicants overpay. According to J.D. Power, 40% never compare quotes.\n" + faq)
+                 "About 74% of applicants overpay. Around 40% of them never compare quotes.\n" + faq)
           # GOOD: same figures, each backed by a live .gov link on the same claim.
           good = ("## Overview\n" + filler +
                   f"\n\nDrivers pay 25% more without US history ({SRC}). Roughly 60% of newcomers lack a credit file ({SRC}). "
@@ -89,8 +91,12 @@ jobs:
           s = fc["summary"]
           print("OBSERVED agent_05: unsourced_stat_count=%s unbacked_attribution_count=%s verdict=%s"
                 % (s["unsourced_stat_count"], s["unbacked_attribution_count"], fc["verdict"]))
-          print("OBSERVED agent_12: status=%s hallucination_penalty=%s" % (qa["status"], qa.get("hallucination_penalty")))
-          assert s["unsourced_stat_count"] >= 5, "detection must flag the unsourced stats"
+          pen = qa.get("hallucination_penalty", 0)
+          print("OBSERVED agent_12: status=%s hallucination_penalty=%s (on a form-clean 90 base: 90-%s=%s < 85 gate)"
+                % (qa["status"], pen, pen, 90 - pen))
+          flags = s["unsourced_stat_count"] + s["unbacked_attribution_count"]
+          assert flags >= 5, "detection must flag the hallucinated numeric claims"
+          assert pen > 0, "the hallucination signal must produce a QA-score penalty"
           assert qa["status"] != "PASS", "ASSERTION 1 VIOLATED: hallucinated article must not PASS the QA"
           print("ASSERTION 1 PROVEN: hallucinated article is recalibrated (QA != PASS) -> stays candidate")
           PY
