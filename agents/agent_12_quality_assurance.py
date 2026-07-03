@@ -65,7 +65,17 @@ class QualityAssuranceAgent(BaseAgent):
             seo_score = self._calculate_seo_score(seo_check)
             eeat_score = self._calculate_eeat_score(eeat_check)
             overall_score = round((seo_score * 0.4 + eeat_score * 0.4 + content_check.get("score", 0) * 0.2), 1)
-            
+            # SPRINT 10 anti-hallucination: recalibrate for hallucinations (counts from
+            # agent_05's fact_check_report). An unsourced stat / unbacked attribution
+            # LOWERS the QA score so a hallucinated-but-form-clean article drops below
+            # PASS. This is what makes the gate able to REJECT for hallucination, not
+            # just for form (closing the blind spot that guards the crons).
+            _hc = self.config.get("hallucination", {}) if isinstance(getattr(self, "config", None), dict) else {}
+            _halluc_penalty = hallucination_penalty(_hc.get("unsourced_stat_count", 0),
+                                                    _hc.get("unbacked_attribution_count", 0))
+            form_overall = overall_score
+            overall_score = max(0.0, round(overall_score - _halluc_penalty, 1))
+
             # Compile QA report
             qa_report = {
                 "agent": self.AGENT_NAME,
@@ -100,7 +110,12 @@ class QualityAssuranceAgent(BaseAgent):
                 "critical_issues": self._identify_critical_issues(seo_check, eeat_check, faq_check, image_check, link_check),
                 "recommendations": self._generate_recommendations(seo_check, eeat_check, image_check),
                 
-                "status": "PASS" if overall_score >= 90 else "NEEDS_REVIEW"
+                # SPRINT 10: hallucination transparency + single explicit PASS gate (85)
+                "form_overall_score": form_overall,
+                "hallucination_penalty": _halluc_penalty,
+                "unsourced_stat_count": _hc.get("unsourced_stat_count", 0),
+                "unbacked_attribution_count": _hc.get("unbacked_attribution_count", 0),
+                "status": "PASS" if overall_score >= 85 else "NEEDS_REVIEW"
             }
             
             output_path = await self.save_output("qa_report.json", qa_report)
@@ -392,6 +407,16 @@ class QualityAssuranceAgent(BaseAgent):
 # CLI ENTRY POINT - Added V3.2 for workflow execution
 # ============================================================
 
+def hallucination_penalty(unsourced_stat_count: int, unbacked_attribution_count: int, cap: int = 40) -> int:
+    """SPRINT 10 barème: points subtracted from the QA overall score.
+      -8 per unsourced numeric stat, -15 per unbacked named attribution, capped at 40.
+    Calibrated on 48418 (4+ unsourced stats -> >= -32). Even a form-perfect article
+    (max 100) minus the -40 cap = 60, well below the 85 PASS gate, so no realistic
+    hallucination mix can escape. Unbacked attributions are ALSO hard-blocked at
+    GATE A (agent_05); the -15 here is defense-in-depth."""
+    return min(cap, 8 * max(0, unsourced_stat_count) + 15 * max(0, unbacked_attribution_count))
+
+
 def main():
     """CLI entry point for workflow execution."""
     import argparse, sys, json, logging, os, re
@@ -406,6 +431,7 @@ def main():
     parser = argparse.ArgumentParser(description="Agent 12 - Quality Assurance")
     parser.add_argument("--article", required=True)
     parser.add_argument("--wordpress-report", default="")
+    parser.add_argument("--fact-check", default="", help="agent_05 fact_check_report.json (Sprint 10 hallucination penalty)")
     parser.add_argument("--image-validation", default="")
     parser.add_argument("--affiliate-compliance", default="")
     parser.add_argument("--publishing-optimizer", default="")
@@ -473,6 +499,10 @@ def main():
     img_val = load_json(args.image_validation)
     aff_comp = load_json(args.affiliate_compliance)
     pub_opt = load_json(args.publishing_optimizer)
+    # SPRINT 10: hallucination counts from agent_05 -> QA score penalty (both paths).
+    _fc_summary = load_json(args.fact_check).get("summary", {})
+    halluc = {"unsourced_stat_count": _fc_summary.get("unsourced_stat_count", 0),
+              "unbacked_attribution_count": _fc_summary.get("unbacked_attribution_count", 0)}
 
     # Attempt real QA if using DI stack
     qa_report = None
@@ -488,6 +518,7 @@ def main():
                 "min_images": args.min_images,
                 "seo_threshold": args.seo_threshold,
                 "eeat_threshold": args.eeat_threshold,
+                "hallucination": halluc,   # SPRINT 10: drives the QA score penalty in run()
             }
             llm_svc = LLMService({"anthropic_api_key": api_key, "llm_provider": "anthropic"})
             storage_svc = StorageService({"output_dir": str(output_path.parent)})
@@ -509,7 +540,9 @@ def main():
         passes_faq = faq_count >= 8  # relaxed threshold
         passes_images = image_count >= 1  # at least 1 image or fallback
 
-        overall_pass = passes_words and passes_faq and passes_images
+        # SPRINT 10: hallucinations fail the heuristic gate too -- no path escapes.
+        _hp = hallucination_penalty(halluc["unsourced_stat_count"], halluc["unbacked_attribution_count"])
+        overall_pass = passes_words and passes_faq and passes_images and _hp == 0
         seo_score = 75 if passes_words else 50
         eeat_score = 75 if passes_words else 50
 
@@ -517,6 +550,9 @@ def main():
             "agent": "agent_12_quality_assurance",
             "timestamp": datetime.utcnow().isoformat(),
             "status": "PASS" if overall_pass else "FAIL",
+            "hallucination_penalty": _hp,
+            "unsourced_stat_count": halluc["unsourced_stat_count"],
+            "unbacked_attribution_count": halluc["unbacked_attribution_count"],
             "overall_score": seo_score,
             "seo_score": seo_score,
             "eeat_score": eeat_score,

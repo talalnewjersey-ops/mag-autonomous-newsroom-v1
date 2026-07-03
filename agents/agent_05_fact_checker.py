@@ -49,6 +49,36 @@ CLAIM_PATTERNS = [
     r"(?i)\b(?:maximum|minimum|limit|cap|threshold)\s+(?:of\s+)?\$?\d",
 ]
 
+# Sprint 10 anti-hallucination: numeric-claim <-> citation detection.
+_NUM_RE = re.compile(
+    r"(?:\d+(?:\.\d+)?\s?%|\$\s?\d[\d,]*(?:\.\d+)?|\bCAD\s?\d[\d,]*|"
+    r"\b\d+(?:\.\d+)?\s?(?:times|x)\b|\b\d+\s+out of\s+\d+\b)", re.I)
+_ATTR_RE = re.compile(
+    r"(?i)\b(?:according to|per|based on|reports?|survey|study|found by|data from|says?)\b|\([12]\d{3}\)")
+_URL_IN = re.compile(r"https?://[^\s\)\]>,;]+")
+
+
+def detect_unsourced_claims(text):
+    """Flag numeric/statistical claims that lack an allow-listed (.gov / canada.ca)
+    citation IN THE SAME SENTENCE. A stat with an official link is fine. A stat
+    attributed to a named source ("according to ...", "(2023)") but without a link
+    is the higher-severity 'unbacked_attribution'. Sentences with NO number are
+    never flagged (precision -> no false positive on legitimate prose like
+    "the IRS requires filing")."""
+    text = text or ""
+    unsourced, attributions = [], []
+    # Proximity window around each number (robust to abbreviations like "J.D." that
+    # break naive sentence-splitting): a stat is "sourced" if an allow-listed URL
+    # sits within the window; "unbacked_attribution" if a named-source cue does.
+    for m in _NUM_RE.finditer(text):
+        lo, hi = max(0, m.start() - 100), min(len(text), m.end() + 100)
+        window = text[lo:hi]
+        if any(_classify_url(u) == "official" for u in _URL_IN.findall(window)):
+            continue  # backed by an allow-listed authority -> OK
+        snippet = window.strip()[:200]
+        (attributions if _ATTR_RE.search(window) else unsourced).append(snippet)
+    return {"unsourced_stats": unsourced, "unbacked_attributions": attributions}
+
 
 class FactCheckerAgent(BaseAgent):
     """Agent 05: Automated fact-checking for NEXUS-14 articles."""
@@ -86,8 +116,9 @@ class FactCheckerAgent(BaseAgent):
             urls = self._extract_urls(article_text)
             url_results = await self._check_urls(urls)
             stats_report = await self._validate_statistics(article_text)
+            hallucinations = detect_unsourced_claims(article_text)
 
-        report = self._build_report(verified, url_results, stats_report, start_time)
+        report = self._build_report(verified, url_results, stats_report, start_time, hallucinations)
 
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
@@ -317,7 +348,8 @@ class FactCheckerAgent(BaseAgent):
                 stats["info"].append({"type": "processing_time", "value": days, "note": "Noted"})
         return stats
 
-    def _build_report(self, verified: list, url_results: dict, stats: dict, start_time: datetime) -> dict:
+    def _build_report(self, verified: list, url_results: dict, stats: dict, start_time: datetime,
+                      hallucinations: dict = None) -> dict:
         elapsed = (datetime.now() - start_time).total_seconds()
         verified_count = sum(1 for c in verified if c["status"] == "VERIFIED")
         disputed_count = sum(1 for c in verified if c["status"] == "DISPUTED")
@@ -346,8 +378,17 @@ class FactCheckerAgent(BaseAgent):
                 "official source unreachable after retries: %s - human review needed "
                 "(possibly invented)", b.get("url", "")
             )
-        if broken_official_hard > 0:
-            # Official source returned a definite HTTP error -> block publication.
+        # Sprint 10 anti-hallucination: unsourced numeric claims + named attributions
+        # with no backing link. An unbacked attribution is unambiguous + high YMYL
+        # risk -> hard-block here (GATE A). Bare unsourced stats are reported and
+        # recalibrated by the QA score (agent_12) so the article still yields an
+        # inspectable [QA-FAILED] draft instead of being killed pre-draft.
+        _hal = hallucinations or {}
+        unsourced_stats = list(_hal.get("unsourced_stats", []))
+        unbacked_attributions = list(_hal.get("unbacked_attributions", []))
+        if broken_official_hard > 0 or len(unbacked_attributions) > 0:
+            # Invented official URL (4xx) OR a stat falsely attributed to a named
+            # source with no link -> block publication.
             verdict = "FAIL"
         elif issues_count == 0:
             verdict = "PASS"
@@ -376,10 +417,17 @@ class FactCheckerAgent(BaseAgent):
                 "redirected_urls": len(url_results.get("redirected", [])),
                 "stats_validated": len(stats.get("validated", [])),
                 "stats_flagged": stats_flagged,
+                # Sprint 10 anti-hallucination counts (read by agent_12 for the QA penalty)
+                "unsourced_stat_count": len(unsourced_stats),
+                "unbacked_attribution_count": len(unbacked_attributions),
             },
             "claims": verified,
             "url_check": url_results,
             "statistics_validation": stats,
+            "hallucination_check": {
+                "unsourced_stats": unsourced_stats,
+                "unbacked_attributions": unbacked_attributions,
+            },
             "recommendations": self._generate_recommendations(verified, url_results, stats),
         }
 
