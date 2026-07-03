@@ -1,0 +1,107 @@
+name: "CONTROL: publish invariant (QA-failed never reaches published)"
+
+# Deterministic real-world proof of the Sprint 9 invariant, BEFORE re-enabling the
+# scheduled crons. It does NOT generate an article (cheap, no Anthropic/Gemini): it
+# selects a real registry topic, creates a real WordPress draft for it, simulates a
+# QA failure (NO PRODUCED.json + mark it [QA-FAILED]) and runs the real reconcile.
+#
+# Two blocking assertions (the workflow FAILS if either is violated):
+#   ANGLE 1: a QA-failed article -> [QA-FAILED] draft created, PRODUCED.json ABSENT,
+#            topic stays `candidate` (never `published`).
+#   ANGLE 2: an existing [QA-FAILED] draft is NOT promoted to published on a re-run
+#            of the reconcile.
+# Manual dispatch only. Does NOT commit the registry (net no change: select marks
+# in_progress, reconcile rolls it back to candidate).
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  control:
+    name: "Prove the publish invariant"
+    runs-on: ubuntu-latest
+    env:
+      WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+      WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+      WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Prove the invariant (both angles)
+        run: |
+          set -e
+          export PYTHONPATH=.
+          mkdir -p output/article_1/agent_01 output/article_1/agent_11
+
+          echo "::group::Select a real registry topic"
+          ARTICLE_NUM=1 python -m agents.agent_01_seo_research \
+            --max-topics 1 --output output/article_1/agent_01/topics.json
+          TOPIC_ID=$(python3 -c "import json;print(json.load(open('output/article_1/agent_01/topics.json'))['topics'][0]['id'])")
+          echo "selected topic: ${TOPIC_ID}"
+          echo "::endgroup::"
+
+          echo "::group::Create a REAL WordPress draft, then simulate QA failure"
+          python3 - <<'PY'
+          import os, json, asyncio
+          from services.wordpress_service import WordPressService
+          t = json.load(open('output/article_1/agent_01/topics.json'))['topics'][0]
+          title = "CONTROL QA-FAIL — " + (t.get('title') or t.get('keyword') or 'topic')
+          cfg = {"wordpress_url": os.environ["WORDPRESS_URL"],
+                 "wordpress_username": os.environ["WORDPRESS_USERNAME"],
+                 "wordpress_app_password": os.environ["WORDPRESS_APP_PASSWORD"]}
+          wp = WordPressService(cfg)
+          post = asyncio.run(wp.create_post({
+              "title": title,
+              "content": "<p>Control run: simulated QA-FAILED draft. Must never be published.</p>",
+              "status": "draft"}))
+          pid = post.get("id")
+          json.dump({"status": "COMPLETE", "post_id": pid, "title": title, "topic_id": t.get("id")},
+                    open('output/article_1/agent_11/wordpress_report.json', 'w'))
+          print("REAL draft created: post_id", pid)
+          PY
+          # QA failure = we deliberately DO NOT write PRODUCED.json, and we mark the draft:
+          python scripts/mark_qa_failed.py \
+            --wordpress-report output/article_1/agent_11/wordpress_report.json --gate QA
+          echo "::endgroup::"
+
+          echo "::group::ANGLE 1 — reconcile: QA-failed topic must stay candidate"
+          python -m agents.agent_01_seo_research --reconcile --output-dir output
+          if [ -f output/article_1/PRODUCED.json ]; then
+            echo "FAIL: PRODUCED.json exists — a QA-failed run must not write it"; exit 1
+          fi
+          echo "OBSERVED: PRODUCED.json is ABSENT (correct)"
+          python3 - "$TOPIC_ID" <<'PY'
+          import json, sys
+          tid = sys.argv[1]
+          t = next(x for x in json.load(open('data/topic_registry.json'))['topics'] if x['id'] == tid)
+          print(f"OBSERVED registry: topic={t['id']} status={t['status']} post_id={t['post_id']} published_at={t['published_at']}")
+          assert t['status'] == 'candidate' and not t['post_id'] and not t['published_at'], \
+              f"ANGLE 1 VIOLATED: {t['id']} is {t['status']} (expected candidate)"
+          print("ANGLE 1 PROVEN: QA-failed article stays candidate, never published")
+          PY
+          echo "::endgroup::"
+
+          echo "::group::ANGLE 2 — re-run reconcile: existing [QA-FAILED] draft not promotable"
+          # The [QA-FAILED] draft still exists on WP; wordpress_report.json still has the
+          # post_id; still no PRODUCED.json. A second reconcile must NOT promote it.
+          python -m agents.agent_01_seo_research --reconcile --output-dir output
+          python3 - "$TOPIC_ID" <<'PY'
+          import json, sys
+          tid = sys.argv[1]
+          t = next(x for x in json.load(open('data/topic_registry.json'))['topics'] if x['id'] == tid)
+          print(f"OBSERVED registry (2nd reconcile): topic={t['id']} status={t['status']} post_id={t['post_id']}")
+          assert t['status'] == 'candidate' and not t['post_id'], \
+              f"ANGLE 2 VIOLATED: existing [QA-FAILED] draft promoted -> {t['status']}"
+          print("ANGLE 2 PROVEN: an existing [QA-FAILED] draft is never promoted to published")
+          PY
+          echo "::endgroup::"
+
+          echo "===================================================="
+          echo "BOTH ANGLES PROVEN — the publish invariant holds in real."
+          echo "The [QA-FAILED] draft remains on WordPress for inspection."
+          echo "===================================================="
