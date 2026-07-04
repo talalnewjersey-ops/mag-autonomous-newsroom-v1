@@ -159,6 +159,13 @@ jobs:
         run: |
           pytest -v tests/test_fix_empty_title.py
 
+      - name: L189 internal-URL truncation fix (offline) -- no network, no API key
+        env:
+          ANTHROPIC_API_KEY: ""
+          PYTHONPATH: "."
+        run: |
+          pytest -v tests/test_fix_l189_internal_url.py
+
       - name: Prose-polish tests (offline) -- no network, no API key
         env:
           ANTHROPIC_API_KEY: ""
