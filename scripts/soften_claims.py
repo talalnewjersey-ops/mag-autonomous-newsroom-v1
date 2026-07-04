@@ -175,14 +175,21 @@ def _scaffold_span(line, ss, ee, official, max_appos_words):
 def _clean(fragment):
     """Tidy whitespace/punctuation left behind by a strip (sentinels removed)."""
     s = fragment.replace(_SENT, "")
+    # Hold a leading list marker ("- ", "* ", "+ ", "1. ") OUT of the cleanup: the
+    # "leading junk" strip below has '-' in its char class and would otherwise eat a
+    # bullet's dash. The marker is RE-ATTACHED verbatim (nothing new is introduced).
+    m = re.match(r"\s*(?:[-*+]|\d+\.)\s+", s)
+    marker = (m.group(0).strip() + " ") if m else ""
+    if m:
+        s = s[m.end():]
     s = re.sub(r"\*\*\s*\*\*", "", s)         # empty bold left by a stripped **30%**
     s = re.sub(r"\(\s*\)", "", s)             # empty parens
     s = re.sub(r"\s+([,.;:%!?\)])", r"\1", s) # space before punctuation / close-paren
     s = re.sub(r"([(–—-])\s+", r"\1", s)
     s = re.sub(r",\s*,", ",", s)              # doubled commas
     s = re.sub(r"\s{2,}", " ", s)             # collapse runs of spaces
-    s = re.sub(r"^[\s,;:–—-]+", "", s)        # leading junk
-    return s.strip()
+    s = re.sub(r"^[\s,;:–—-]+", "", s)        # leading junk (marker safely held out)
+    return marker + s.strip()
 
 
 def _soften_table_row(line, spans_local, report):
