@@ -35,11 +35,28 @@ _DANGLE = re.compile(
     r"|\baveraging\s+(?:of|on)\b"
     r"|\branging\s+to\b", re.I)
 # Only a ';' reliably marks an INDEPENDENT clause we can drop without leaving a stump.
-# (An em-dash may sit mid-main-clause, so splitting on it can strand a subject.) When
-# the dangle is not ';'-isolable, the caller drops the whole sentence -- never a stump.
+# (A comma can separate a subordinate opener -- "According to X, <clause>" -- so dropping
+# a comma segment can strand "According to X" as a stump/run-on; an em-dash can sit
+# mid-main-clause too.) When the dangle is not ';'-isolable, the caller drops the WHOLE
+# sentence -- never a stump. Cost: a dangle inside a rich sentence loses that sentence;
+# Couche 1 + the anti-fabrication prompt make that rare (this filet is a last resort).
 _CLAUSE_SPLIT = re.compile(r"(\s*;\s*)")
 
 _SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")
+# An abbreviation ("U.S.", "e.g.", "Inc.") ends in a '.' that is NOT a sentence end.
+# We split on _SENT_SPLIT then re-merge any fragment whose predecessor ended in one,
+# so a sentence is never cut mid-abbreviation (which would strand "...of U.S." stumps).
+_ABBR_END = re.compile(r"(?:(?:\b[A-Za-z]\.){2,}|\b(?:e\.g|i\.e|Inc|Corp|Co|vs|etc|no|approx|Ph\.D|U\.S)\.)\s*$", re.I)
+
+
+def _split_sentences(text):
+    frags, out = _SENT_SPLIT.split(text), []
+    for f in frags:
+        if out and _ABBR_END.search(out[-1]):
+            out[-1] = out[-1] + " " + f
+        else:
+            out.append(f)
+    return out
 
 
 def _cleanup(s):
@@ -69,7 +86,7 @@ def _drop_dangling(sent):
     out = segs[keep[0]]
     for j in keep[1:]:
         out += seps[j - 1] + segs[j]          # reconnect kept clauses with their separator
-    out = out.strip(" ;—–")
+    out = re.sub(r"\s{2,}", " ", out.strip(" ;,—–"))
     return out, bool(_DANGLE.search(out))
 
 
@@ -82,7 +99,7 @@ def polish(text, min_words=4):
             out.append(line)
             continue
         kept = []
-        for sent in _SENT_SPLIT.split(line):
+        for sent in _split_sentences(line):    # abbreviation-aware -> never cuts "U.S." mid-word
             if not sent.strip():
                 continue
             cleaned = _cleanup(sent)           # try to remove orphaned scaffold FIRST
