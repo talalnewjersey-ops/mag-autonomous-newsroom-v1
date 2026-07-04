@@ -175,6 +175,32 @@ def test_percentage_points_is_detected_and_stripped():
     assert rep["unsourced_found"] >= 1 and "24 percentage points" not in out
 
 
+# ---------------- filets-v3: 'pts' abbreviation + 3-digit score ranges ----------------
+
+def test_pts_abbreviation_is_detected_and_stripped():
+    out, rep = soften("A secured card plus a loan can add +50-80 pts to a thin file quickly.")
+    assert rep["unsourced_found"] >= 1 and "pts" not in out
+
+
+def test_three_digit_score_range_is_detected_and_stripped():
+    out, rep = soften("Most ITIN holders reach a 620-680 range within a year of on-time payments.")
+    assert rep["unsourced_found"] >= 1 and "620-680" not in out and "620" not in out
+
+
+def test_legit_bare_numbers_are_NOT_touched():
+    # No % / $ / pts / 3-digit-range -> nothing should be stripped (no false positive
+    # that would mutilate valid text). Bare counts, ages, months and years stay.
+    text = "You must be 18 to apply; reports refresh every 12 months through 2026 across 3 bureaus."
+    out, rep = soften(text)
+    assert out == text and rep["unsourced_found"] == 0
+
+
+def test_year_range_and_month_range_are_NOT_caught():
+    text = "Rates held steady from 2020-2024, and a thin file matures in 12-24 months typically."
+    out, rep = soften(text)
+    assert out == text and rep["unsourced_found"] == 0
+
+
 # ---------------- non-blocking CLI ----------------
 
 def test_cli_is_non_blocking_and_rewrites(tmp_path):

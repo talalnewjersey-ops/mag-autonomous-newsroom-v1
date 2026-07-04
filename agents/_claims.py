@@ -15,7 +15,8 @@ _NUM_RE = re.compile(
     r"(?:\d+(?:\.\d+)?\s?%|\$\s?\d[\d,]*(?:\.\d+)?|\bCAD\s?\d[\d,]*|"
     r"\b\d+(?:\.\d+)?\s?(?:times|x)\b|\b\d+\s+out of\s+\d+\b|"
     r"\b\d[\d,]*(?:\.\d+)?\s?(?:million|billion|thousand)\b|"
-    r"\b\d+(?:\.\d+)?(?:\s?[–—-]\s?\d+)?\s?(?:percentage\s+points|basis\s+points|points|bps)\b|"
+    r"\b\d+(?:\.\d+)?(?:\s?[–—-]\s?\d+)?\s?(?:percentage\s+points|basis\s+points|points|pts|bps)\b|"
+    r"\b\d{3}\s?[–—-]\s?\d{3}\b|"   # 3-digit score range, e.g. "620-680" (NOT 4-digit years or 2-digit month ranges)
     r"\b\d{2,}\+)", re.I)
 
 # A named-source attribution cue (raises severity to "unbacked_attribution").
