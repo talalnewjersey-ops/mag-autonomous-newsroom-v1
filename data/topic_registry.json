@@ -166,7 +166,8 @@
       "traffic_score": 5,
       "status": "candidate",
       "published_at": null,
-      "post_id": null
+      "post_id": null,
+      "selected_at": null
     },
     {
       "id": "us-rent-apartment-no-ssn-credit",
