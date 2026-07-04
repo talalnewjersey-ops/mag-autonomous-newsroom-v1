@@ -106,9 +106,18 @@ def test_fail_when_no_faq():
     assert r["verdict"] == "FAIL" and "no FAQ section" in r["reasons"]
 
 
+def test_h1_faq_is_recognized():
+    # Piece 1: the writer often emits the FAQ as H1; it must still count as a FAQ.
+    h1 = GOOD.replace("## Frequently Asked Questions", "# Frequently Asked Questions")
+    r = evaluate(h1, "STANDARD", V())
+    assert r["has_faq"] is True and "no FAQ section" not in r["reasons"]
+
+
 def test_fail_when_unsourced_figure_survives():
     # A fabrication soften should have removed but didn't (integrity net).
-    survived = GOOD + "\nRoughly 45 million people are affected each year.\n"
+    # Isolate the survivor well past the +-100 proximity window from any .gov link.
+    filler = "This sentence carries no citation and only exists to add distance. " * 3
+    survived = GOOD + "\n" + filler + "Roughly 45 million people are affected each year with no source.\n"
     r = evaluate(survived, "STANDARD", V())
     assert r["residual_unsourced"] >= 1
     assert r["verdict"] == "FAIL" and any("survived soften" in x for x in r["reasons"])

@@ -2,22 +2,25 @@
 
 Runs after agent_04 and before the fact-check gate. For every UNSOURCED numeric
 claim (same predicate as the Sprint 10 detection: a _NUM_RE match with no
-allow-listed URL within +-100 chars) it removes the fabricated FIGURE while
+allow-listed citation within +-100 chars) it removes the fabricated FIGURE while
 keeping the directional clause -- never trusting the writer, exactly like the
 Sprint 8 sanitizer. It does NOT reject anything: it rewrites the draft and emits
-a report. The blocking decision belongs to Couche 3 (G-Substance), which consumes
-that report.
+a report. The blocking decision belongs to Couche 3 (G-Substance).
+
+LINK SAFETY (filets-v2, point 3): before doing anything, every markdown link and
+bare URL is MASKED to an atomic, indexed placeholder that carries only whether the
+link is allow-listed (.gov / canada.ca). All soften operations run on the masked
+text, so no strip can ever reach into a URL (a real run once ate a .gov URL tail
+when an attribution cue -- "reports" -- happened to sit inside the URL path). Links
+are restored byte-for-byte at the end. The placeholder also makes the "is this
+number sourced?" check robust to long URLs the +-100 window would otherwise clip.
 
 Rules (mechanical, never the LLM):
   - prose: strip the number + its quantifier ("by 20-40% above" -> "above"); for a
     named attribution ("according to X, 15-25% lower") strip the cue + number too.
-  - table row (line starts with '|'): replace the whole offending cell with "varies"
-    so the table stays well-formed and honest.
+  - table row (line starts with '|'): replace the whole offending cell with "varies".
   - after a prose strip, if the residual sentence has fewer than --min-residue-words
-    words it is deleted (a gutted stat sentence); otherwise the clause is kept.
-
-Sourced numbers, Couche 1 supplied facts (both carry a .gov link) and all markdown
-structure are left untouched. The pass is idempotent and a no-op on a clean draft.
+    words it is deleted; otherwise the clause is kept.
 """
 import argparse
 import bisect
@@ -27,10 +30,15 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from agents._claims import _NUM_RE, _ATTR_RE, _URL_IN  # single source of truth
+from agents._claims import _NUM_RE, _ATTR_RE  # shared claim regexes (single source of truth)
 from agents._sources import _classify_url
 
 _SENT = "\x00"  # sentinel marking a stripped figure inside a prose sentence
+
+# ---- link masking (point 3) ----
+_MASK_OPEN, _MASK_CLOSE = "\x0e", "\x0f"
+_LINK_RE = re.compile(r"\[[^\]]*\]\([^)]+\)|https?://[^\s\)\]>,;]+")  # markdown link OR bare URL
+_MASK_IN = re.compile(_MASK_OPEN + r"(\d+)" + _MASK_CLOSE)
 
 # Quantifier words that introduce a figure and should be stripped with it.
 _QUANT = re.compile(
@@ -41,22 +49,51 @@ _QUANT = re.compile(
 _RANGE_PREFIX = re.compile(r"\d[\d,\.]*\s*[–—-]\s*$")
 
 
-def _unsourced_spans(text):
-    """[(start, end, is_attribution)] for every _NUM_RE match NOT backed by an
-    allow-listed URL within +-100 chars. Identical predicate to agent_05."""
+def _mask_links(text):
+    """Replace every markdown link / bare URL with an atomic indexed placeholder.
+    Returns (masked_text, originals, official_indices)."""
+    originals, official = [], set()
+    def repl(m):
+        i = len(originals)
+        s = m.group(0)
+        um = re.search(r"\(([^)]+)\)\s*$", s)   # markdown link -> url inside (...)
+        url = um.group(1) if um else s          # bare URL -> itself
+        if _classify_url(url) == "official":
+            official.add(i)
+        originals.append(s)
+        return _MASK_OPEN + str(i) + _MASK_CLOSE
+    return _LINK_RE.sub(repl, text), originals, official
+
+
+def _restore_links(text, originals):
+    return _MASK_IN.sub(lambda m: originals[int(m.group(1))], text)
+
+
+def _find_unsourced(masked, official):
+    """[(start, end, is_attribution)] for every _NUM_RE match in MASKED text with no
+    official-link placeholder within +-100 chars. Attribution cues inside URLs can no
+    longer fire (URLs are placeholders)."""
     spans = []
-    for m in _NUM_RE.finditer(text):
-        lo, hi = max(0, m.start() - 100), min(len(text), m.end() + 100)
-        window = text[lo:hi]
-        if any(_classify_url(u) == "official" for u in _URL_IN.findall(window)):
-            continue
+    for m in _NUM_RE.finditer(masked):
+        lo, hi = max(0, m.start() - 100), min(len(masked), m.end() + 100)
+        window = masked[lo:hi]
+        if any(int(g) in official for g in _MASK_IN.findall(window)):
+            continue  # sourced: an allow-listed link sits nearby
         spans.append((m.start(), m.end(), bool(_ATTR_RE.search(window))))
     return spans
 
 
+def _unsourced_spans(text):
+    """Public: unsourced numeric spans (masks links internally). Used by Couche 3's
+    residual-integrity check (count only)."""
+    masked, _originals, official = _mask_links(text)
+    return _find_unsourced(masked, official)
+
+
 def _strip_span(line, s, e, is_attr):
     """Extend the raw figure span (s, e) to also swallow a leading range prefix, a
-    leading quantifier word, and -- for attributions -- the 'according to X,' cue."""
+    leading quantifier word, and -- for attributions -- the 'according to X,' cue.
+    Operates on MASKED text, so it can never cross into a URL."""
     ss = s
     m = _RANGE_PREFIX.search(line[:ss])
     if m:
@@ -88,7 +125,7 @@ def _clean(fragment):
 def _soften_table_row(line, spans_local, report):
     """Replace each pipe cell that contains an unsourced figure with 'varies'."""
     cells, pos, out = line.split("|"), 0, []
-    for idx, cell in enumerate(cells):
+    for cell in cells:
         start, end = pos, pos + len(cell)
         pos = end + 1  # account for the '|' separator
         if any(start <= s < end for (s, _e, _a) in spans_local):
@@ -102,8 +139,7 @@ def _soften_table_row(line, spans_local, report):
 def _soften_prose(line, spans_local, min_words, report):
     """Strip figures leaving a sentinel, then drop any sentence the strip reduced
     below min_words; keep the clause otherwise. Extended strip-spans are MERGED
-    first so overlapping ranges (e.g. "$200-$500") cannot corrupt each other
-    (that bug ate letters, e.g. "from" -> "rom")."""
+    first so overlapping ranges (e.g. "$200-$500") cannot corrupt each other."""
     strips = []
     for (s, e, is_attr) in spans_local:
         strips.append(list(_strip_span(line, s, e, is_attr)))
@@ -133,13 +169,14 @@ def _soften_prose(line, spans_local, min_words, report):
 def soften(text, min_residue_words=4):
     report = {"numeric_claims_total": 0, "unsourced_found": 0, "stripped": 0,
               "sentences_deleted": 0, "table_cells_softened": 0}
-    report["numeric_claims_total"] = len(_NUM_RE.findall(text))
-    spans = _unsourced_spans(text)
+    masked, originals, official = _mask_links(text)
+    report["numeric_claims_total"] = len(_NUM_RE.findall(masked))
+    spans = _find_unsourced(masked, official)
     report["unsourced_found"] = len(spans)
     if not spans:
-        return text, report
+        return text, report  # nothing to do -> original text, links untouched
 
-    lines = text.split("\n")
+    lines = masked.split("\n")
     starts, off = [], 0
     for ln in lines:
         starts.append(off)
@@ -154,7 +191,7 @@ def soften(text, min_residue_words=4):
             lines[li] = _soften_table_row(lines[li], sp, report)
         else:
             lines[li] = _soften_prose(lines[li], sp, min_residue_words, report)
-    return "\n".join(lines), report
+    return _restore_links("\n".join(lines), originals), report
 
 
 def main():
