@@ -224,8 +224,8 @@ jobs:
             echo "[${ARTICLE_NUM}] Phase 4.45: G-Substance Gate [BLOCKING]"
             python scripts/g_substance_gate.py \
               --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
-              --soften-report "${ARTICLE_DIR}/agent_04/soften_report.json" \
               --article-type "${ARTICLE_TYPE}" \
+              --market "${MARKET}" --category "${CATEGORY}" \
               --output "${ARTICLE_DIR}/agent_04/g_substance_report.json" || {
               echo "GATE G-SUBSTANCE FAIL: hollow article ${ARTICLE_NUM} (never reaches WordPress)"
               ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
