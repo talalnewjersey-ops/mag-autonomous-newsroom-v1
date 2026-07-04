@@ -130,6 +130,13 @@ jobs:
         run: |
           pytest -v tests/test_couche1_facts_injection.py
 
+      - name: Couche 1 credit-score-factors fact (CAS b -- no %, no ranking) offline
+        env:
+          ANTHROPIC_API_KEY: ""
+          PYTHONPATH: "."
+        run: |
+          pytest -v tests/test_couche1_credit_factors.py
+
       - name: Couche 2 soften tests (offline) -- no network, no API key
         env:
           ANTHROPIC_API_KEY: ""
