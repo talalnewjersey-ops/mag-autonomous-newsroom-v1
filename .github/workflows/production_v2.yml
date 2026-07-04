@@ -304,6 +304,7 @@ jobs:
               --images "${ARTICLE_DIR}/agent_10/" \
               --rank-math "${ARTICLE_DIR}/agent_16/publishing_optimizer.json" \
               --output "${ARTICLE_DIR}/agent_11/wordpress_report.json" \
+              --market "${MARKET}" --category "${CATEGORY}" \
               --validation-report "${ARTICLE_DIR}/agent_11/wordpress_validation_report.json" || {
               echo "GATE C FAIL: WordPress draft not created for article ${ARTICLE_NUM}"
               ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
