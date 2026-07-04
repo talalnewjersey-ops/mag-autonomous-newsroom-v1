@@ -39,6 +39,8 @@ jobs:
           python -m py_compile agents/agent_04_article_writer.py
           python -m py_compile agents/_sources.py
           python -m py_compile agents/agent_05_fact_checker.py
+          python -m py_compile agents/agent_11_wordpress_integration.py
+          python -m py_compile agents/_fallback_image.py
           python -m py_compile agents/_claims.py
           python -m py_compile scripts/soften_claims.py
           python -m py_compile scripts/g_substance_gate.py
@@ -140,6 +142,14 @@ jobs:
           PYTHONPATH: "."   # repo root on sys.path so `import agents...` resolves under bare pytest
         run: |
           pytest -v tests/test_couche3_g_substance.py
+
+      - name: Lot 1 fallback-image tests (offline) -- no network, no API key
+        env:
+          ANTHROPIC_API_KEY: ""
+          PYTHONPATH: "."
+        run: |
+          pip install "pillow==10.1.0"
+          pytest -v tests/test_lot1_fallback_image.py
 
       - name: Workflow blocking semantics test
         run: |

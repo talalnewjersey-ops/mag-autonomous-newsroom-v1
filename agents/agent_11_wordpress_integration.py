@@ -2,7 +2,9 @@
 NEXUS-14: Agent 11 - WordPress Integration Agent v3.0
 FIX: Replaced hardcoded paths with workflow-provided paths via config.
 FIX: Added pre-publish validation gate — blocks empty drafts.
-FIX: Gate C now requires title + content + featured_media, not just post_id.
+Gate C requires post_id + title + content (veracity/substance). The featured image
+is COSMETIC and DECOUPLED (Lot 1): its absence NEVER fails an article; a decorative
+per-vertical fallback header is used when Gemini produced no image.
 """
 
 import asyncio
@@ -94,19 +96,29 @@ class WordPressIntegrationAgent(BaseAgent):
             html_with_faq = await self._add_faq_schema(html_content, article_data)
             html_final = await self._add_affiliate_blocks(html_with_faq, article_data)
             uploaded_images = await self._upload_images(images_data)
+            # Lot 1: a DECORATIVE per-vertical fallback header when agent_10 (Gemini)
+            # produced no usable image, so the draft still gets a featured image. A
+            # missing image is COSMETIC and must never block -- see GATE C below.
+            if not any(im.get("wp_media_id") or im.get("wordpress_media_id") for im in uploaded_images):
+                fb = await self._upload_fallback_image(article_data)
+                if fb:
+                    uploaded_images = [fb] + uploaded_images
             html_with_images = await self._insert_images_in_content(html_final, uploaded_images)
             wp_post = await self._create_wordpress_draft(article_data, html_with_images, uploaded_images)
 
             post_id = wp_post.get("id")
             featured_id = (uploaded_images[0].get("wp_media_id") or uploaded_images[0].get("wordpress_media_id")) if uploaded_images else None
 
-            # GATE C: post_id + title + content + featured_media all required
+            # GATE C: requires post_id + title + content (veracity/substance, checked
+            # by the PRE-PUBLISH gate above). The featured image is COSMETIC and now
+            # DECOUPLED -- its absence NEVER fails an article (Lot 1). Only a missing
+            # post_id blocks.
             if not post_id:
                 raise ValueError("GATE C FAIL: no post_id returned from WordPress")
-            if not featured_id:
-                raise ValueError(f"GATE C FAIL: featured_media is null — post_id={post_id} will not be counted as produced")
-
-            logger.info(f"GATE C PASS: post_id={post_id} featured_media={featured_id}")
+            if featured_id:
+                logger.info(f"GATE C PASS: post_id={post_id} featured_media={featured_id}")
+            else:
+                logger.warning(f"GATE C PASS (no featured image — decorative, non-blocking): post_id={post_id}")
 
             await self._set_author(post_id)
             await self._set_seo_metadata(post_id, article_data)
@@ -460,6 +472,32 @@ class WordPressIntegrationAgent(BaseAgent):
                 uploaded.append({**image, "uploaded": False, "error": str(e)})
         return uploaded
 
+    async def _upload_fallback_image(self, article_data):
+        """Lot 1: upload a DECORATIVE per-vertical fallback header (displays NO data)
+        so a draft has a featured image when Gemini produced none. Any failure is
+        NON-FATAL -- the article proceeds without a featured image."""
+        try:
+            import os
+            import tempfile
+            from agents._source_pool import resolve_vertical
+            from agents._fallback_image import make_fallback_image
+            market = self.config.get("market", "") or article_data.get("market", "")
+            category = self.config.get("category", "") or article_data.get("category", "")
+            vertical = resolve_vertical(market, category) or "us_default"
+            path = os.path.join(tempfile.gettempdir(), "nexus14_fallback_header.png")
+            make_fallback_image(vertical, path)
+            result = await self.wp.upload_image(
+                file_path=path, title="Header image",
+                alt_text="Decorative header image", description="")
+            wp_id = result.get("id")
+            if wp_id:
+                logger.info(f"Fallback decorative image uploaded: wp_media_id={wp_id} (vertical={vertical})")
+                return {"wp_media_id": wp_id, "wp_url": result.get("source_url", ""),
+                        "uploaded": True, "fallback": True, "alt_text": "Decorative header image"}
+        except Exception as e:
+            logger.warning(f"Fallback image unavailable (continuing without featured): {e}")
+        return None
+
     async def _insert_images_in_content(self, html, images):
         """Embed uploaded images into the article body.
 
@@ -630,6 +668,8 @@ def main():
     parser.add_argument("--rank-math", required=False, default="")
     parser.add_argument("--output", required=True)
     parser.add_argument("--validation-report", required=False, default="")
+    parser.add_argument("--market", required=False, default="")     # Lot 1: fallback-image vertical routing
+    parser.add_argument("--category", required=False, default="")
     args = parser.parse_args()
 
     article_path = Path(args.article)
@@ -680,6 +720,8 @@ def main():
             # v3.0 FIX: pass workflow-provided paths into agent so _load_article_data() uses them
             "article_path": str(article_path),
             "images_dir": args.images,
+            "market": args.market,        # Lot 1: fallback-image vertical routing
+            "category": args.category,
         }
         agent = WordPressIntegrationAgent(
             config,
