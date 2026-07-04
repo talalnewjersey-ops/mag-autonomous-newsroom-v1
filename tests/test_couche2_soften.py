@@ -146,6 +146,13 @@ def test_multiple_links_same_paragraph_all_intact():
     assert all(u in out for u in urls)
 
 
+def test_number_immediately_before_a_url_never_corrupts_it():
+    # figure just BEFORE a URL whose path even contains a cue word ("report") -> the
+    # figure is softened and the URL stays byte-identical.
+    out, _ = soften("Rates jumped 30% [ref](https://example.com/report-and-scores/) overall.")
+    assert "https://example.com/report-and-scores/" in out and "30%" not in out
+
+
 def test_url_never_corrupted_even_when_a_distant_number_is_stripped():
     # The real L39 bug: an attribution cue ("reports") sat INSIDE the URL path and the
     # strip ate the URL tail. With masking the URL is atomic and can never be touched.
