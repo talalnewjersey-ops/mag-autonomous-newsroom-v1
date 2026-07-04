@@ -156,6 +156,22 @@ VERTICAL_FACTS = {
             "status": "STABLE",
             "last_reviewed": "2026-07-03",
         },
+        {
+            # CAS (b) 2026-07-04: usa.gov lists the credit-score factors but states NO
+            # percentages and NO ranking (verbatim-verified). We engrave the factors ONLY,
+            # with the source's own terms ("outstanding balances", "types of credit
+            # accounts") and an explicit no-rank / no-percentage guard so the writer cannot
+            # present the first-listed factor as "most important" or invent a FICO weight.
+            "claim": "Credit score factors",
+            "value": ("Five factors from your credit report affect your credit score: "
+                      "payment history, outstanding balances, length of credit history, "
+                      "applications for new credit, and types of credit accounts. This "
+                      "government source lists these factors without ranking them and "
+                      "without assigning any percentage weight to any factor"),
+            "source_url": "https://www.usa.gov/credit-score",
+            "status": "STABLE",
+            "last_reviewed": "2026-07-04",
+        },
     ],
 
     # ------------------------------------------------------------ us_mortgage
