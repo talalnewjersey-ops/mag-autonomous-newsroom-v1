@@ -144,6 +144,13 @@ jobs:
         run: |
           pytest -v tests/test_couche2_soften.py
 
+      - name: Bullet-marker preservation fix (Part 3 -- softened bullet keeps '- ') offline
+        env:
+          ANTHROPIC_API_KEY: ""
+          PYTHONPATH: "."
+        run: |
+          pytest -v tests/test_fix_bullet_marker.py
+
       - name: Couche 3 G-Substance gate tests (offline) -- no network, no API key
         env:
           ANTHROPIC_API_KEY: ""
