@@ -7,10 +7,15 @@ detector would flag. Pure regex, no dependencies.
 """
 import re
 
-# A "hard" numeric claim: a %, a $ / CAD amount, "N times/x", or "N out of N".
+# A "hard" numeric claim: a %, a $ / CAD amount, "N times/x", "N out of N",
+# a magnitude count ("45 million"), or a score threshold ("650+"). The last two
+# were added after a real run let "approximately 45 million ... credit invisible"
+# and "650+ score" survive the soften pass (bare numbers _NUM_RE did not match).
 _NUM_RE = re.compile(
     r"(?:\d+(?:\.\d+)?\s?%|\$\s?\d[\d,]*(?:\.\d+)?|\bCAD\s?\d[\d,]*|"
-    r"\b\d+(?:\.\d+)?\s?(?:times|x)\b|\b\d+\s+out of\s+\d+\b)", re.I)
+    r"\b\d+(?:\.\d+)?\s?(?:times|x)\b|\b\d+\s+out of\s+\d+\b|"
+    r"\b\d[\d,]*(?:\.\d+)?\s?(?:million|billion|thousand)\b|"
+    r"\b\d{2,}\+)", re.I)
 
 # A named-source attribution cue (raises severity to "unbacked_attribution").
 _ATTR_RE = re.compile(

@@ -35,7 +35,8 @@ _SENT = "\x00"  # sentinel marking a stripped figure inside a prose sentence
 # Quantifier words that introduce a figure and should be stripped with it.
 _QUANT = re.compile(
     r"(?i)(?:\b(?:by|up to|around|about|roughly|nearly|over|under|approximately|"
-    r"between|from|as much as|as little as|as low as|as high as)\s+)$")
+    r"between|from|of|below|above|at least|at most|as much as|as little as|"
+    r"as low as|as high as)\s+)$")
 # A numeric range prefix immediately before the matched figure, e.g. "20-" in "20-40%".
 _RANGE_PREFIX = re.compile(r"\d[\d,\.]*\s*[–—-]\s*$")
 
@@ -74,12 +75,13 @@ def _strip_span(line, s, e, is_attr):
 def _clean(fragment):
     """Tidy whitespace/punctuation left behind by a strip (sentinels removed)."""
     s = fragment.replace(_SENT, "")
+    s = re.sub(r"\*\*\s*\*\*", "", s)         # empty bold left by a stripped **30%**
     s = re.sub(r"\(\s*\)", "", s)             # empty parens
-    s = re.sub(r"\s+([,.;:%!?])", r"\1", s)   # space before punctuation
+    s = re.sub(r"\s+([,.;:%!?\)])", r"\1", s) # space before punctuation / close-paren
     s = re.sub(r"([(–—-])\s+", r"\1", s)
     s = re.sub(r",\s*,", ",", s)              # doubled commas
     s = re.sub(r"\s{2,}", " ", s)             # collapse runs of spaces
-    s = re.sub(r"^[\s,;:–—-]+", "", s)  # leading junk
+    s = re.sub(r"^[\s,;:–—-]+", "", s)        # leading junk
     return s.strip()
 
 
@@ -98,12 +100,23 @@ def _soften_table_row(line, spans_local, report):
 
 
 def _soften_prose(line, spans_local, min_words, report):
-    """Strip figures (right-to-left) leaving a sentinel, then drop any sentence the
-    strip reduced below min_words; keep the clause otherwise."""
-    for (s, e, is_attr) in sorted(spans_local, key=lambda x: x[0], reverse=True):
-        ss, ee = _strip_span(line, s, e, is_attr)
-        line = line[:ss] + _SENT + line[ee:]
+    """Strip figures leaving a sentinel, then drop any sentence the strip reduced
+    below min_words; keep the clause otherwise. Extended strip-spans are MERGED
+    first so overlapping ranges (e.g. "$200-$500") cannot corrupt each other
+    (that bug ate letters, e.g. "from" -> "rom")."""
+    strips = []
+    for (s, e, is_attr) in spans_local:
+        strips.append(list(_strip_span(line, s, e, is_attr)))
         report["stripped"] += 1
+    strips.sort()
+    merged = []
+    for st in strips:
+        if merged and st[0] <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], st[1])
+        else:
+            merged.append(st)
+    for ss, ee in sorted(merged, reverse=True):
+        line = line[:ss] + _SENT + line[ee:]
     kept = []
     for sentence in re.split(r"(?<=[.!?])\s+", line):
         if _SENT not in sentence:

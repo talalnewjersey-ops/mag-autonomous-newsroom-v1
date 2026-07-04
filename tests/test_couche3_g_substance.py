@@ -1,9 +1,11 @@
-"""Couche 3 -- G-Substance blocking gate. Offline: no network, no API key.
+"""Couche 3 -- G-Substance gate, revised to judge the CLEANED article (Option B).
+Offline: no network, no API key.
 
-Proves the OR/strict combination (any one criterion -> FAIL), the tier-aware
-source floor (3/4/6), the configurable strip-ratio, the structure checks
-(FAQ + H2), the divide-by-zero guard, and that the CLI BLOCKS (exit 1 on FAIL,
-0 on PASS) so a rejected article never proceeds toward WordPress.
+Proves: OR/strict combination; tier-aware source floor; the Option B rule
+(>= N=2 STABLE facts of the vertical actually cited); the documented edge case
+(substantial + honest but only ONE cited STABLE fact -> FAIL, intended); the
+soften-integrity residual check; and that the CLI BLOCKS (exit 1 on FAIL, 0 on
+PASS) so a rejected article never proceeds toward WordPress.
 """
 import json
 import os
@@ -14,95 +16,128 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from scripts.g_substance_gate import evaluate
+from scripts.g_substance_gate import evaluate, resolve_gate_vertical
 
-# A well-formed STANDARD article: 4 distinct .gov sources, FAQ, 5 H2 sections.
-GOOD = """## Overview
-Newcomers face many choices. See https://www.irs.gov/itin and https://www.fdic.gov/getbanked .
+# us_credit STABLE-fact source URLs (from agents/_vertical_facts.py)
+FTC_DISPUTE = "https://consumer.ftc.gov/articles/disputing-errors-your-credit-reports"
+CFPB_7YR = "https://www.consumerfinance.gov/ask-cfpb/how-long-does-negative-information-remain-on-my-credit-report-en-323/"
+FTC_FREE = "https://consumer.ftc.gov/articles/free-credit-reports"
+IRS_ITIN = "https://www.irs.gov/individuals/individual-taxpayer-identification-number"
 
-## Requirements
-Details at https://www.consumerfinance.gov/rules and https://www.hud.gov/fha .
+# STANDARD article citing 3 us_credit STABLE facts + IRS = 4 distinct sources, FAQ, 5 H2, no unsourced figures.
+GOOD = f"""## Overview
+Bureaus must investigate disputes within 30 days ([FTC]({FTC_DISPUTE})).
 
-## Steps
-Follow the plan carefully and in order.
+## Retention
+Negative information stays 7 years ([CFPB]({CFPB_7YR})).
 
-## Costs
-Budget ahead for the essentials you will need.
+## Reports
+You can pull a free report weekly ([FTC]({FTC_FREE})).
+
+## ITIN
+An ITIN works in place of an SSN ([IRS]({IRS_ITIN})).
 
 ## Frequently Asked Questions
 ### Do I need an SSN?
 No, an ITIN can work.
 """
-LOW_STRIP = {"numeric_claims_total": 8, "unsourced_found": 1}   # 12.5%
+
+
+def V(market="USA", category="credit"):
+    return resolve_gate_vertical(market, category)
+
+
+def test_routing_us_credit():
+    assert V() == "us_credit"
 
 
 def test_good_article_passes():
-    r = evaluate(GOOD, LOW_STRIP, "STANDARD")
+    r = evaluate(GOOD, "STANDARD", V())
     assert r["verdict"] == "PASS" and r["reasons"] == []
-    assert r["distinct_sources"] == 4 and r["has_faq"] and r["h2_count"] == 5
+    assert r["cited_stable_facts"] == 3 and r["distinct_sources"] == 4 and r["residual_unsourced"] == 0
 
 
 def test_fail_when_too_few_sources():
-    only_two = GOOD.replace("https://www.consumerfinance.gov/rules", "https://example.com/x") \
-                   .replace("https://www.hud.gov/fha", "https://example.com/y")
-    r = evaluate(only_two, LOW_STRIP, "STANDARD")
+    thin = GOOD.replace(f"([CFPB]({CFPB_7YR}))", "").replace(f"([IRS]({IRS_ITIN}))", "")
+    r = evaluate(thin, "STANDARD", V())          # 2 distinct sources < 4
     assert r["verdict"] == "FAIL" and any("distinct official sources" in x for x in r["reasons"])
 
 
-def test_tier_aware_floor_opportunity_vs_standard():
-    three = GOOD.replace("https://www.hud.gov/fha", "https://example.com/y")  # 3 .gov left
-    assert evaluate(three, LOW_STRIP, "OPPORTUNITY")["verdict"] == "PASS"   # floor 3
-    assert evaluate(three, LOW_STRIP, "STANDARD")["verdict"] == "FAIL"      # floor 4
+# ---- Option B edge case the user asked to document ----
+
+def test_substantial_but_only_one_cited_stable_fact_fails():
+    # Keep it substantial (4 distinct .gov sources, FAQ, H2) but cite only ONE STABLE
+    # us_credit fact -> FAIL on criterion (2) alone. This is the intended Option B behaviour.
+    one_fact = f"""## Overview
+Bureaus must investigate disputes within 30 days ([FTC]({FTC_DISPUTE})).
+
+## Rights
+See the CFPB ([tools](https://www.consumerfinance.gov/consumer-tools/credit-reports-and-scores/)) and
+the IRS ([ITIN]({IRS_ITIN})) and general FTC credit advice ([guide](https://consumer.ftc.gov/articles/understanding-your-credit)).
+
+## Steps
+Open an ITIN account and pay on time, every month.
+
+## Frequently Asked Questions
+### Do I need an SSN?
+No.
+"""
+    r = evaluate(one_fact, "STANDARD", V())
+    assert r["distinct_sources"] >= 4            # genuinely substantial sourcing
+    assert r["cited_stable_facts"] == 1          # but only one STABLE fact cited
+    assert r["verdict"] == "FAIL"
+    assert r["reasons"] == ["only 1 STABLE facts cited (need >= 2)"]   # THIS reason only
 
 
-def test_fail_when_strip_ratio_above_threshold():
-    r = evaluate(GOOD, {"numeric_claims_total": 10, "unsourced_found": 6}, "STANDARD")  # 60%
-    assert r["verdict"] == "FAIL" and any("strip-ratio" in x for x in r["reasons"])
+def test_min_cited_facts_is_configurable():
+    # Cites exactly ONE us_credit STABLE fact (FTC_DISPUTE) + 3 non-fact .gov sources.
+    one = (f"## A\nDisputes within 30 days ([FTC]({FTC_DISPUTE})).\n"
+           f"## B\nSee ([IRS]({IRS_ITIN})) and ([CFPB](https://www.consumerfinance.gov/consumer-tools/credit-cards/)) "
+           f"and ([FTC2](https://consumer.ftc.gov/articles/understanding-your-credit)).\n"
+           f"## FAQ\n### Q?\nA.\n")
+    assert evaluate(one, "OPPORTUNITY", V(), min_cited_facts=2)["verdict"] == "FAIL"  # cited 1 < 2
+    assert evaluate(one, "OPPORTUNITY", V(), min_cited_facts=1)["verdict"] == "PASS"  # cited 1 >= 1
 
 
-def test_strip_ratio_threshold_is_configurable():
-    rep = {"numeric_claims_total": 10, "unsourced_found": 6}  # 60%
-    assert evaluate(GOOD, rep, "STANDARD", max_strip_ratio=0.50)["verdict"] == "FAIL"
-    assert evaluate(GOOD, rep, "STANDARD", max_strip_ratio=0.70)["verdict"] == "PASS"
-
-
-def test_divide_by_zero_guard_no_false_fail():
-    r = evaluate(GOOD, {"numeric_claims_total": 0, "unsourced_found": 0}, "STANDARD")
-    assert r["strip_ratio"] == 0.0 and r["verdict"] == "PASS"
-
+# ---- structure + integrity ----
 
 def test_fail_when_no_faq():
-    no_faq = GOOD.replace("## Frequently Asked Questions", "## More Notes")
-    r = evaluate(no_faq, LOW_STRIP, "STANDARD")
+    r = evaluate(GOOD.replace("## Frequently Asked Questions", "## Notes"), "STANDARD", V())
     assert r["verdict"] == "FAIL" and "no FAQ section" in r["reasons"]
 
 
-def test_fail_when_too_few_h2():
-    thin = "## Only One\nText with https://www.irs.gov/a https://www.fdic.gov/b " \
-           "https://www.hud.gov/c https://www.consumerfinance.gov/d .\n## FAQ\n### Q?\nA.\n"
-    r = evaluate(thin, LOW_STRIP, "STANDARD")   # 2 H2 < 4
-    assert r["verdict"] == "FAIL" and any("H2 sections" in x for x in r["reasons"])
+def test_fail_when_unsourced_figure_survives():
+    # A fabrication soften should have removed but didn't (integrity net).
+    survived = GOOD + "\nRoughly 45 million people are affected each year.\n"
+    r = evaluate(survived, "STANDARD", V())
+    assert r["residual_unsourced"] >= 1
+    assert r["verdict"] == "FAIL" and any("survived soften" in x for x in r["reasons"])
 
 
-def test_or_gate_accumulates_all_reasons():
-    bad = "## One\nNo sources here.\n"  # few sources + no FAQ + few H2
-    r = evaluate(bad, {"numeric_claims_total": 10, "unsourced_found": 9}, "STANDARD")
-    assert r["verdict"] == "FAIL" and len(r["reasons"]) >= 3   # strict OR: every miss listed
+def test_tier_aware_source_floor():
+    three = GOOD.replace(f"([IRS]({IRS_ITIN}))", "")   # 3 distinct sources
+    assert evaluate(three, "OPPORTUNITY", V())["verdict"] == "PASS"   # floor 3, still 3 cited facts
+    assert any("distinct official sources" in x for x in evaluate(three, "STANDARD", V())["reasons"])  # floor 4
 
+
+# ---- blocking CLI + safe path ----
 
 def test_cli_blocks_on_fail_and_passes_clean(tmp_path):
     gate = os.path.join(ROOT, "scripts", "g_substance_gate.py")
     good = tmp_path / "good.md"; good.write_text(GOOD, encoding="utf-8")
-    rep = tmp_path / "soften.json"; rep.write_text(json.dumps(LOW_STRIP), encoding="utf-8")
-    ok = subprocess.run([sys.executable, gate, "--input", str(good),
-                         "--soften-report", str(rep), "--article-type", "STANDARD"],
-                        capture_output=True, text=True)
-    assert ok.returncode == 0                       # PASS -> proceeds
+    ok = subprocess.run([sys.executable, gate, "--input", str(good), "--article-type", "STANDARD",
+                         "--market", "USA", "--category", "credit"], capture_output=True, text=True)
+    assert ok.returncode == 0                    # PASS -> proceeds
 
-    bad = tmp_path / "bad.md"; bad.write_text("## One\nNo sources.\n", encoding="utf-8")
+    # Only-one-cited-fact article -> FAIL -> exit 1 -> workflow `continue` -> never published.
+    one = tmp_path / "one.md"
+    one.write_text(f"## A\nDisputes within 30 days ([FTC]({FTC_DISPUTE})).\n## B\nx ([IRS]({IRS_ITIN})) "
+                   f"([CFPB](https://www.consumerfinance.gov/consumer-tools/)) "
+                   f"([FTC2](https://consumer.ftc.gov/articles/understanding-your-credit)).\n"
+                   f"## FAQ\n### Q?\nA.\n", encoding="utf-8")
     out = tmp_path / "g.json"
-    ko = subprocess.run([sys.executable, gate, "--input", str(bad),
-                         "--soften-report", str(rep), "--article-type", "STANDARD",
-                         "--output", str(out)], capture_output=True, text=True)
-    assert ko.returncode == 1                       # FAIL -> BLOCKS (workflow continues, no WP)
+    ko = subprocess.run([sys.executable, gate, "--input", str(one), "--article-type", "STANDARD",
+                         "--market", "USA", "--category", "credit", "--output", str(out)],
+                        capture_output=True, text=True)
+    assert ko.returncode == 1                    # FAIL -> BLOCKS (never reaches WordPress)
     assert json.loads(out.read_text())["verdict"] == "FAIL"

@@ -101,6 +101,29 @@ def test_report_counts_total_and_unsourced():
     assert rep["numeric_claims_total"] == 3 and rep["unsourced_found"] == 2
 
 
+# ---------------- prose repair (Piece 1) + extended detection (Piece 2) ----------------
+
+def test_range_strip_does_not_eat_adjacent_letters():
+    out, _ = soften("Providers require deposits of $200-$500 from applicants with no history.")
+    assert "deposits from applicants" in out     # clean: no eaten 'f' (was "of rom"), no dangling "$"
+    assert "$" not in out and "200" not in out
+
+
+def test_stripped_bold_percent_leaves_no_empty_bold():
+    out, _ = soften("Utilization accounts for **30%** of your score and should stay below **10%**.")
+    assert "****" not in out and "30%" not in out and "10%" not in out
+
+
+def test_bare_million_is_detected_and_stripped():
+    out, rep = soften("The CFPB says approximately 45 million Americans are credit invisible.")
+    assert rep["unsourced_found"] == 1 and "45 million" not in out
+
+
+def test_score_threshold_is_detected_and_stripped():
+    out, rep = soften("A 650+ score is achievable within a year for most newcomers.")
+    assert rep["unsourced_found"] == 1 and "650+" not in out
+
+
 # ---------------- non-blocking CLI ----------------
 
 def test_cli_is_non_blocking_and_rewrites(tmp_path):
