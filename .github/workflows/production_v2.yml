@@ -217,6 +217,15 @@ jobs:
               --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
               --report "${ARTICLE_DIR}/agent_04/soften_report.json" || true
 
+            # PROSE-POLISH [NON-BLOCKING] -- deletion-only: remove the grammatical
+            # scaffold soften left when it stripped a figure (dangling prepositions,
+            # "(of your FICO score)", "/month", bold). NEVER rewrites/refills -> a
+            # removed number can never reappear. Drops a whole sentence if broken.
+            echo "[${ARTICLE_NUM}] Phase 4.44: Prose polish [non-blocking]"
+            python scripts/polish_prose.py \
+              --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --report "${ARTICLE_DIR}/agent_04/polish_report.json" || true
+
             # COUCHE 3: G-Substance gate [BLOCKING] -- after soften, before every phase
             # that can reach WordPress (Phase 11). Rejects a HOLLOW article so we never
             # trade hallucinated for hollow. On FAIL: continue -> agent_11 never runs, no
