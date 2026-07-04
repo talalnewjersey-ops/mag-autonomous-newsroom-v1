@@ -47,6 +47,9 @@ _QUANT = re.compile(
     r"as low as|as high as)\s+)$")
 # A numeric range prefix immediately before the matched figure, e.g. "20-" in "20-40%".
 _RANGE_PREFIX = re.compile(r"\d[\d,\.]*\s*[–—-]\s*$")
+# PLAN B (context-aware scaffold): a trailing unit token glued to the figure, e.g. "/month".
+_UNIT_RE = re.compile(r"/(?:months?|years?|weeks?|days?|mo|yr|hrs?|hours?)\b", re.I)
+_DASH = "—–"  # em-dash, en-dash
 
 
 def _mask_links(text):
@@ -109,6 +112,66 @@ def _strip_span(line, s, e, is_attr):
     return ss, e
 
 
+def _content_word_count(s):
+    """Alphabetic words remaining after masked links + markup/punctuation are removed."""
+    s = _MASK_IN.sub("", s)
+    s = re.sub(r"[*_`#>|~$%(),.;:!?/" + _DASH + r"-]", " ", s)
+    return sum(1 for w in s.split() if any(c.isalpha() for c in w))
+
+
+def _sourced_inside(segment, official):
+    """True if `segment` holds a masked placeholder for an official (allow-listed) link."""
+    return any(int(g) in official for g in _MASK_IN.findall(segment))
+
+
+def _scaffold_span(line, ss, ee, official, max_appos_words):
+    """PLAN B: extend an (already left-trimmed) unsourced-figure span (ss, ee) to also
+    swallow the IMMEDIATE DELIMITED scaffold that only existed to present the number:
+    a trailing /unit, an enclosing ( ), ** **, or — — appositive. Removal-only; the
+    extension STOPS at the delimiter and never crosses it. Suppressed whenever the
+    scaffold holds sourced content (an official link) so a citation is never deleted.
+    Operates on MASKED text (URLs are placeholders)."""
+    # CASE 3 -- trailing unit token immediately after the figure -> extend RIGHT.
+    um = _UNIT_RE.match(line, ee)
+    if um:
+        ee = um.end()
+    # CASE 1 -- enclosing parenthesis ( ... ) with the figure inside and no nested ')'.
+    op, cp = line.rfind("(", 0, ss), line.find(")", ee)
+    if op != -1 and cp != -1 and ")" not in line[op + 1:ss] and "(" not in line[ee:cp]:
+        if not _sourced_inside(line[op + 1:cp], official) and \
+           _content_word_count(line[op + 1:ss] + " " + line[ee:cp]) <= 6:
+            ss, ee = op, cp + 1
+            if ee < len(line) and line[ee] == " ":
+                ee += 1                       # swallow one adjacent space, keep grammar tight
+            elif ss > 0 and line[ss - 1] == " ":
+                ss -= 1
+            return ss, ee                     # parenthetical is self-contained -> done
+    # CASE 4 -- enclosing em-dash appositive — ... — (or — ... . / — ... <eol>).
+    dl = max((line.rfind(d, 0, ss) for d in _DASH), default=-1)
+    if dl != -1 and not any(c in line[dl + 1:ss] for c in ".!?"):
+        rest = line[ee:]
+        m = re.search(r"[" + _DASH + r".!?]", rest)
+        if m and rest[m.start()] in _DASH:
+            dr, tail = ee + m.start() + 1, line[ee:ee + m.start()]   # consume closing dash
+        elif m:
+            dr, tail = ee + m.start(), line[ee:ee + m.start()]       # stop before sentence-end
+        else:
+            dr, tail = len(line), rest                              # runs to end of line
+        if not _sourced_inside(line[dl + 1:dr], official) and \
+           _content_word_count(line[dl + 1:ss] + " " + tail) <= max_appos_words:
+            return dl, dr
+    # CASE 2 -- enclosing bold ** ... **.
+    bl, br = line.rfind("**", 0, ss), line.find("**", ee)
+    if bl != -1 and br != -1 and "**" not in line[bl + 2:ss] and "**" not in line[ee:br]:
+        if not _sourced_inside(line[bl + 2:br], official):
+            if _content_word_count(line[bl + 2:ss] + " " + line[ee:br]) == 0:
+                ss, ee = bl, br + 2           # 2a: bold holds only the figure -> remove it all
+            else:
+                while ss > 0 and line[ss - 1] == " ":   # 2b: keep the label -> **label** tight
+                    ss -= 1
+    return ss, ee
+
+
 def _clean(fragment):
     """Tidy whitespace/punctuation left behind by a strip (sentinels removed)."""
     s = fragment.replace(_SENT, "")
@@ -136,13 +199,17 @@ def _soften_table_row(line, spans_local, report):
     return "|".join(out)
 
 
-def _soften_prose(line, spans_local, min_words, report):
+def _soften_prose(line, spans_local, min_words, report, official=frozenset(), max_appos_words=4):
     """Strip figures leaving a sentinel, then drop any sentence the strip reduced
     below min_words; keep the clause otherwise. Extended strip-spans are MERGED
-    first so overlapping ranges (e.g. "$200-$500") cannot corrupt each other."""
+    first so overlapping ranges (e.g. "$200-$500") cannot corrupt each other.
+    PLAN B: each span is grown to swallow its immediate delimited scaffold so no
+    scar (dangling '(', '/month', '**', '— —') is ever created."""
     strips = []
     for (s, e, is_attr) in spans_local:
-        strips.append(list(_strip_span(line, s, e, is_attr)))
+        ss, ee = _strip_span(line, s, e, is_attr)
+        ss, ee = _scaffold_span(line, ss, ee, official, max_appos_words)
+        strips.append([ss, ee])
         report["stripped"] += 1
     strips.sort()
     merged = []
@@ -166,7 +233,7 @@ def _soften_prose(line, spans_local, min_words, report):
     return " ".join(k for k in kept if k)
 
 
-def soften(text, min_residue_words=4):
+def soften(text, min_residue_words=4, max_appos_words=4):
     report = {"numeric_claims_total": 0, "unsourced_found": 0, "stripped": 0,
               "sentences_deleted": 0, "table_cells_softened": 0}
     masked, originals, official = _mask_links(text)
@@ -190,7 +257,8 @@ def soften(text, min_residue_words=4):
         if lines[li].lstrip().startswith("|"):
             lines[li] = _soften_table_row(lines[li], sp, report)
         else:
-            lines[li] = _soften_prose(lines[li], sp, min_residue_words, report)
+            lines[li] = _soften_prose(lines[li], sp, min_residue_words, report,
+                                      official, max_appos_words)
     return _restore_links("\n".join(lines), originals), report
 
 
@@ -200,10 +268,13 @@ def main():
     ap.add_argument("--report", default=None, help="path for soften_report.json")
     ap.add_argument("--min-residue-words", type=int, default=4,
                     help="delete a stripped sentence shorter than this (default 4)")
+    ap.add_argument("--max-appos-words", type=int, default=4,
+                    help="PLAN B: remove a whole em-dash appositive only if its residue "
+                         "(number removed) has <= this many content words (default 4)")
     args = ap.parse_args()
 
     text = Path(args.input).read_text(encoding="utf-8")
-    softened, report = soften(text, args.min_residue_words)
+    softened, report = soften(text, args.min_residue_words, args.max_appos_words)
     Path(args.input).write_text(softened, encoding="utf-8")
     if args.report:
         Path(args.report).write_text(json.dumps(report, indent=2), encoding="utf-8")
