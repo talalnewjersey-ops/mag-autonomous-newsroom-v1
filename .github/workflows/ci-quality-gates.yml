@@ -44,6 +44,7 @@ jobs:
           python -m py_compile agents/_claims.py
           python -m py_compile scripts/soften_claims.py
           python -m py_compile scripts/g_substance_gate.py
+          python -m py_compile scripts/polish_prose.py
           python -m py_compile agents/_source_pool.py
           python -m py_compile agents/_vertical_facts.py
           python -m py_compile agents/agent_01_seo_research.py
@@ -157,6 +158,13 @@ jobs:
           PYTHONPATH: "."
         run: |
           pytest -v tests/test_fix_empty_title.py
+
+      - name: Prose-polish tests (offline) -- no network, no API key
+        env:
+          ANTHROPIC_API_KEY: ""
+          PYTHONPATH: "."
+        run: |
+          pytest -v tests/test_lot_prose_polish.py
 
       - name: Workflow blocking semantics test
         run: |
