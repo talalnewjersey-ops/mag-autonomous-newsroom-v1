@@ -151,6 +151,13 @@ jobs:
           pip install "pillow==10.1.0"
           pytest -v tests/test_lot1_fallback_image.py
 
+      - name: EMPTY_TITLE GATE C re-check fix (offline) -- no network, no API key
+        env:
+          ANTHROPIC_API_KEY: ""
+          PYTHONPATH: "."
+        run: |
+          pytest -v tests/test_fix_empty_title.py
+
       - name: Workflow blocking semantics test
         run: |
           chmod +x tests/test_workflow_blocking.sh

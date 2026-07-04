@@ -628,6 +628,24 @@ class WordPressIntegrationAgent(BaseAgent):
             logger.warning(f"SEO metadata failed: {e}")
 
 
+def _gate_c_recheck(post_id, title, content_chars, word_count):
+    """GATE C post-run re-check. Returns the list of failing reasons (empty = PASS).
+    Uses the values the run() report actually produced -- NOT a `title:` frontmatter,
+    which agent_04 stopped emitting in Sprint 8 (that left `title` empty and raised a
+    false EMPTY_TITLE once Lot 1 let run() succeed). Featured image is NOT required
+    here (cosmetic, decoupled in run())."""
+    errors = []
+    if not post_id:
+        errors.append("NO_POST_ID")
+    if not (title or "").strip():
+        errors.append("EMPTY_TITLE")
+    if content_chars < 5000:
+        errors.append(f"CONTENT_TOO_SHORT:{content_chars}_chars")
+    if word_count < 4000:
+        errors.append(f"WORD_COUNT_TOO_LOW:{word_count}_words")
+    return errors
+
+
 def _write_failure_reports(output_path, val_path_str, title, keyword, word_count, error_msg):
     from pathlib import Path
     from datetime import datetime
@@ -738,22 +756,19 @@ def main():
 
         log.info(f"WP result: post_id={post_id} featured_media={featured_id} words={wp_word_count} chars={wp_content_chars}")
 
+        # Use the values the run actually produced -- agent_04 no longer emits a
+        # `title:` frontmatter (Sprint 8), so the pre-flight regex `title` is empty.
+        title = result.get("title") or title
+        word_count = result.get("word_count", word_count)
+        content_chars = result.get("content_chars", content_chars)
+
     except Exception as e:
         log.error(f"WP integration failed: {e}")
         _write_failure_reports(output_path, args.validation_report, title, keyword, word_count, str(e))
         sys.exit(1)
 
-    # GATE C v3.0: post_id + title + content + featured_media all required
-    gate_errors = []
-    if not post_id:
-        gate_errors.append("NO_POST_ID")
-    if not title:
-        gate_errors.append("EMPTY_TITLE")
-    if content_chars < 5000:
-        gate_errors.append(f"CONTENT_TOO_SHORT:{content_chars}_chars")
-    if word_count < 4000:
-        gate_errors.append(f"WORD_COUNT_TOO_LOW:{word_count}_words")
-
+    # GATE C v3.0 (featured image DECOUPLED -- cosmetic, handled in run()).
+    gate_errors = _gate_c_recheck(post_id, title, content_chars, word_count)
     if gate_errors:
         err = "GATE_C_FAIL: " + " | ".join(gate_errors)
         log.error(err)
