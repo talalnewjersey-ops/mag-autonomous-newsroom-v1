@@ -187,6 +187,13 @@ jobs:
         run: |
           pytest -v tests/test_lot_prose_polish.py
 
+      - name: Dangle filet tests (Part 2 -- deletion-only last resort) offline
+        env:
+          ANTHROPIC_API_KEY: ""
+          PYTHONPATH: "."
+        run: |
+          pytest -v tests/test_lot_dangle_filet.py
+
       - name: Workflow blocking semantics test
         run: |
           chmod +x tests/test_workflow_blocking.sh

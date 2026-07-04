@@ -25,6 +25,20 @@ _BOLD_SCAR = (re.compile(r"\*\*\s*of\b[^*]*\*\*", re.I), re.compile(r"\*\*\s*\*\
 _HARD_SCAR = re.compile(
     r"\bthat\)|\bat\s*/|\b(?:for|contributes|accounting for)\s+of\b|\*\*\s+of\b", re.I)
 
+# PART 2 -- minimal dangle filet. LAST RESORT, only for a stripped $/APR that Couche 1
+# cannot supply: the strip can glue a verb to a preposition it never takes ("represents
+# of", "drives of", "ranging to"). NARROW, curated list -- NOT a catch-all. A recurring
+# class must be prevented by Couche 1 (supply the real fact), never by widening this.
+_DANGLE = re.compile(
+    r"\b(?:represents?|comprises?|constitutes?|drives?|averages?|"
+    r"accounts?\s+for|makes?\s+up)\s+of\b"
+    r"|\baveraging\s+(?:of|on)\b"
+    r"|\branging\s+to\b", re.I)
+# Only a ';' reliably marks an INDEPENDENT clause we can drop without leaving a stump.
+# (An em-dash may sit mid-main-clause, so splitting on it can strand a subject.) When
+# the dangle is not ';'-isolable, the caller drops the whole sentence -- never a stump.
+_CLAUSE_SPLIT = re.compile(r"(\s*;\s*)")
+
 _SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")
 
 
@@ -42,8 +56,25 @@ def _content_words(s):
     return re.findall(r"[A-Za-z][A-Za-z'-]+", re.sub(r"\*\*|__", "", s))
 
 
+def _drop_dangling(sent):
+    """Deletion-only: split the sentence on ; / em-dash boundaries and drop ONLY the
+    clause that holds the dangle, keeping the rest. Returns (result, still_dangling).
+    If the dangle cannot be isolated to a clause, `still_dangling` is True and the
+    caller drops the whole sentence."""
+    parts = _CLAUSE_SPLIT.split(sent)
+    segs, seps = parts[0::2], parts[1::2]
+    keep = [i for i, s in enumerate(segs) if not _DANGLE.search(s)]
+    if not keep:
+        return "", True
+    out = segs[keep[0]]
+    for j in keep[1:]:
+        out += seps[j - 1] + segs[j]          # reconnect kept clauses with their separator
+    out = out.strip(" ;—–")
+    return out, bool(_DANGLE.search(out))
+
+
 def polish(text, min_words=4):
-    report = {"sentences_deleted": 0, "sentences_cleaned": 0}
+    report = {"sentences_deleted": 0, "sentences_cleaned": 0, "dangles_pruned": 0}
     out = []
     for line in text.split("\n"):
         st = line.lstrip()
@@ -57,6 +88,14 @@ def polish(text, min_words=4):
             cleaned = _cleanup(sent)           # try to remove orphaned scaffold FIRST
             if _HARD_SCAR.search(cleaned):     # a scar SURVIVED cleanup -> unrepairable -> drop
                 report["sentences_deleted"] += 1
+                continue
+            if _DANGLE.search(cleaned):        # PART 2: prune only the dangling clause (deletion-only)
+                pruned, still = _drop_dangling(cleaned)
+                report["dangles_pruned"] += 1
+                if still or len(_content_words(pruned)) < min_words:
+                    report["sentences_deleted"] += 1   # dangle not isolable / stump -> drop sentence
+                    continue
+                kept.append(pruned)
                 continue
             if cleaned == sent:
                 kept.append(sent)              # untouched (incl. legit short ones) -> keep as-is
