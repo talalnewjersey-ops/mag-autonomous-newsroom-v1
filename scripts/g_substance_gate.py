@@ -39,7 +39,10 @@ TIER = {
     "GOLD":        {"min_sources": 4, "min_h2": 4},
     "OPPORTUNITY": {"min_sources": 3, "min_h2": 3},
 }
-_FAQ_RE = re.compile(r"##\s+(?:Frequently Asked Questions|FAQ)", re.IGNORECASE)  # == agent_12
+# Heading-level agnostic: the writer often emits the FAQ as H1; the agent_11
+# sanitizer demotes H1->H2 later (Phase 11), but G-Substance runs earlier (4.45),
+# so accept any heading level here to avoid a false "no FAQ" rejection.
+_FAQ_RE = re.compile(r"#{1,6}\s+(?:Frequently Asked Questions|FAQ)", re.IGNORECASE)
 _H2_RE = re.compile(r"(?m)^##\s+\S")  # H2 only ("## x", never "### x")
 
 

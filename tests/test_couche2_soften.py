@@ -124,6 +124,50 @@ def test_score_threshold_is_detected_and_stripped():
     assert rep["unsourced_found"] == 1 and "650+" not in out
 
 
+# ---------------- link safety (Piece 3): a .gov source is NEVER touched ----------------
+
+GOVURL = "https://www.consumerfinance.gov/consumer-tools/credit-reports-and-scores/"
+
+
+def test_link_at_end_of_sentence_is_intact():
+    out, _ = soften(f"Premiums are higher for newcomers, see [CFPB]({GOVURL}).")
+    assert GOVURL in out
+
+
+def test_link_glued_to_a_number_keeps_the_link():
+    # non-.gov link glued to an unsourced number: number softened, link byte-intact.
+    out, _ = soften("Rates rose [source](https://example.com/x)25% last year for thin files.")
+    assert "https://example.com/x" in out and "25%" not in out
+
+
+def test_multiple_links_same_paragraph_all_intact():
+    urls = (GOVURL, "https://www.irs.gov/individuals", "https://consumer.ftc.gov/articles/free-credit-reports")
+    out, _ = soften(f"See [A]({urls[0]}) and [B]({urls[1]}) and [C]({urls[2]}) for details.")
+    assert all(u in out for u in urls)
+
+
+def test_url_never_corrupted_even_when_a_distant_number_is_stripped():
+    # The real L39 bug: an attribution cue ("reports") sat INSIDE the URL path and the
+    # strip ate the URL tail. With masking the URL is atomic and can never be touched.
+    long = ("and payment history matters a great deal for thin files over many months of "
+            "steady activity, so drivers overpay by 30% typically without a domestic record.")
+    out, _ = soften(f"Diverse accounts matter because [CFPB report]({GOVURL}) {long}")
+    assert GOVURL in out          # byte-identical
+    assert "30%" not in out       # the distant unsourced figure was still softened
+
+
+# ---------------- extended detection (Piece 2): "N points" no longer survives ----------------
+
+def test_points_is_detected_and_stripped():
+    out, rep = soften("Adding a loan can accelerate growth by 20-40 points faster than one card.")
+    assert rep["unsourced_found"] >= 1 and "20-40 points" not in out
+
+
+def test_percentage_points_is_detected_and_stripped():
+    out, rep = soften("This increased the likelihood by 24 percentage points overall for thin files.")
+    assert rep["unsourced_found"] >= 1 and "24 percentage points" not in out
+
+
 # ---------------- non-blocking CLI ----------------
 
 def test_cli_is_non_blocking_and_rewrites(tmp_path):

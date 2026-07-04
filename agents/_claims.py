@@ -15,6 +15,7 @@ _NUM_RE = re.compile(
     r"(?:\d+(?:\.\d+)?\s?%|\$\s?\d[\d,]*(?:\.\d+)?|\bCAD\s?\d[\d,]*|"
     r"\b\d+(?:\.\d+)?\s?(?:times|x)\b|\b\d+\s+out of\s+\d+\b|"
     r"\b\d[\d,]*(?:\.\d+)?\s?(?:million|billion|thousand)\b|"
+    r"\b\d+(?:\.\d+)?(?:\s?[–—-]\s?\d+)?\s?(?:percentage\s+points|basis\s+points|points|bps)\b|"
     r"\b\d{2,}\+)", re.I)
 
 # A named-source attribution cue (raises severity to "unbacked_attribution").
