@@ -469,6 +469,9 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     _links_sel = links[:tier["min_links"]]
     links_block = "\n".join(f"- {l}" for l in _links_sel)
     # SPRINT 2: split internal links so intro and Expert Recommendation never cite the SAME link verbatim.
+    # NB: these blocks are already bounded by link COUNT (_links_sel[:_half]); NEVER char-slice them
+    # ([:200]/[:300]) when interpolating into a prompt -- a char cut lands mid-URL and the model
+    # faithfully reproduces the truncated link (dead internal URL, e.g. .../international-money-).
     _half = max(1, (len(_links_sel) + 1) // 2)
     links_intro_block = "\n".join(f"- {l}" for l in _links_sel[:_half])
     links_expert_block = "\n".join(f"- {l}" for l in _links_sel[_half:]) or links_intro_block
@@ -524,7 +527,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
 
     intro = await _call_claude(api_key,
         f"Write introduction: {title} | {keyword} | {market} | Tier: {tier['tier']}\n"
-        f"300-400w. Quick Answer box (40-60w). 2-3 internal links:\n{links_intro_block[:300]}\nBe concise.\n"
+        f"300-400w. Quick Answer box (40-60w). 2-3 internal links:\n{links_intro_block}\nBe concise.\n"
         f"{sourcing_block}\n",
         SYSTEM_PROMPT, max_tokens=1200)
 
@@ -594,7 +597,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     case_studies = ""
 
     expert_section = await _call_claude(api_key,
-        f"Write Expert Recommendation section for: {keyword} ({market}). H2. Top pick + runner-up. 300-400w. 2 internal links from: {links_expert_block[:200]}",
+        f"Write Expert Recommendation section for: {keyword} ({market}). H2. Top pick + runner-up. 300-400w. 2 internal links from: {links_expert_block}",
         SYSTEM_PROMPT, max_tokens=1000)
 
     min_faqs = tier["min_faqs"]
