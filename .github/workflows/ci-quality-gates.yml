@@ -45,6 +45,7 @@ jobs:
           python -m py_compile scripts/soften_claims.py
           python -m py_compile scripts/g_substance_gate.py
           python -m py_compile scripts/polish_prose.py
+          python -m py_compile scripts/normalize_urls.py
           python -m py_compile agents/_source_pool.py
           python -m py_compile agents/_vertical_facts.py
           python -m py_compile agents/agent_01_seo_research.py
@@ -221,6 +222,13 @@ jobs:
           PYTHONPATH: "."
         run: |
           pytest -v tests/test_g3_dedup.py
+
+      - name: URL normalization pass (restore mutated .gov to fact url) offline
+        env:
+          ANTHROPIC_API_KEY: ""
+          PYTHONPATH: "."
+        run: |
+          pytest -v tests/test_url_normalize.py
 
       - name: Workflow blocking semantics test
         run: |
