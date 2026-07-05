@@ -182,6 +182,19 @@ def resolve_vertical(market: str, category: str) -> Optional[str]:
     return None
 
 
+def resolve_gate_vertical(market: str, category: str) -> str:
+    """Vertical for fact-citation gating (G-Substance, GATE A, Couche 2 soften).
+    Relocated here from scripts/g_substance_gate.py (hygiene: it is vertical
+    resolution, not gate logic) -- re-exported from there unchanged for existing
+    callers/tests. Mirrors resolve_vertical's routing; Canada (resolve_vertical
+    -> None) maps to canada_newcomer; unmapped US -> us_default (which has no
+    fact sheet, so such articles fail the cited-facts floor by design)."""
+    v = resolve_vertical(market, category)
+    if v:
+        return v
+    return "canada_newcomer" if "canada" in (market or "").lower() else "us_default"
+
+
 def has_curated_pool(vertical: str) -> bool:
     """True if we have a verified curated source list for this vertical."""
     return bool(OFFICIAL_SOURCE_POOL.get(vertical))

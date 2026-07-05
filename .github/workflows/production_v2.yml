@@ -215,7 +215,8 @@ jobs:
             echo "[${ARTICLE_NUM}] Phase 4.4: Couche 2 soften [non-blocking]"
             python scripts/soften_claims.py \
               --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
-              --report "${ARTICLE_DIR}/agent_04/soften_report.json" || true
+              --report "${ARTICLE_DIR}/agent_04/soften_report.json" \
+              --market "${MARKET}" --category "${CATEGORY}" || true
 
             # PROSE-POLISH [NON-BLOCKING] -- deletion-only: remove the grammatical
             # scaffold soften left when it stripped a figure (dangling prepositions,
@@ -267,7 +268,8 @@ jobs:
             python -m agents.agent_05_fact_checker \
               --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
               --output "${ARTICLE_DIR}/agent_05/fact_check_report.json" \
-              --min-sources ${{ env.FACT_CHECK_MIN_SOURCES }} || {
+              --min-sources ${{ env.FACT_CHECK_MIN_SOURCES }} \
+              --market "${MARKET}" --category "${CATEGORY}" || {
               echo "GATE A FAIL: Fact checker blocked article ${ARTICLE_NUM}"
               ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
             }

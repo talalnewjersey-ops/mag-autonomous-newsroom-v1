@@ -15,6 +15,13 @@ when an attribution cue -- "reports" -- happened to sit inside the URL path). Li
 are restored byte-for-byte at the end. The placeholder also makes the "is this
 number sourced?" check robust to long URLs the +-100 window would otherwise clip.
 
+LEVIER C (2026-07-05): "sourced" no longer means "an allow-listed link sits in
+the window" -- it means the number matches the EXACT engraved value of a
+Couche 1 STABLE fact whose source_url is that link (agents/_fact_coverage.py).
+A number near a link is otherwise treated as unsourced and stripped, even if
+the link is a real, live .gov page -- see agents/_fact_coverage.py docstring
+for the qualitative-fact guard and the "en cas de doute, on strip" rule.
+
 Rules (mechanical, never the LLM):
   - prose: strip the number + its quantifier ("by 20-40% above" -> "above"); for a
     named attribution ("according to X, 15-25% lower") strip the cue + number too.
@@ -32,6 +39,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agents._claims import _NUM_RE, _ATTR_RE  # shared claim regexes (single source of truth)
 from agents._sources import _classify_url
+from agents._fact_coverage import classify_claims
+from agents._source_pool import resolve_gate_vertical
 
 _SENT = "\x00"  # sentinel marking a stripped figure inside a prose sentence
 
@@ -52,6 +61,18 @@ _UNIT_RE = re.compile(r"/(?:months?|years?|weeks?|days?|mo|yr|hrs?|hours?)\b", r
 _DASH = "—–"  # em-dash, en-dash
 
 
+def _link_url(s):
+    """Extract the bare URL from a masked-link ORIGINAL: markdown link -> the url
+    inside (...); bare URL -> itself. Kept as one function so a placeholder
+    resolves to the same URL for both official-classification and (LEVIER C)
+    fact-coverage matching -- `originals` itself must keep the FULL markdown
+    syntax (brackets + display text) for byte-exact restoration, so callers that
+    need the bare url (covering_fact requires exact source_url equality) must
+    go through this, not read `originals[i]` directly."""
+    um = re.search(r"\(([^)]+)\)\s*$", s)   # markdown link -> url inside (...)
+    return um.group(1) if um else s         # bare URL -> itself
+
+
 def _mask_links(text):
     """Replace every markdown link / bare URL with an atomic indexed placeholder.
     Returns (masked_text, originals, official_indices)."""
@@ -59,9 +80,7 @@ def _mask_links(text):
     def repl(m):
         i = len(originals)
         s = m.group(0)
-        um = re.search(r"\(([^)]+)\)\s*$", s)   # markdown link -> url inside (...)
-        url = um.group(1) if um else s          # bare URL -> itself
-        if _classify_url(url) == "official":
+        if _classify_url(_link_url(s)) == "official":
             official.add(i)
         originals.append(s)
         return _MASK_OPEN + str(i) + _MASK_CLOSE
@@ -72,25 +91,24 @@ def _restore_links(text, originals):
     return _MASK_IN.sub(lambda m: originals[int(m.group(1))], text)
 
 
-def _find_unsourced(masked, official):
-    """[(start, end, is_attribution)] for every _NUM_RE match in MASKED text with no
-    official-link placeholder within +-100 chars. Attribution cues inside URLs can no
-    longer fire (URLs are placeholders)."""
-    spans = []
-    for m in _NUM_RE.finditer(masked):
-        lo, hi = max(0, m.start() - 100), min(len(masked), m.end() + 100)
-        window = masked[lo:hi]
-        if any(int(g) in official for g in _MASK_IN.findall(window)):
-            continue  # sourced: an allow-listed link sits nearby
-        spans.append((m.start(), m.end(), bool(_ATTR_RE.search(window))))
-    return spans
+def _find_unsourced(masked, originals, vertical):
+    """[(start, end, is_attribution)] for every _NUM_RE match in MASKED text NOT
+    covered by an engraved Couche 1 STABLE fact (LEVIER C, agents/_fact_coverage.py:
+    a nearby allow-listed link is no longer sufficient proof -- the number must
+    match that fact's exact engraved value). Placeholders are resolved back to
+    their original URL string so coverage matching sees the real source_url;
+    attribution cues inside URLs can no longer fire (URLs are placeholders).
+    Placeholder spans are found ONCE over the whole masked text and filtered by
+    overlap with each claim's window -- same overlap-not-slice contract as
+    agents._fact_coverage._default_url_finder (placeholders are short and atomic
+    so slicing would rarely truncate one, but the contract stays uniform)."""
+    placeholders = [(int(g.group(1)), g.start(), g.end()) for g in _MASK_IN.finditer(masked)]
 
-
-def _unsourced_spans(text):
-    """Public: unsourced numeric spans (masks links internally). Used by Couche 3's
-    residual-integrity check (count only)."""
-    masked, _originals, official = _mask_links(text)
-    return _find_unsourced(masked, official)
+    def finder(lo, hi):
+        return [_link_url(originals[i]) for (i, s, e) in placeholders if s < hi and e > lo]
+    return [(c["start"], c["end"], c["is_attr"])
+            for c in classify_claims(masked, vertical, url_finder=finder)
+            if c["fact"] is None]
 
 
 def _strip_span(line, s, e, is_attr):
@@ -240,12 +258,12 @@ def _soften_prose(line, spans_local, min_words, report, official=frozenset(), ma
     return " ".join(k for k in kept if k)
 
 
-def soften(text, min_residue_words=4, max_appos_words=4):
+def soften(text, vertical, min_residue_words=4, max_appos_words=4):
     report = {"numeric_claims_total": 0, "unsourced_found": 0, "stripped": 0,
               "sentences_deleted": 0, "table_cells_softened": 0}
     masked, originals, official = _mask_links(text)
     report["numeric_claims_total"] = len(_NUM_RE.findall(masked))
-    spans = _find_unsourced(masked, official)
+    spans = _find_unsourced(masked, originals, vertical)
     report["unsourced_found"] = len(spans)
     if not spans:
         return text, report  # nothing to do -> original text, links untouched
@@ -273,6 +291,8 @@ def main():
     ap = argparse.ArgumentParser(description="Couche 2 soften pass (non-blocking).")
     ap.add_argument("--input", required=True, help="article_draft.md (rewritten in place)")
     ap.add_argument("--report", default=None, help="path for soften_report.json")
+    ap.add_argument("--market", default="", help="LEVIER C: routes vertical for fact coverage")
+    ap.add_argument("--category", default="", help="LEVIER C: routes vertical for fact coverage")
     ap.add_argument("--min-residue-words", type=int, default=4,
                     help="delete a stripped sentence shorter than this (default 4)")
     ap.add_argument("--max-appos-words", type=int, default=4,
@@ -281,7 +301,8 @@ def main():
     args = ap.parse_args()
 
     text = Path(args.input).read_text(encoding="utf-8")
-    softened, report = soften(text, args.min_residue_words, args.max_appos_words)
+    vertical = resolve_gate_vertical(args.market, args.category)
+    softened, report = soften(text, vertical, args.min_residue_words, args.max_appos_words)
     Path(args.input).write_text(softened, encoding="utf-8")
     if args.report:
         Path(args.report).write_text(json.dumps(report, indent=2), encoding="utf-8")
