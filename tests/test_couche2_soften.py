@@ -2,9 +2,9 @@
 
 Proves the soften rules (prose strip keeps the clause; a number matching an
 ENGRAVED Couche 1 fact's exact value is left untouched; attribution cue+number
-removed; table cell -> 'varies'; residue < K -> sentence deleted, with K
-configurable), plus idempotence, no-op on clean text, correct report, and that
-the pass is NON-BLOCKING (CLI exits 0).
+removed; table cell -> the fixed commercial-figure qualifier phrase; residue < K
+-> sentence deleted, with K configurable), plus idempotence, no-op on clean
+text, correct report, and that the pass is NON-BLOCKING (CLI exits 0).
 
 LEVIER C (2026-07-05): "sourced" now requires a value match against an engraved
 Couche 1 STABLE fact (agents/_fact_coverage.py), not merely a nearby allow-listed
@@ -88,13 +88,28 @@ def test_k_is_configurable_same_input_different_outcome():
 
 # ---------------- tables ----------------
 
-def test_table_cell_with_unsourced_number_becomes_varies():
+def test_table_cell_with_unsourced_number_becomes_the_fixed_qualifier():
+    # LEVIER C commercial-figure qualification: a table cell with an unsourced
+    # commercial figure gets the FIXED phrase, never a bare "varies".
     row = "| **State Farm** | Yes | up to 25% | $180-$260 |"
     out, rep = soften(row, V)
     assert "25%" not in out and "$180" not in out
-    assert out.count("varies") >= 2               # both numeric cells softened
+    assert out.count("varies by provider — confirm directly") >= 2   # both numeric cells softened
     assert out.startswith("| **State Farm** |")    # structure preserved
     assert rep["table_cells_softened"] >= 2
+
+
+def test_table_qualifier_is_a_fixed_literal_never_generated():
+    # Different commercial figures in different cells -> IDENTICAL qualifier text
+    # every time (never templated with the cell's own content/number/context).
+    row1 = "| EQ Bank | 2.75% | monthly |"
+    row2 = "| Wealthsimple | $500 minimum | no fee |"
+    out1, _ = soften(row1, V)
+    out2, _ = soften(row2, V)
+    import re as _re
+    q1 = _re.findall(r"varies by provider — confirm directly", out1)
+    q2 = _re.findall(r"varies by provider — confirm directly", out2)
+    assert q1 and q2 and set(q1) == set(q2) == {"varies by provider — confirm directly"}
 
 
 # ---------------- safety / idempotence / no-op ----------------

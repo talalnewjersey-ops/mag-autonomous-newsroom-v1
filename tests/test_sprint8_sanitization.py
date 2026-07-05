@@ -19,6 +19,7 @@ import asyncio
 import importlib.util
 import json
 import os
+import re
 import sys
 import types
 from html.parser import HTMLParser
@@ -191,17 +192,30 @@ def test_actionable_affiliate_renders(tmp_path):
     assert "mag-affiliate-box" in out and "https://wise.com" in out
 
 
-# ---------- off-topic captions ----------
+# ---------- captions: no internal/off-topic text ever shown to a reader ----------
+# LEVIER C (2026-07-05): Sprint 8's fix (figcaption <- alt_text, never a
+# separate 'caption' field) traded one bug (off-topic captions) for another --
+# alt_text is an internal, technical naming-convention string ("Supporting
+# image: X lifestyle for Y newcomers", agent_09) that leaked verbatim into
+# published articles as a visible caption. Fix: render NO figcaption at all.
+# alt_text keeps its real, correct job (the alt="" accessibility attribute,
+# never shown to a reader) -- nothing internal-sounding is ever displayed.
 
-def test_caption_never_offtopic_default():
+def test_no_figcaption_is_ever_rendered():
     images = [
         {"uploaded": True, "wp_url": "https://x/f.jpg", "wp_media_id": 1, "alt_text": "featured"},
         {"uploaded": True, "wp_url": "https://x/1.jpg", "wp_media_id": 2,
-         "alt_text": "car insurance documents", "caption": "immigration guide"},
+         "alt_text": "Supporting image: car insurance lifestyle for usa newcomers",
+         "caption": "immigration guide"},
     ]
     out = asyncio.run(_agent()._insert_images_in_content("<h2>Sec</h2><p>Body</p>", images))
-    assert "car insurance documents" in out          # caption derives from alt
-    assert "immigration guide" not in out            # off-topic caption field ignored
+    assert "<figcaption>" not in out                              # no visible caption at all
+    # alt_text correctly stays INSIDE the alt="" attribute (its real, invisible-
+    # to-readers accessibility job) -- it must just never appear OUTSIDE it.
+    assert 'alt="Supporting image: car insurance lifestyle for usa newcomers"' in out
+    outside_alt = re.sub(r'alt="[^"]*"', "", out)
+    assert "Supporting image:" not in outside_alt                  # never shown as visible text
+    assert "immigration guide" not in out                         # off-topic caption field still never used
     assert _parse(out).balanced
 
 

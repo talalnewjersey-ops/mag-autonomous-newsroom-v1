@@ -522,15 +522,23 @@ class WordPressIntegrationAgent(BaseAgent):
             alt = (img.get("alt_text", "") or "").replace('"', "'")
             media_id = img.get("wp_media_id")
             cls = "wp-image-" + str(media_id) if media_id else ""
-            # Caption derives from the per-image alt text (topic-specific), NEVER a
-            # separate generic 'caption' field that can be off-topic (e.g. an
-            # "immigration guide" caption on a car-insurance article).
-            caption = alt
-            cap_html = "<figcaption>" + self._render_inline(caption) + "</figcaption>" if caption else ""
+            # LEVIER C image-caption fix (2026-07-05): Sprint 8 (05e13a5) switched
+            # the figcaption source from agent_09's `caption` field to `alt_text`
+            # to fix an off-topic-caption mismatch it had observed -- but alt_text
+            # is an internal, technical naming-convention string ("Supporting
+            # image: X lifestyle for Y newcomers"), never meant for a reader, and
+            # it leaked verbatim into published articles as a visible caption.
+            # Rendering NO caption is the safe fix: alt_text keeps doing its real
+            # job (the alt="" accessibility attribute, never shown to a reader),
+            # and no caption text is generated at all, so nothing internal-
+            # sounding OR off-topic can ever be displayed. (A dedicated,
+            # genuinely reader-facing caption is a possible FUTURE improvement,
+            # but reusing agent_09's `caption` field here risks reopening the
+            # exact mismatch Sprint 8 was fixing -- out of scope for this fix.)
             return (
                 '<figure class="mag-article-image">'
                 '<img src="' + url + '" alt="' + alt + '" class="' + cls + '" loading="lazy" />'
-                + cap_html + '</figure>'
+                '</figure>'
             )
 
         parts = re.split(r'(<h2[^>]*>)', html)
