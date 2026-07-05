@@ -208,6 +208,13 @@ jobs:
         run: |
           pytest -v tests/test_lot_dangle_filet.py
 
+      - name: Option C -- facts injected into FAQ/Expert/all sections (source guard) offline
+        env:
+          ANTHROPIC_API_KEY: ""
+          PYTHONPATH: "."
+        run: |
+          pytest -v tests/test_option_c_facts_injection.py
+
       - name: Workflow blocking semantics test
         run: |
           chmod +x tests/test_workflow_blocking.sh
