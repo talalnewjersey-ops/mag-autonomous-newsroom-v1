@@ -16,6 +16,13 @@ FAIL if ANY (OR / strict gate):
   (4) any unsourced numeric figure SURVIVES in the cleaned article (soften-integrity)
       -- catches a fabrication soften missed.
 
+LEVIER C (2026-07-05): criteria (2) and (4) both now go through
+agents._fact_coverage.classify_claims -- "cited" means a number in the content
+was matched to the EXACT engraved value of a STABLE fact, not merely that the
+fact's source_url string appears somewhere in the page (closes the
+proximity-false-sourced blind spot: a real link no longer certifies an
+unrelated figure sitting next to it). See agents/_fact_coverage.py docstring.
+
 On FAIL exit!=0 -> workflow `continue` -> agent_11 (Phase 11) never runs -> NO
 WordPress object, no PRODUCED.json -> reconcile keeps the topic candidate. A
 rejected article can never be published (sprint 9/10 invariant, enforced early).
@@ -29,9 +36,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agents._claims import _URL_IN
 from agents._sources import _classify_url
-from agents._vertical_facts import VERTICAL_FACTS
-from agents._source_pool import resolve_vertical
-from scripts.soften_claims import _unsourced_spans  # same predicate as soften/detection
+from agents._fact_coverage import classify_claims, count_cited_stable_facts
+from agents._source_pool import resolve_gate_vertical  # relocated (hygiene); re-exported below
 
 TIER = {
     "PILLAR":      {"min_sources": 6, "min_h2": 5},
@@ -46,25 +52,14 @@ _FAQ_RE = re.compile(r"#{1,6}\s+(?:Frequently Asked Questions|FAQ)", re.IGNORECA
 _H2_RE = re.compile(r"(?m)^##\s+\S")  # H2 only ("## x", never "### x")
 
 
-def resolve_gate_vertical(market, category):
-    """Vertical for fact-citation counting. Mirrors agent_04's routing; Canada
-    (resolve_vertical -> None) maps to canada_newcomer; unmapped US -> us_default
-    (which has no fact sheet, so such articles fail criterion 2 by design)."""
-    v = resolve_vertical(market, category)
-    if v:
-        return v
-    return "canada_newcomer" if "canada" in (market or "").lower() else "us_default"
-
-
 def evaluate(content, article_type, vertical, min_cited_facts=2):
     cfg = TIER.get((article_type or "STANDARD").upper(), TIER["STANDARD"])
     distinct_sources = len({u for u in _URL_IN.findall(content) if _classify_url(u) == "official"})
     h2_count = len(_H2_RE.findall(content))
     has_faq = bool(_FAQ_RE.search(content))
-    stable_facts = [f for f in VERTICAL_FACTS.get(vertical or "", [])
-                    if f.get("status") == "STABLE" and f.get("value")]
-    cited_facts = sum(1 for f in stable_facts if f["source_url"] in content)
-    residual_unsourced = len(_unsourced_spans(content))
+    claims = classify_claims(content, vertical)
+    cited_facts = count_cited_stable_facts(content, vertical, claims=claims)
+    residual_unsourced = sum(1 for c in claims if c["fact"] is None)
 
     reasons = []  # OR gate: any single reason -> FAIL
     if distinct_sources < cfg["min_sources"]:

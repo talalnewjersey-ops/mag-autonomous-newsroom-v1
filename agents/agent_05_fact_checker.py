@@ -17,6 +17,8 @@ import aiohttp
 from agents.base_agent import BaseAgent
 from agents._sources import _classify_url  # shared official-source allow-list (single source of truth)
 from agents._claims import _NUM_RE, _ATTR_RE, _URL_IN  # shared claim regexes (also used by Couche 2 soften)
+from agents._fact_coverage import classify_claims  # LEVIER C: value-matched fact coverage
+from agents._source_pool import resolve_gate_vertical
 
 logger = logging.getLogger(__name__)
 
@@ -55,25 +57,24 @@ CLAIM_PATTERNS = [
 # truth) so this detection and the Couche 2 soften pass can never diverge.
 
 
-def detect_unsourced_claims(text):
-    """Flag numeric/statistical claims that lack an allow-listed (.gov / canada.ca)
-    citation IN THE SAME SENTENCE. A stat with an official link is fine. A stat
-    attributed to a named source ("according to ...", "(2023)") but without a link
-    is the higher-severity 'unbacked_attribution'. Sentences with NO number are
-    never flagged (precision -> no false positive on legitimate prose like
-    "the IRS requires filing")."""
+def detect_unsourced_claims(text, vertical):
+    """Flag numeric/statistical claims not COVERED by an engraved Couche 1 STABLE
+    fact of `vertical` (LEVIER C, agents/_fact_coverage.py). An allow-listed link
+    sitting nearby is no longer sufficient by itself -- the number must match
+    that fact's exact engraved value, or it is treated as unsourced even though a
+    real .gov link is right there (the "proximity-false-sourced" blind spot). A
+    stat attributed to a named source ("according to ...", "(2023)") but with no
+    covering fact is the higher-severity 'unbacked_attribution'. Sentences with
+    NO number are never flagged (precision -> no false positive on legitimate
+    prose like "the IRS requires filing")."""
     text = text or ""
     unsourced, attributions = [], []
-    # Proximity window around each number (robust to abbreviations like "J.D." that
-    # break naive sentence-splitting): a stat is "sourced" if an allow-listed URL
-    # sits within the window; "unbacked_attribution" if a named-source cue does.
-    for m in _NUM_RE.finditer(text):
-        lo, hi = max(0, m.start() - 100), min(len(text), m.end() + 100)
-        window = text[lo:hi]
-        if any(_classify_url(u) == "official" for u in _URL_IN.findall(window)):
-            continue  # backed by an allow-listed authority -> OK
-        snippet = window.strip()[:200]
-        (attributions if _ATTR_RE.search(window) else unsourced).append(snippet)
+    for c in classify_claims(text, vertical):
+        if c["fact"] is not None:
+            continue  # value-matched to an engraved fact -> genuinely sourced
+        lo, hi = max(0, c["start"] - 100), min(len(text), c["end"] + 100)
+        snippet = text[lo:hi].strip()[:200]
+        (attributions if c["is_attr"] else unsourced).append(snippet)
     return {"unsourced_stats": unsourced, "unbacked_attributions": attributions}
 
 
@@ -87,10 +88,12 @@ class FactCheckerAgent(BaseAgent):
         self.session: aiohttp.ClientSession | None = None
         self.timeout = aiohttp.ClientTimeout(total=15)
 
-    async def run(self, article_draft_path: str, output_dir: str = "outputs") -> dict[str, Any]:
+    async def run(self, article_draft_path: str, output_dir: str = "outputs",
+                  market: str = "", category: str = "") -> dict[str, Any]:
         """Read article draft, extract all checkable claims, verify them."""
         self.logger.info("Agent 05 - Fact Checker starting...")
         start_time = datetime.now()
+        vertical = resolve_gate_vertical(market, category)
 
         draft_path = Path(article_draft_path)
         if not draft_path.exists():
@@ -113,7 +116,7 @@ class FactCheckerAgent(BaseAgent):
             urls = self._extract_urls(article_text)
             url_results = await self._check_urls(urls)
             stats_report = await self._validate_statistics(article_text)
-            hallucinations = detect_unsourced_claims(article_text)
+            hallucinations = detect_unsourced_claims(article_text, vertical)
 
         report = self._build_report(verified, url_results, stats_report, start_time, hallucinations)
 
@@ -469,6 +472,8 @@ def main():
     parser.add_argument("--input", required=True, help="Path to article_draft.md")
     parser.add_argument("--output", required=True, help="Output path for fact_check_report.json")
     parser.add_argument("--min-sources", type=int, default=10)
+    parser.add_argument("--market", default="", help="LEVIER C: routes vertical for fact coverage")
+    parser.add_argument("--category", default="", help="LEVIER C: routes vertical for fact coverage")
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -486,7 +491,9 @@ def main():
         import asyncio
         report = asyncio.run(agent.run(
             article_draft_path=str(input_path),
-            output_dir=str(output_path.parent)
+            output_dir=str(output_path.parent),
+            market=args.market,
+            category=args.category,
         ))
         verdict = report.get('verdict', 'UNKNOWN')
         log.info(f"Fact check complete: verdict={verdict}")

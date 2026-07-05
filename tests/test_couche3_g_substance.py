@@ -6,6 +6,15 @@ Proves: OR/strict combination; tier-aware source floor; the Option B rule
 (substantial + honest but only ONE cited STABLE fact -> FAIL, intended); the
 soften-integrity residual check; and that the CLI BLOCKS (exit 1 on FAIL, 0 on
 PASS) so a rejected article never proceeds toward WordPress.
+
+LEVIER C (2026-07-05): "cited" now means value-matched via
+agents._fact_coverage.classify_claims, not mere source_url substring presence.
+The existing fixtures above happen to use us_credit facts whose engraved values
+carry no _NUM_RE-matchable digit (30 days, 7 years, weekly) -- those are
+QUALITATIVE under the new rule and are STILL credited by simple source_url
+presence (nothing numeric to misattribute), so none of the tests above needed
+to change. The NUMERIC case (utilization = 30%, the fact behind the real
+proximity-false-sourced incident) is exercised separately below.
 """
 import json
 import os
@@ -150,3 +159,37 @@ def test_cli_blocks_on_fail_and_passes_clean(tmp_path):
                         capture_output=True, text=True)
     assert ko.returncode == 1                    # FAIL -> BLOCKS (never reaches WordPress)
     assert json.loads(out.read_text())["verdict"] == "FAIL"
+
+
+# ---- LEVIER C: a NUMERIC STABLE fact must be value-matched, not just link-present ----
+
+CFPB_UTIL = "https://www.consumerfinance.gov/ask-cfpb/how-do-i-get-and-keep-a-good-credit-score-en-318/"
+
+
+def test_numeric_fact_correctly_cited_counts():
+    # 30% is the utilization fact's EXACT engraved value, at its real source_url.
+    good = (f"## Overview\nBureaus must investigate disputes within 30 days ([FTC]({FTC_DISPUTE})).\n"
+            f"## Retention\nNegative information stays 7 years ([CFPB]({CFPB_7YR})).\n"
+            f"## Utilization\nExperts advise keeping your credit use to no more than 30% of your "
+            f"total credit limit ([CFPB]({CFPB_UTIL})).\n"
+            f"## ITIN\nAn ITIN works in place of an SSN ([IRS]({IRS_ITIN})).\n"
+            f"## Frequently Asked Questions\n### Do I need an SSN?\nNo.\n")
+    r = evaluate(good, "STANDARD", V())
+    assert r["verdict"] == "PASS"
+    assert r["cited_stable_facts"] == 3   # dispute + retention (qualitative) + utilization (numeric, matched)
+
+
+def test_wrong_number_next_to_the_real_link_does_not_count_as_cited():
+    # The exact real-run bug (run 28731153809): "10%" sits near the genuine CFPB
+    # en-318 link that supports 30%, but 30% itself is never stated -- the fact
+    # must NOT be credited as cited by proximity to its own link alone.
+    bad = (f"## Overview\nBureaus must investigate disputes within 30 days ([FTC]({FTC_DISPUTE})).\n"
+           f"## Retention\nNegative information stays 7 years ([CFPB]({CFPB_7YR})).\n"
+           f"## Utilization\nSome advisors recommend staying under 10% for an excellent score "
+           f"([CFPB]({CFPB_UTIL})).\n"
+           f"## ITIN\nAn ITIN works in place of an SSN ([IRS]({IRS_ITIN})).\n"
+           f"## Frequently Asked Questions\n### Do I need an SSN?\nNo.\n")
+    r = evaluate(bad, "STANDARD", V())
+    assert r["cited_stable_facts"] == 2           # dispute + retention only -- NOT utilization
+    assert r["residual_unsourced"] >= 1           # the fabricated "10%" survives as unsourced
+    assert r["verdict"] == "FAIL"

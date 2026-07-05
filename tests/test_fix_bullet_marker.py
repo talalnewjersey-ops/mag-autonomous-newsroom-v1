@@ -16,14 +16,14 @@ from scripts.soften_claims import soften, _clean
 
 
 def test_softened_dash_bullet_keeps_its_marker():
-    out = soften("- **Missing one payment** — payment history is 35% of your FICO score")[0]
+    out = soften("- **Missing one payment** — payment history is 35% of your FICO score", "us_credit")[0]
     assert out.lstrip().startswith("- ")      # bullet marker preserved
     assert "35%" not in out                    # the unsourced number is STILL stripped
 
 
 def test_star_and_numbered_markers_preserved():
-    assert soften("* Keep utilization below 30% for best results")[0].lstrip().startswith("* ")
-    assert soften("1. Open a card with a $200 deposit and pay in full")[0].lstrip().startswith("1. ")
+    assert soften("* Keep utilization below 30% for best results", "us_credit")[0].lstrip().startswith("* ")
+    assert soften("1. Open a card with a $200 deposit and pay in full", "us_credit")[0].lstrip().startswith("1. ")
 
 
 def test_clean_preserves_marker_and_adds_nothing():
