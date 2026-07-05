@@ -172,6 +172,66 @@ VERTICAL_FACTS = {
             "status": "STABLE",
             "last_reviewed": "2026-07-04",
         },
+        # 2026-07-04: facts added to kill the residual invented-number scar class seen
+        # on draft 48438. Each verbatim-verified on a .gov page; NO absolute pulled from
+        # a comparison; the one hard number (30%) is literally on the CFPB page.
+        {
+            "claim": "Credit utilization guidance",
+            # verbatim CFPB en-318: "Experts advise keeping your use of credit at no
+            # more than 30 percent of your total credit limit." Hedge kept, not hardened.
+            "value": "Experts advise keeping your credit use to no more than 30% of your total credit limit",
+            "source_url": "https://www.consumerfinance.gov/ask-cfpb/how-do-i-get-and-keep-a-good-credit-score-en-318/",
+            "status": "STABLE",
+            "last_reviewed": "2026-07-04",
+        },
+        {
+            "claim": "Hard inquiry impact",
+            # verbatim CFPB en-1317: "These inquiries will impact your credit score..."
+            # -- qualitative, NO point value.
+            "value": ("A hard credit inquiry will impact your credit score; scoring models "
+                      "consider how recently and how frequently you apply for credit"),
+            "source_url": "https://www.consumerfinance.gov/ask-cfpb/what-is-a-credit-inquiry-en-1317/",
+            "status": "STABLE",
+            "last_reviewed": "2026-07-04",
+        },
+        {
+            "claim": "Credit card age rule (under 21)",
+            # verbatim CFPB en-20: can't issue to anyone under 21 unless independent
+            # ability to pay OR a co-signer over 21. (Page says "under 21", never "18".)
+            "value": ("An applicant under 21 needs an independent ability to pay, or a "
+                      "co-signer over 21, to be issued a credit card"),
+            "source_url": "https://www.consumerfinance.gov/ask-cfpb/can-a-card-issuer-consider-my-age-when-deciding-whether-to-issue-a-credit-card-to-me-en-20/",
+            "status": "STABLE",
+            "last_reviewed": "2026-07-04",
+        },
+        {
+            "claim": "Credit-builder loan benefit",
+            # CFPB study title: "...Could Help Consumers Build Credit". The "60 points"
+            # is a BETWEEN-GROUP comparison, NOT an absolute -> engraved qualitatively only.
+            "value": ("A CFPB study found credit-builder loans can help establish and improve "
+                      "a credit score, especially for people without existing debt"),
+            "source_url": "https://www.consumerfinance.gov/about-us/newsroom/cfpb-study-shows-financial-product-could-help-consumers-build-credit/",
+            "status": "STABLE",
+            "last_reviewed": "2026-07-04",
+        },
+        {
+            "claim": "Most impactful credit factor",
+            # verbatim CFPB: "Paying your bills on time, every time has the greatest
+            # impact on your score." Qualitative ranking, NO percentage.
+            "value": "Paying your bills on time, every time has the greatest impact on your credit score",
+            "source_url": "https://www.consumerfinance.gov/consumer-tools/credit-reports-and-scores/understand-your-credit-score/",
+            "status": "STABLE",
+            "last_reviewed": "2026-07-04",
+        },
+        {
+            "claim": "Credit-invisible US adults",
+            # VOLATILE: the count changes (the "26M" anti-staleness lesson). Source-only;
+            # the writer stays qualitative ("millions"), never a dated number.
+            "value": None,
+            "source_url": "https://www.consumerfinance.gov/about-us/blog/who-are-credit-invisible/",
+            "status": "VOLATILE",
+            "last_reviewed": "2026-07-04",
+        },
     ],
 
     # ------------------------------------------------------------ us_mortgage
