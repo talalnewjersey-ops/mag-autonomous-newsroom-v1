@@ -14,7 +14,9 @@ SRC = open(os.path.join(ROOT, "agents/agent_04_article_writer.py"), encoding="ut
 
 
 def test_facts_and_rules_is_defined():
-    assert "_facts_and_rules = _anti_fab + _facts_block" in SRC
+    # _facts_and_rules must combine the anti-fab rule and the Couche 1 facts (a de-dup
+    # wording clause may sit between them; the facts must never be dropped).
+    assert re.search(r"_facts_and_rules = _anti_fab \+ .*_facts_block", SRC)
 
 
 def test_comparison_gets_facts():
