@@ -25,9 +25,27 @@ for the qualitative-fact guard and the "en cas de doute, on strip" rule.
 Rules (mechanical, never the LLM):
   - prose: strip the number + its quantifier ("by 20-40% above" -> "above"); for a
     named attribution ("according to X, 15-25% lower") strip the cue + number too.
-  - table row (line starts with '|'): replace the whole offending cell with "varies".
+  - table row (line starts with '|'): replace the whole offending cell with a FIXED
+    qualifying phrase (see COMMERCIAL-FIGURE QUALIFICATION below) -- never "varies"
+    alone.
   - after a prose strip, if the residual sentence has fewer than --min-residue-words
     words it is deleted; otherwise the clause is kept.
+
+COMMERCIAL-FIGURE QUALIFICATION (2026-07-05, table-scoped): an unsourced figure in
+a COMPARISON TABLE CELL is where the real damage was observed (HISA incident: a
+firm, inconsistent commercial rate presented as fact across sections/rows of the
+same table). Couche 1 never engraves commercial figures (rates, prices) -- only
+government facts -- so a table cell can NEVER be "covered" for that kind of claim,
+by design. Rather than a bare "varies", the cell is replaced with the FIXED,
+constant phrase _TABLE_QUALIFIER ("varies by provider — confirm directly") --
+literal, never templated/generated, so it can never itself invent or vary a
+figure. Deliberately TABLE-SCOPED ONLY: short prose already strips-and-keeps-the-
+clause well (proven on the insurance article's commercial figures); repeating the
+qualifier in prose too would be noisier for no real gain. Confirmed no G3 conflict:
+the phrase is 4 content words (G3's duplicate-phrase floor is 8) and an empirical
+G3 run with it repeated 12+ times in one table still PASSES (max cosine 0.68 <
+0.80 threshold). Extend beyond tables only if a re-run shows commercial
+inconsistencies surviving outside them.
 """
 import argparse
 import bisect
@@ -222,14 +240,21 @@ def _clean(fragment):
     return marker + s.strip()
 
 
+# LEVIER C commercial-figure qualification (table-scoped, see module docstring).
+# FIXED and CONSTANT -- never templated/generated from article content, so it can
+# never itself invent or vary a figure.
+_TABLE_QUALIFIER = "varies by provider — confirm directly"
+
+
 def _soften_table_row(line, spans_local, report):
-    """Replace each pipe cell that contains an unsourced figure with 'varies'."""
+    """Replace each pipe cell that contains an unsourced figure with the fixed
+    _TABLE_QUALIFIER phrase (never a bare 'varies', never generated)."""
     cells, pos, out = line.split("|"), 0, []
     for cell in cells:
         start, end = pos, pos + len(cell)
         pos = end + 1  # account for the '|' separator
         if any(start <= s < end for (s, _e, _a) in spans_local):
-            out.append(" varies ")
+            out.append(f" {_TABLE_QUALIFIER} ")
             report["table_cells_softened"] += 1
         else:
             out.append(cell)
