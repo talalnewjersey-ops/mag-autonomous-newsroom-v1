@@ -137,6 +137,13 @@ jobs:
         run: |
           pytest -v tests/test_couche1_credit_factors.py
 
+      - name: Couche 1 credit NUMBERS facts (verbatim .gov, no distortion) offline
+        env:
+          ANTHROPIC_API_KEY: ""
+          PYTHONPATH: "."
+        run: |
+          pytest -v tests/test_couche1_credit_numbers.py
+
       - name: Couche 2 soften tests (offline) -- no network, no API key
         env:
           ANTHROPIC_API_KEY: ""
