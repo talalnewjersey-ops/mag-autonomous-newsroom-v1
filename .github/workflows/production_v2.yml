@@ -240,6 +240,16 @@ jobs:
               ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
             }
 
+            # Phase 4.46: URL normalization [non-blocking] -- repair a .gov URL the writer
+            # MUTATED (well-formed but wrong = false verifiability, P3) BEFORE the fact-check
+            # gate: restore a near-miss to its canonical _vertical_facts source; remove an
+            # unverifiable .gov link (keep the text). .gov only; internal links untouched.
+            echo "[${ARTICLE_NUM}] Phase 4.46: URL normalization [non-blocking]"
+            python scripts/normalize_urls.py \
+              --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --market "${MARKET}" --category "${CATEGORY}" \
+              --report "${ARTICLE_DIR}/agent_04/url_normalize_report.json" || true
+
             # SPRINT 2 (C): DRI metric [REPORTING, non-blocking] -- diffuse repetition proof.
             python scripts/dri_metric.py \
               --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
