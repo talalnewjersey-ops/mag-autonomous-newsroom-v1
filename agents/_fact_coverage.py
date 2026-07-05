@@ -33,6 +33,14 @@ nothing numeric to confirm. Two consequences, deliberately different:
     covered by it, because `_fact_tokens` for a qualitative fact is empty and
     an empty token set can match nothing. It falls through to whatever OTHER
     candidate fact might cover it (there may be none) -- so it is stripped.
+
+LEVIER C PART 2 (2026-07-05): the same predicate now also covers BARE duration/
+count claims (days/weeks/months/years/bureaus -- see agents/_claims.py's
+_NUM_RE for the exact scoping and what it deliberately excludes). No new
+mechanism: `_token` just gained a branch for this shape, `covering_fact` /
+`classify_claims` / `count_cited_stable_facts` are unchanged, so GATE A,
+Couche 2 soften, and G-Substance inherit it identically (same symmetry as
+part 1 -- one shared regex, one shared predicate, three consumers).
 """
 import re
 
@@ -40,6 +48,12 @@ from agents._claims import _ATTR_RE, _NUM_RE, _URL_IN
 from agents._vertical_facts import VERTICAL_FACTS
 
 _UNIT_WORDS = ("percentage points", "basis points", "points", "pts", "bps")
+# LEVIER C PART 2: bare duration/count units -- deliberately days/weeks/months/
+# years/bureaus ONLY (hours/minutes excluded, conscious residue: see agents/
+# _claims.py docstring).
+_BARE_UNIT_RE = re.compile(
+    r"^(\d+(?:\.\d+)?)(?:[-–—](\d+(?:\.\d+)?))?[\s-]*(?:business|calendar|nationwide)?[\s-]*"
+    r"(days?|weeks?|months?|years?|bureaus?)$")
 
 
 def _token(raw):
@@ -50,6 +64,12 @@ def _token(raw):
     m = re.match(r"^(\d{3})\s*[-–—]\s*(\d{3})$", s)
     if m:
         return ("score_range", (int(m.group(1)), int(m.group(2))))
+    m = _BARE_UNIT_RE.match(s)
+    if m:
+        unit = m.group(3).rstrip("s")  # "days"/"day" -> "day", same key either way
+        if m.group(2):
+            return (f"{unit}_range", (float(m.group(1)), float(m.group(2))))
+        return (unit, float(m.group(1)))
     for unit in _UNIT_WORDS:
         m = re.match(r"^(\d+(?:\.\d+)?)\s*" + unit.replace(" ", r"\s+") + r"$", s)
         if m:

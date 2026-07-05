@@ -7,14 +7,23 @@ Proves: OR/strict combination; tier-aware source floor; the Option B rule
 soften-integrity residual check; and that the CLI BLOCKS (exit 1 on FAIL, 0 on
 PASS) so a rejected article never proceeds toward WordPress.
 
-LEVIER C (2026-07-05): "cited" now means value-matched via
+LEVIER C PART 1 (2026-07-05): "cited" now means value-matched via
 agents._fact_coverage.classify_claims, not mere source_url substring presence.
-The existing fixtures above happen to use us_credit facts whose engraved values
-carry no _NUM_RE-matchable digit (30 days, 7 years, weekly) -- those are
-QUALITATIVE under the new rule and are STILL credited by simple source_url
-presence (nothing numeric to misattribute), so none of the tests above needed
-to change. The NUMERIC case (utilization = 30%, the fact behind the real
+The NUMERIC case (utilization = 30%, the fact behind the real
 proximity-false-sourced incident) is exercised separately below.
+
+LEVIER C PART 2 (2026-07-05): _NUM_RE was extended to bare day/week/month/year/
+bureau counts. This RECLASSIFIED "30 days" (dispute) and "7 years" (retention)
+from qualitative (URL-presence credit) to numeric (value-match credit) -- both
+still correctly cited below since GOOD states their exact engraved values.
+It ALSO reclassified "Free credit reports" (FTC_FREE): its own engraved value
+("... each of the 3 nationwide bureaus ...") now contains a bare-unit token
+("bureau", 3.0), so the fact is no longer purely qualitative -- GOOD's Reports
+line now states the bureau count explicitly so it is genuinely, not just
+nominally, cited (a fixture stating "free report weekly" with the number
+omitted would no longer count -- correct: G-Substance's whole point is that a
+STABLE fact with a real citable figure must show that figure, not just its
+link).
 """
 import json
 import os
@@ -41,7 +50,7 @@ Bureaus must investigate disputes within 30 days ([FTC]({FTC_DISPUTE})).
 Negative information stays 7 years ([CFPB]({CFPB_7YR})).
 
 ## Reports
-You can pull a free report weekly ([FTC]({FTC_FREE})).
+You can pull a free report from each of the 3 nationwide bureaus every week ([FTC]({FTC_FREE})).
 
 ## ITIN
 An ITIN works in place of an SSN ([IRS]({IRS_ITIN})).

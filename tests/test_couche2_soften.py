@@ -210,17 +210,81 @@ def test_three_digit_score_range_is_detected_and_stripped():
 
 
 def test_legit_bare_numbers_are_NOT_touched():
-    # No % / $ / pts / 3-digit-range -> nothing should be stripped (no false positive
-    # that would mutilate valid text). Bare counts, ages, months and years stay.
-    text = "You must be 18 to apply; reports refresh every 12 months through 2026 across 3 bureaus."
+    # No % / $ / pts / 3-digit-range / known duration unit -> nothing stripped (no
+    # false positive). Bare ages and calendar years stay -- NOT closed by LEVIER C
+    # PART 2 (no adjacent days/weeks/months/years/bureaus unit word).
+    text = "You must be 18 to apply, and coverage started back in 2026."
     out, rep = soften(text, V)
     assert out == text and rep["unsourced_found"] == 0
 
 
-def test_year_range_and_month_range_are_NOT_caught():
-    text = "Rates held steady from 2020-2024, and a thin file matures in 12-24 months typically."
+def test_year_range_is_NOT_caught():
+    # A bare calendar-year range has no adjacent duration unit -> stays out of scope.
+    text = "Rates held steady from 2020-2024 for most lenders."
     out, rep = soften(text, V)
     assert out == text and rep["unsourced_found"] == 0
+
+
+# ---------------- LEVIER C PART 2: bare duration/count units ----------------
+# days/weeks/months/years/bureaus ONLY -- see agents/_claims.py for the exact
+# scoping and what stays deliberately out of reach (ages, calendar years, law/
+# section numbers, addresses; hours/minutes are a conscious residue, not added).
+
+def test_bare_month_count_is_detected_and_stripped_when_uncovered():
+    # "12 months" with no engraved us_credit fact nearby -> unsourced, stripped.
+    text = "reports refresh every 12 months across 3 bureaus with no citation at all."
+    out, rep = soften(text, V)
+    assert "12 months" not in out and rep["unsourced_found"] >= 1
+
+
+def test_bare_month_range_is_detected_and_stripped_when_uncovered():
+    # "12-24 months" -- no engraved fact states this exact range -> stripped.
+    text = "a thin file matures in 12-24 months typically, with no citation at all."
+    out, rep = soften(text, V)
+    assert "12-24 months" not in out and rep["unsourced_found"] >= 1
+
+
+def test_adjective_form_bare_month_is_detected_and_stripped_when_uncovered():
+    # STEM-OPT-style adjective form "a 24-month extension" (hyphen, no space).
+    text = "students may apply for a 24-month extension, with no citation at all."
+    out, rep = soften(text, V)
+    assert "24-month" not in out and rep["unsourced_found"] >= 1
+
+
+CFPB_RETENTION = "https://www.consumerfinance.gov/ask-cfpb/how-long-does-negative-information-remain-on-my-credit-report-en-323/"
+
+
+def test_covered_bare_duration_is_left_untouched():
+    # "7 years" is the retention fact's exact engraved value at its real url.
+    text = f"Negative information stays on your credit report for 7 years ([CFPB]({CFPB_RETENTION}))."
+    out, rep = soften(text, "us_credit")
+    assert "7 years" in out and rep["unsourced_found"] == 0
+
+
+def test_uncovered_bare_duration_next_to_the_SAME_real_link_is_stripped_and_covered_one_kept():
+    # The bare-number "under 10%": a fabricated "8 years" sits beside the exact
+    # link that supports the real "7 years" -- must not be laundered by it.
+    text = (f"Negative information stays on your credit report for 7 years "
+            f"([CFPB]({CFPB_RETENTION})). It can linger for up to 8 years in some cases.")
+    out, rep = soften(text, "us_credit")
+    assert "7 years" in out and CFPB_RETENTION in out   # covered figure + its citation untouched
+    assert "8 years" not in out                          # fabricated figure stripped
+    assert rep["unsourced_found"] == 1 and rep["stripped"] == 1
+
+
+def test_attribution_cue_lookback_never_crosses_a_prior_citation():
+    # REGRESSION (found during PART 2 verification): the bare word "report" in
+    # the FIRST, legitimately-covered sentence is itself an _ATTR_RE cue. Before
+    # the fix, the SECOND claim's ("8 years", is_attr via "linger"... no --
+    # via the backward lookback finding "report") attribution-cue swallow
+    # reached back PAST the masked link placeholder and ate the first
+    # sentence's real citation and its covered "7 years" too. A masked-link
+    # placeholder must be an unambiguous "attribution cue stops here" boundary.
+    text = (f"Negative information stays on your credit report for 7 years "
+            f"([CFPB]({CFPB_RETENTION})). It can linger for up to 8 years in some cases.")
+    out, _ = soften(text, "us_credit")
+    assert CFPB_RETENTION in out
+    assert "stays on your credit report for 7 years" in out
 
 
 # ---------------- non-blocking CLI ----------------

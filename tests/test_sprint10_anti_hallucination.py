@@ -155,6 +155,67 @@ def test_number_next_to_a_qualitative_facts_link_is_flagged():
     assert len(r["unbacked_attributions"]) == 1 or len(r["unsourced_stats"]) == 1
 
 
+# ---------------- LEVIER C PART 2: bare duration/count false-sourcing ----------------
+# Same predicate, same symmetry, extended to numbers with NO symbol (days/weeks/
+# months/years/bureaus). Central scenario mirrors the "under 10%" incident exactly,
+# grounded in the real us_credit retention fact (CFPB en-323, "7 years").
+
+CFPB_RETENTION = "https://www.consumerfinance.gov/ask-cfpb/how-long-does-negative-information-remain-on-my-credit-report-en-323/"
+FTC_FREE = "https://consumer.ftc.gov/articles/free-credit-reports"
+
+
+def test_covered_bare_duration_next_to_its_real_fact_link_is_not_flagged():
+    text = f"Negative information stays on your credit report for 7 years ([CFPB]({CFPB_RETENTION}))."
+    r = detect(text, "us_credit")
+    assert r["unsourced_stats"] == [] and r["unbacked_attributions"] == []
+
+
+def test_uncovered_bare_duration_next_to_the_SAME_real_link_is_flagged():
+    # The bare-number equivalent of "under 10%": a fabricated "8 years" sits near
+    # the exact link that supports the real "7 years" -- must not be laundered.
+    # ("say" is itself an attribution cue -> higher-severity bucket, same quirk
+    # as the "per"/"reports" cases in part 1 -- still correctly flagged.)
+    text = (f"Negative information stays on your credit report for 7 years "
+            f"([CFPB]({CFPB_RETENTION})). Some say it can linger for up to 8 years in practice.")
+    r = detect(text, "us_credit")
+    assert len(r["unsourced_stats"]) + len(r["unbacked_attributions"]) == 1
+    assert "8 years" in (r["unsourced_stats"] + r["unbacked_attributions"])[0]
+
+
+def test_a_different_facts_real_value_next_to_the_wrong_link_is_still_uncovered():
+    # Adversarial: "10 years" IS a real engraved us_credit value (bankruptcy
+    # retention, a DIFFERENT fact/URL) -- sitting next to the RETENTION link
+    # (whose own value is only 7/45) must still be rejected. Coverage is
+    # fact-specific (this URL's own value), not "does this number exist
+    # somewhere in Couche 1 for this vertical".
+    text = f"Negative information can stay on file for 10 years ([CFPB]({CFPB_RETENTION}))."
+    r = detect(text, "us_credit")
+    assert len(r["unsourced_stats"]) == 1
+
+
+def test_covered_bureau_count_next_to_its_real_fact_link_is_not_flagged():
+    text = f"You can pull a free report from each of the 3 nationwide bureaus every week ([FTC]({FTC_FREE}))."
+    r = detect(text, "us_credit")
+    assert r["unsourced_stats"] == [] and r["unbacked_attributions"] == []
+
+
+def test_uncovered_bureau_count_next_to_the_SAME_real_link_is_flagged():
+    # ("report" is itself an attribution cue -> higher-severity bucket, same
+    # quirk as above -- still correctly flagged, not covered.)
+    text = f"You can pull a free report from each of the 4 nationwide bureaus every week ([FTC]({FTC_FREE}))."
+    r = detect(text, "us_credit")
+    assert len(r["unsourced_stats"]) + len(r["unbacked_attributions"]) == 1
+    assert "4 nationwide bureaus" in (r["unsourced_stats"] + r["unbacked_attributions"])[0]
+
+
+def test_bare_age_remains_out_of_scope_conscious_residue():
+    # "under 25" has no adjacent duration unit -- LEVIER C PART 2 does not close
+    # the bare-age gap (documented residue, not silently dropped).
+    text = f"An applicant under 25 needs a co-signer, according to [USA.gov]({USAGOV_FACTORS})."
+    r = detect(text, "us_credit")
+    assert r["unsourced_stats"] == [] and r["unbacked_attributions"] == []
+
+
 # ---------------- barème (QA penalty) ----------------
 
 def test_penalty_single_unsourced_stat_is_8():

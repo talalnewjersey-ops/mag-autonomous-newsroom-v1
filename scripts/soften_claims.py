@@ -114,7 +114,17 @@ def _find_unsourced(masked, originals, vertical):
 def _strip_span(line, s, e, is_attr):
     """Extend the raw figure span (s, e) to also swallow a leading range prefix, a
     leading quantifier word, and -- for attributions -- the 'according to X,' cue.
-    Operates on MASKED text, so it can never cross into a URL."""
+    Operates on MASKED text, so it can never cross into a URL.
+
+    LEVIER C PART 2 bugfix: the attribution-cue lookback is clamped to NEVER cross
+    a DIFFERENT citation's placeholder. Found via a real case: "...report for 7
+    years ([CFPB](url)). It can linger for up to 8 years..." -- the bare word
+    "report" (part of the FIRST, legitimately-covered claim's own sentence) is an
+    _ATTR_RE cue, and the naive 100-char lookback for the SECOND (uncovered "8
+    years") claim swallowed everything back to "report", eating the first
+    citation's real link and its correctly-sourced "7 years" too. A masked-link
+    placeholder is an unambiguous citation boundary -- an attribution cue for THIS
+    claim can never legitimately sit on the other side of a DIFFERENT citation."""
     ss = s
     m = _RANGE_PREFIX.search(line[:ss])
     if m:
@@ -124,6 +134,8 @@ def _strip_span(line, s, e, is_attr):
         ss = m.start()
     if is_attr:
         lo = max(0, s - 100)
+        for pm in _MASK_IN.finditer(line, lo, s):
+            lo = max(lo, pm.end())
         cues = list(_ATTR_RE.finditer(line[lo:s]))
         if cues:
             ss = min(ss, lo + cues[-1].start())
