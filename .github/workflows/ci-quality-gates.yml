@@ -215,6 +215,13 @@ jobs:
         run: |
           pytest -v tests/test_option_c_facts_injection.py
 
+      - name: G3 de-dup (vary wording, facts stay available) source guard offline
+        env:
+          ANTHROPIC_API_KEY: ""
+          PYTHONPATH: "."
+        run: |
+          pytest -v tests/test_g3_dedup.py
+
       - name: Workflow blocking semantics test
         run: |
           chmod +x tests/test_workflow_blocking.sh

@@ -528,7 +528,19 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     # FAQ + FAQ top-up, closing, word-count expansion). With the facts in front of it
     # the writer CITES them instead of inventing numbers -- the same effect Couche 1
     # already has in the intro + body. (intro/body get the full sourcing_block above.)
-    _facts_and_rules = _anti_fab + _facts_block
+    # G3 de-dup (2026-07-05): universal injection made the writer PARROT a fact's exact
+    # sentence into every section -> the anti-repetition gate (G3) tripped on duplicate
+    # phrases / section similarity. Fix WITHOUT re-opening invention: keep every fact
+    # AVAILABLE in every section (below), only ask for VARIED WORDING. The fact is never
+    # removed, so a section can never end up without it -> worst case is a cosmetic
+    # duplicate, never a fabricated number.
+    _dedup_wording = (
+        "\nWORDING (anti-repetition / G3): cite each fact WHERE it is genuinely relevant, "
+        "but phrase it in YOUR OWN WORDS for THIS section — NEVER copy a fact's supplied "
+        "wording verbatim, and NEVER reuse a sentence already used in another section. The "
+        "facts and their links remain available in every section; vary the wording, keep the citation."
+    )
+    _facts_and_rules = _anti_fab + _dedup_wording + _facts_block
 
     logger.info(f"Writing {tier['tier']} article: {title} (target: {target_words}w)")
 
@@ -592,8 +604,19 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
         except Exception as e:
             written_sections.append(f"## {i+1}. {h2}\n\nContent unavailable.\n")
 
+    # G3 de-dup: a digest of what the body already covered, so the trailing sections
+    # (comparison / Expert / FAQ / closing / expansion) do NOT re-explain the same facts
+    # at length. They may still CITE a fact (it stays in _facts_and_rules), but briefly
+    # and in their own words -> lowers section similarity without removing any fact.
+    _covered = _build_digest([intro] + written_sections)
+    _dedup_digest = (
+        "\n\n=== ALREADY COVERED EARLIER IN THIS ARTICLE (do NOT re-explain these at "
+        "length; if this section must reference one, state it briefly in your OWN words, "
+        "not the same sentences used above) ===\n" + _covered + "\n=== END ===\n"
+    ) if _covered else ""
+
     comparison = await _call_claude(api_key,
-        f"Write comparison table section for: {keyword} ({market}). H2 header. 4+ cols 6+ rows. 200-300w context.{_facts_and_rules}",
+        f"Write comparison table section for: {keyword} ({market}). H2 header. 4+ cols 6+ rows. 200-300w context.{_facts_and_rules}{_dedup_digest}",
         SYSTEM_PROMPT, max_tokens=1200)
 
     # Sprint 8 (anti-fabrication, YMYL no human review): the invented case-study
@@ -604,14 +627,14 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     case_studies = ""
 
     expert_section = await _call_claude(api_key,
-        f"Write Expert Recommendation section for: {keyword} ({market}). H2. Top pick + runner-up. 300-400w. 2 internal links from: {links_expert_block}{_facts_and_rules}",
+        f"Write Expert Recommendation section for: {keyword} ({market}). H2. Top pick + runner-up. 300-400w. 2 internal links from: {links_expert_block}{_facts_and_rules}{_dedup_digest}",
         SYSTEM_PROMPT, max_tokens=1000)
 
     min_faqs = tier["min_faqs"]
     target_faqs = min_faqs + 2
     faq = await _call_claude(api_key,
         f"Write FAQ section for: {keyword} ({market}). {target_faqs} questions (minimum {min_faqs}).\n"
-        f"### [Question?] format. 80-150w answers. MUST produce at least {min_faqs} ### headings ending with ?{_facts_and_rules}",
+        f"### [Question?] format. 80-150w answers. MUST produce at least {min_faqs} ### headings ending with ?{_facts_and_rules}{_dedup_digest}",
         SYSTEM_PROMPT, max_tokens=target_faqs * 280)
     # Ensure minimum FAQ count — restore _ensure_faq_count (fixes FAQ validation failure)
     faq = await _ensure_faq_count(faq, keyword, market, target_audience, api_key, min_faqs, target_faqs, _facts_and_rules)
@@ -620,7 +643,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
         f"Write 3 sections for: {title}\n"
         f"1. ## Conclusion (200-300w)\n"
         f"2. ## Disclaimer (150-200w, legal, affiliate disclosure)\n"
-        f"3. ## About the Author (Talal Eddaouahiri, founder MoneyAbroadGuide.com, 100-150w){_facts_and_rules}",
+        f"3. ## About the Author (Talal Eddaouahiri, founder MoneyAbroadGuide.com, 100-150w){_facts_and_rules}{_dedup_digest}",
         SYSTEM_PROMPT, max_tokens=1200)
 
     _updated = datetime.utcnow().strftime("%B %Y")
@@ -631,7 +654,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     if word_count < min_words:
         try:
             extra = await _call_claude(api_key,
-                f"Article needs {min_words - word_count} more words. Add 4 more FAQ questions and a practical tips section (H2, 5 tips). Return ONLY new Markdown.{_facts_and_rules}",
+                f"Article needs {min_words - word_count} more words. Add 4 more FAQ questions and a practical tips section (H2, 5 tips). Return ONLY new Markdown.{_facts_and_rules}{_dedup_digest}",
                 SYSTEM_PROMPT, max_tokens=1500)
             body = body + "\n\n" + extra
         except Exception as e:
