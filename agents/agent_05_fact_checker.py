@@ -300,11 +300,23 @@ class FactCheckerAgent(BaseAgent):
                                 resp = gresp
                         domain = re.sub(r"https?://(www\.)?", "", url).split("/")[0]
                         is_trusted = any(d in domain for d in TRUSTED_DOMAINS)
+                        is_official = _classify_url(url) == "official"
                         entry = {"url": url, "status_code": status, "trusted": is_trusted}
                         if status == 200:
                             results["live"].append(entry)
                         elif status in (301, 302, 307, 308):
                             results["redirected"].append({**entry, "final_url": str(resp.url)})
+                        elif status == 403 and is_official:
+                            # GENERIC bot-block pattern (not a per-domain list): a 403
+                            # on an ALLOW-LISTED (.gov/.gc.ca/canada.ca) domain, even
+                            # after the HEAD->GET fallback with a real browser UA,
+                            # overwhelmingly means the SITE is blocking automated/
+                            # datacenter requests -- not that the page is dead. A
+                            # genuinely nonexistent government page returns 404, not
+                            # 403. Classified separately from a real http failure so
+                            # it never counts as a hard (hallucination-signalling)
+                            # break -- see broken_official_hard/_soft below.
+                            results["broken"].append({**entry, "reason": "bot_blocked"})
                         else:
                             results["broken"].append({**entry, "reason": "http"})
                         if not is_trusted:
@@ -361,9 +373,11 @@ class FactCheckerAgent(BaseAgent):
         # Sprint 4 fact-live-sources: a broken URL that is an OFFICIAL source
         # (allow-list .gov/.gc.ca/canada.ca) must block, but only on a definite
         # HTTP failure (reason="http": 404/410/4xx/5xx -> likely invented). A
-        # transport error/timeout (reason="transport") stays a non-blocking
-        # warning, surfaced loudly for human review (residual: a permanently
-        # unreachable official URL could still be invented -> see WARNING below).
+        # transport error/timeout (reason="transport") OR a bot-blocked 403
+        # (reason="bot_blocked" -- generic pattern, see _check_urls) stays a
+        # non-blocking warning, surfaced loudly for human review (residual: a
+        # permanently unreachable official URL could still be invented -> see
+        # WARNING below).
         _broken = url_results.get("broken", [])
         broken_official_hard = sum(
             1 for b in _broken
@@ -371,12 +385,12 @@ class FactCheckerAgent(BaseAgent):
         )
         broken_official_soft = [
             b for b in _broken
-            if b.get("reason") == "transport" and _classify_url(b.get("url", "")) == "official"
+            if b.get("reason") in ("transport", "bot_blocked") and _classify_url(b.get("url", "")) == "official"
         ]
         for b in broken_official_soft:
             logger.warning(
-                "official source unreachable after retries: %s - human review needed "
-                "(possibly invented)", b.get("url", "")
+                "official source unreachable/bot-blocked after retries: %s - human "
+                "review needed (possibly invented)", b.get("url", "")
             )
         # Sprint 10 anti-hallucination: unsourced numeric claims + named attributions
         # with no backing link. An unbacked attribution is unambiguous + high YMYL

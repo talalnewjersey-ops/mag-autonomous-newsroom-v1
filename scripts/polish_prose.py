@@ -29,11 +29,31 @@ _HARD_SCAR = re.compile(
 # cannot supply: the strip can glue a verb to a preposition it never takes ("represents
 # of", "drives of", "ranging to"). NARROW, curated list -- NOT a catch-all. A recurring
 # class must be prevented by Couche 1 (supply the real fact), never by widening this.
+#
+# 2026-07-05 (multi-vertical control run, us_credit personal-loans article): 4 NEW
+# scar shapes found, none matching the original list. "capped at"/"cap X at"/"extend
+# to" are COMMON legitimate English phrasings that often legitimately precede a REAL
+# sourced number ("capped at $250,000" -- FDIC) -- unlike the original entries, these
+# MUST be guarded or they would flag and drop perfectly good sentences. The guard is
+# NOT "nothing follows" (real prose keeps flowing after a stripped number -- "extend
+# to for borrowers with..." has words right after "to", just never the number) --
+# it is NEGATIVE: no digit/currency symbol immediately follows the preposition. A
+# real citation ("capped at $250,000", "extends to 12 months") always has one there;
+# a scar never does. "range/ranges/ranged to" (verb-tense siblings of the existing
+# "ranging to") and "spans with" get the same digit-guard, conservatively, even
+# though the original "ranging to" has none (left unchanged to avoid touching tested
+# behavior).
+_NOT_A_NUMBER_NEXT = r"(?!\s*[\d$])"
 _DANGLE = re.compile(
     r"\b(?:represents?|comprises?|constitutes?|drives?|averages?|"
     r"accounts?\s+for|makes?\s+up)\s+of\b"
     r"|\baveraging\s+(?:of|on)\b"
-    r"|\branging\s+to\b", re.I)
+    r"|\branging\s+to\b"
+    r"|\brang(?:es?|ed|ing)\s+to\b" + _NOT_A_NUMBER_NEXT +
+    r"|\bcapped\s+at\b" + _NOT_A_NUMBER_NEXT +
+    r"|\bcaps?\s+\w+\s+at\b" + _NOT_A_NUMBER_NEXT +
+    r"|\bextends?\s+to\b" + _NOT_A_NUMBER_NEXT +
+    r"|\bspans?\s+with\b" + _NOT_A_NUMBER_NEXT, re.I)
 # Only a ';' reliably marks an INDEPENDENT clause we can drop without leaving a stump.
 # (A comma can separate a subordinate opener -- "According to X, <clause>" -- so dropping
 # a comma segment can strand "According to X" as a stump/run-on; an em-dash can sit
@@ -59,11 +79,19 @@ def _split_sentences(text):
     return out
 
 
+_ORPHAN_QUOTE = re.compile(r"(?<=\s)['‘’](?=\s)")
+
+
 def _cleanup(s):
     s = _APPOS_SCAR.sub(" ", s)   # space, so the flanking words never get joined
     s = _PAREN_SCAR.sub("", s)
     for rx in _BOLD_SCAR:
         s = rx.sub("", s)
+    # A lone apostrophe/quote with whitespace on both sides is never real content --
+    # a real apostrophe is always attached to a word (don't, landlords'). Found on
+    # the us_credit control run: "require ' rent upfront" (a stripped quoted number
+    # left its opening quote mark orphaned).
+    s = _ORPHAN_QUOTE.sub("", s)
     s = re.sub(r"\s+([,.;:])", r"\1", s)
     s = re.sub(r"\s{2,}", " ", s)
     return s.strip()

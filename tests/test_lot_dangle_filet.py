@@ -79,3 +79,68 @@ def test_deletion_only_no_new_word_or_digit():
     out, _ = polish(text)
     assert set(re.findall(r"\d", out)) <= set(re.findall(r"\d", text))
     assert set(re.findall(r"[a-z']+", out.lower())) <= set(re.findall(r"[a-z']+", text.lower()))
+
+
+# ---- NEW scar shapes found on the us_credit control run (2026-07-05), verbatim ----
+
+def test_capped_at_dangle_dropped():
+    out, _ = polish("Federal credit unions offer PAL products with APRs capped at. Membership is required.")
+    assert "capped at" not in out
+    assert "Membership is required." in out
+
+
+def test_cap_object_at_dangle_dropped():
+    out, _ = polish("Most lenders cap DTI at; some CDFIs extend to for borrowers with stable rental history.")
+    assert "cap DTI at" not in out and "extend to" not in out
+
+
+def test_range_to_verb_tense_variant_dropped():
+    # sibling of the already-covered "ranging to" -- different verb tense
+    out, _ = polish("Loan amounts typically range to depending on the CDFI. Ask about fees.")
+    assert "range to" not in out
+    assert "Ask about fees." in out
+
+
+def test_spans_with_dangle_dropped():
+    out, _ = polish("The path from credit-invisible to credit-established typically spans with disciplined habits.")
+    assert out.strip() == ""
+
+
+# ---- anti over-deletion: the SAME phrasings with a REAL number following must
+# survive untouched -- these are common, legitimate English constructions, unlike
+# the original curated entries ("ranging to" alone is never valid on its own).
+
+def test_capped_at_with_real_number_is_untouched():
+    s = "FDIC deposit insurance is capped at $250,000 per depositor, per bank."
+    assert polish(s)[0].strip() == s
+
+
+def test_cap_object_at_with_real_number_is_untouched():
+    s = "The program caps DTI at 43% for most conforming loans."
+    assert polish(s)[0].strip() == s
+
+
+def test_extends_to_with_real_number_is_untouched():
+    s = "The introductory rate extends to 12 months before reverting to standard pricing."
+    assert polish(s)[0].strip() == s
+
+
+# ---- orphaned quote/apostrophe scar (a stripped quoted number left its mark) ----
+
+def test_orphaned_apostrophe_is_removed():
+    out, _ = polish("Landlords in major metros routinely require ' rent upfront as a credit substitute.")
+    assert "'" not in out
+    assert "require rent upfront as a credit substitute." in out
+
+
+def test_real_contraction_apostrophe_is_untouched():
+    s = "Don't skip a payment; it's the single biggest factor in your score."
+    assert polish(s)[0].strip() == s
+
+
+def test_new_patterns_deletion_only_no_new_word_or_digit():
+    text = ("APRs capped at. Most lenders cap DTI at; some extend to for renters. "
+            "Loan amounts range to depending on the CDFI. Landlords require ' rent upfront.")
+    out, _ = polish(text)
+    assert set(re.findall(r"\d", out)) <= set(re.findall(r"\d", text))
+    assert set(re.findall(r"[a-z']+", out.lower())) <= set(re.findall(r"[a-z']+", text.lower()))
