@@ -1,0 +1,33 @@
+name: Fetch One Published Post (read-only diagnostic)
+
+on:
+  workflow_dispatch:
+    inputs:
+      post_id:
+        description: "WordPress post ID to fetch (full raw content)"
+        required: true
+
+# READ-ONLY: fetches one post's raw content for inspection before proposing
+# a one-article-at-a-time edit in the published-content audit workstream.
+# Never writes to WordPress.
+jobs:
+  fetch-post:
+    name: "Fetch post raw content"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Fetch post
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          POST_ID: ${{ github.event.inputs.post_id }}
+        run: python3 scripts/fetch_one_post.py
+      - name: Upload post content
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-${{ github.event.inputs.post_id }}-content
+          path: post_${{ github.event.inputs.post_id }}_full.json
