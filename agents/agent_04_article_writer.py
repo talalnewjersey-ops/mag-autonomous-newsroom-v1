@@ -561,11 +561,21 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     # RETRY MECHANISM (2026-07-06): a previous attempt for this SAME article was
     # rejected by a content-quality gate (G-Substance/G3/GATE A/GATE B or this
     # agent's own validation). Prepended FIRST so it's the first thing every
-    # section-generation call sees -- the single retry allotted (see
-    # production_v2.yml) should actually address the specific reason, not just
-    # regenerate blind and hope for a different roll.
+    # section-generation call sees. SAFETY FIX (2026-07-06, control run finding):
+    # a first version of this instruction just named the problem and asked for a
+    # blind regeneration -- on a real run this caused the FAQ section to vanish
+    # entirely (13->8 H2s) while fixing an unrelated sourcing issue. The
+    # instruction now explicitly demands a TARGETED fix that preserves
+    # everything else (structure, section count, FAQ, length) -- a full
+    # structural-completeness check against the REJECTED draft is also enforced
+    # in production_v2.yml after this retry (see _structure_snapshot below).
     _retry_block = (
-        f"\nPREVIOUS ATTEMPT REJECTED -- FIX THIS SPECIFICALLY: {retry_feedback}\n"
+        f"\nPREVIOUS ATTEMPT REJECTED -- FIX THIS SPECIFICALLY, CHANGE NOTHING ELSE: {retry_feedback}\n"
+        "Make the SMALLEST possible change that resolves this. Do NOT drop, shorten, or "
+        "restructure any other section -- the FAQ section, all H2/H3 headings, the "
+        "comparison table, the expert recommendation, and the overall length must all "
+        "still be present and comparable to a normal full-length article. A fix that "
+        "removes content elsewhere is WORSE than the original and will be rejected.\n"
         if retry_feedback else ""
     )
     _facts_and_rules = _retry_block + _anti_fab + _dedup_wording + _facts_block
