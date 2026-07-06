@@ -85,19 +85,28 @@ def _tokens(text):
     return {w for w in _WORD_RE.findall((text or "").lower()) if w not in _STOP and len(w) > 2}
 
 
-def select_relevant_links(article_title, real_posts, n=3, min_overlap=2):
+def select_relevant_links(article_title, real_posts, n=3, min_overlap=2, min_ratio=0.5):
     """Deterministic keyword-overlap match: score each real post by how many
     significant words it shares with the article's own title/keyword, keep
-    only posts AT OR ABOVE min_overlap, return the top `n` as
-    [{"title","url"}]. Zero posts clearing the bar -> [] -- no forced or
-    tenuously-related link is ever inserted just to fill a quota."""
+    only posts meeting BOTH min_overlap (absolute floor) AND min_ratio
+    (RELATIVE floor: overlap / len(query_tokens)) -- an absolute count alone
+    lets a rich-vocabulary query (e.g. "car insurance foreign drivers
+    international students", 6 distinctive words) "match" on just 2
+    incidental shared words ("international", "students") while sharing
+    NONE of its actual topic ("car"/"insurance"/"drivers"/"foreign") --
+    exactly the hair-splitting match the ratio floor rejects (real control-run
+    case: ratio 0.33, below the 0.5 floor -> correctly zero links). Returns
+    the top `n` as [{"title","url"}]. Zero posts clearing BOTH bars -> [] --
+    no forced or tenuously-related link is ever inserted just to fill a
+    quota."""
     query_tokens = _tokens(article_title)
     if not query_tokens:
         return []
     scored = []
     for post in real_posts:
         overlap = len(query_tokens & _tokens(post.get("title", "")))
-        if overlap >= min_overlap:
+        ratio = overlap / len(query_tokens)
+        if overlap >= min_overlap and ratio >= min_ratio:
             scored.append((overlap, post))
     scored.sort(key=lambda t: t[0], reverse=True)
     return [post for _score, post in scored[:n]]
