@@ -16,8 +16,11 @@ Safety, per the user's explicit rules for this workstream:
     (e.g. a literal "<p>---</p>" markdown-separator leak appearing many
     times) -- never for distinct texts across multiple articles.
   - Two fix-file shapes, mutually exclusive:
-      1. {"post_id", "old_text", "expected_count"} -- remove an exact,
-         verified-count substring from the post's raw CONTENT.
+      1. {"post_id", "old_text", "expected_count", "new_text"?} -- replace
+         an exact, verified-count substring in the post's raw CONTENT with
+         `new_text` (defaults to "" -- a pure removal -- when omitted; e.g.
+         used to drop an internal Tier/NEXUS marker while KEEPING the
+         legitimate "Last Updated: <date>" text around it).
       2. {"post_id", "set_excerpt": "..."} -- set the post's EXCERPT field
          to an explicit, pre-approved value (used when the issue is an
          empty/auto-generated excerpt, not literal residue to remove).
@@ -69,6 +72,7 @@ def main():
         print("New excerpt (rendered):", result.get("excerpt", {}).get("rendered", ""))
     else:
         old_text = fix["old_text"]
+        new_text = fix.get("new_text", "")
         expected_count = fix.get("expected_count", 1)
         content = post["content"]["raw"]
 
@@ -78,7 +82,7 @@ def main():
             print("No change made. Fix old_text/expected_count to match the current live content exactly.")
             raise SystemExit(1)
 
-        new_content = content.replace(old_text, "")
+        new_content = content.replace(old_text, new_text)
         result = update_post_field(wp_url, user, app_pw, post_id, "content", new_content)
         print(f"Updated post {post_id} content.")
         print("New content length:", len(result.get("content", {}).get("rendered", "")))
