@@ -259,6 +259,7 @@ jobs:
               if [ "$RETRY_ATTEMPT" -eq 0 ]; then
                 echo "GATE G-SUBSTANCE FAIL (attempt 1/2) for article ${ARTICLE_NUM} -- retrying once with gate feedback"
                 GATE_FEEDBACK=$(python3 scripts/gate_feedback.py --gate g_substance --report "${ARTICLE_DIR}/agent_04/g_substance_report.json" 2>/dev/null)
+                python3 scripts/structure_completeness_gate.py --input "${ARTICLE_DIR}/agent_04/article_draft.md" --snapshot "${ARTICLE_DIR}/agent_04/pre_retry_snapshot.json" || true
                 continue
               fi
               echo "GATE G-SUBSTANCE FAIL (attempt 2/2, retry exhausted): hollow article ${ARTICLE_NUM} (never reaches WordPress)"
@@ -287,6 +288,7 @@ jobs:
               if [ "$RETRY_ATTEMPT" -eq 0 ]; then
                 echo "GATE G3 FAIL (attempt 1/2) for article ${ARTICLE_NUM} -- retrying once with gate feedback"
                 GATE_FEEDBACK=$(python3 scripts/gate_feedback.py --gate g3 --report "${ARTICLE_DIR}/agent_04/g3_report.json" 2>/dev/null)
+                python3 scripts/structure_completeness_gate.py --input "${ARTICLE_DIR}/agent_04/article_draft.md" --snapshot "${ARTICLE_DIR}/agent_04/pre_retry_snapshot.json" || true
                 continue
               fi
               echo "GATE G3 FAIL (attempt 2/2, retry exhausted): repetition detected in article ${ARTICLE_NUM}"
@@ -302,6 +304,7 @@ jobs:
               if [ "$RETRY_ATTEMPT" -eq 0 ]; then
                 echo "GATE A FAIL (attempt 1/2) for article ${ARTICLE_NUM} -- retrying once with gate feedback"
                 GATE_FEEDBACK=$(python3 scripts/gate_feedback.py --gate gate_a --report "${ARTICLE_DIR}/agent_05/fact_check_report.json" 2>/dev/null)
+                python3 scripts/structure_completeness_gate.py --input "${ARTICLE_DIR}/agent_04/article_draft.md" --snapshot "${ARTICLE_DIR}/agent_04/pre_retry_snapshot.json" || true
                 continue
               fi
               echo "GATE A FAIL (attempt 2/2, retry exhausted): Fact checker blocked article ${ARTICLE_NUM}"
@@ -317,11 +320,30 @@ jobs:
               if [ "$RETRY_ATTEMPT" -eq 0 ]; then
                 echo "GATE B FAIL (attempt 1/2) for article ${ARTICLE_NUM} -- retrying once with gate feedback"
                 GATE_FEEDBACK=$(python3 scripts/gate_feedback.py --gate gate_b --report "${ARTICLE_DIR}/agent_06/eeat_report.json" 2>/dev/null)
+                python3 scripts/structure_completeness_gate.py --input "${ARTICLE_DIR}/agent_04/article_draft.md" --snapshot "${ARTICLE_DIR}/agent_04/pre_retry_snapshot.json" || true
                 continue
               fi
               echo "GATE B FAIL (attempt 2/2, retry exhausted): EEAT blocked article ${ARTICLE_NUM}"
               ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue 2
             }
+
+            # RETRY SAFETY (2026-07-06): all content gates just passed. If this
+            # success came from a retry (attempt 1), the retry must NOT be allowed
+            # to ship something structurally worse than the draft it replaced (real
+            # control-run case: a retry fixed G-Substance's sourcing complaint but
+            # silently dropped the entire FAQ section, 13 H2s -> 8). Compare against
+            # the pre-retry snapshot saved above; a regression is treated as a full
+            # failure -- never falls back to publishing either version, exactly like
+            # any other exhausted retry.
+            if [ "$RETRY_ATTEMPT" -eq 1 ] && [ -f "${ARTICLE_DIR}/agent_04/pre_retry_snapshot.json" ]; then
+              echo "[${ARTICLE_NUM}] Retry structural-completeness check"
+              python3 scripts/structure_completeness_gate.py \
+                --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
+                --compare "${ARTICLE_DIR}/agent_04/pre_retry_snapshot.json" || {
+                echo "GATE RETRY-COMPLETENESS FAIL: the retry produced a structurally worse draft for article ${ARTICLE_NUM} -- never shipping it"
+                ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue 2
+              }
+            fi
             break
             done
 
