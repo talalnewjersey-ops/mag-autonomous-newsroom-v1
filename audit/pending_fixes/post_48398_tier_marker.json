@@ -1,0 +1,8 @@
+{
+  "post_id": 48398,
+  "slug": "best-how-newcomers-build-credit-in-canada-from-zero-complete-guide-for-canada-immigrants-2026-4",
+  "reason": "Internal Tier/NEXUS-14 version marker leaked into the published footer blockquote. 'Last Updated: June 2026' (useful to the reader) is preserved -- only the internal marker is removed.",
+  "old_text": "<blockquote><p><strong>Last Updated</strong>: June 2026 | <strong>Tier</strong>: STANDARD | NEXUS-14 V5.0</p></blockquote>",
+  "expected_count": 1,
+  "new_text": "<blockquote><p><strong>Last Updated</strong>: June 2026</p></blockquote>"
+}
