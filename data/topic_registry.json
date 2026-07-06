@@ -200,10 +200,10 @@
       "category": "credit conso",
       "monetization_score": 9,
       "traffic_score": 3,
-      "status": "candidate",
-      "published_at": null,
-      "post_id": null,
-      "selected_at": null
+      "status": "published",
+      "published_at": "2026-07-06T09:54:01.818511Z",
+      "post_id": "48512",
+      "selected_at": "2026-07-06T09:47:32.815094Z"
     },
     {
       "id": "us-first-time-home-buyer-mortgage",
