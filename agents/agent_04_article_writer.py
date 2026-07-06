@@ -100,6 +100,10 @@ def main():
     parser.add_argument("--article-type", type=str, default="")
     parser.add_argument("--category", type=str, default="", help="Registry category (routes the official-source vertical)")
     parser.add_argument("--market", type=str, default="", help="Registry market USA/Canada (routes the official-source vertical)")
+    parser.add_argument("--retry-feedback", type=str, default="",
+                         help="RETRY MECHANISM: the specific gate/reason a PREVIOUS attempt for this "
+                              "article was rejected for (production_v2.yml's single-retry loop); empty "
+                              "on a first attempt.")
     args = parser.parse_args()
     anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not anthropic_api_key:
@@ -129,7 +133,8 @@ def main():
     output_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         article = asyncio.run(_write_article_standalone(outline=outline, api_key=anthropic_api_key,
-                                                         min_words=min_words, target_words=target_words, tier=tier))
+                                                         min_words=min_words, target_words=target_words, tier=tier,
+                                                         retry_feedback=args.retry_feedback))
     except Exception as e:
         logger.error(f"Article writing failed: {e}")
         sys.exit(1)
@@ -418,7 +423,8 @@ def _build_facts_block(source_vertical: str) -> str:
 
 
 async def _write_article_standalone(outline: Dict, api_key: str, min_words: int = STANDARD_MIN_WORDS,
-                                     target_words: int = STANDARD_TARGET_WORDS, tier: dict = None) -> str:
+                                     target_words: int = STANDARD_TARGET_WORDS, tier: dict = None,
+                                     retry_feedback: str = "") -> str:
     if tier is None:
         tier = _get_tier_config("STANDARD")
     title = outline.get("title", "Article")
@@ -552,7 +558,17 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
         "wording verbatim, and NEVER reuse a sentence already used in another section. The "
         "facts and their links remain available in every section; vary the wording, keep the citation."
     )
-    _facts_and_rules = _anti_fab + _dedup_wording + _facts_block
+    # RETRY MECHANISM (2026-07-06): a previous attempt for this SAME article was
+    # rejected by a content-quality gate (G-Substance/G3/GATE A/GATE B or this
+    # agent's own validation). Prepended FIRST so it's the first thing every
+    # section-generation call sees -- the single retry allotted (see
+    # production_v2.yml) should actually address the specific reason, not just
+    # regenerate blind and hope for a different roll.
+    _retry_block = (
+        f"\nPREVIOUS ATTEMPT REJECTED -- FIX THIS SPECIFICALLY: {retry_feedback}\n"
+        if retry_feedback else ""
+    )
+    _facts_and_rules = _retry_block + _anti_fab + _dedup_wording + _facts_block
 
     logger.info(f"Writing {tier['tier']} article: {title} (target: {target_words}w)")
 
