@@ -79,15 +79,32 @@ def test_sevis_case_203_chars_now_covered():
 def test_abbreviation_us_does_not_prematurely_end_the_sentence():
     # isolates the exact bug found while building this fix: "U.S." was being
     # treated as ending the sentence right after "U.", cutting the sentence
-    # short before the actual citation later in the same real sentence. The
-    # span need only reach INTO the URL (classify_claims' url_finder matches
-    # by overlap, not full containment -- a domain name's own dots, e.g.
-    # "studyinthestates.dhs.gov", can still end the span mid-URL without
-    # breaking coverage, proven separately by test_sevis_case_203_chars_now_covered).
+    # short before the actual citation later in the same real sentence.
     idx = SEVIS_SENTENCE.find("10 days")
     url_start = SEVIS_SENTENCE.index("https://studyinthestates")
+    url_end = SEVIS_SENTENCE.index(")", url_start)
     lo, hi = _sentence_span(SEVIS_SENTENCE, idx, idx + len("10 days"))
-    assert hi > url_start, "the sentence span must reach at least into the citation URL"
+    assert hi > url_end, "the sentence span must reach past the full citation URL"
+
+
+def test_domain_shaped_link_display_text_does_not_prematurely_end_the_sentence():
+    # A THIRD real bug found on the run immediately after this fix first
+    # landed: a markdown link whose DISPLAY TEXT is itself a domain-shaped
+    # string -- "[studyinthestates.dhs.gov](https://studyinthestates.dhs.gov/
+    # ...)" -- has its own dots in the display text (which comes BEFORE the
+    # real URL). Those dots were being treated as sentence-enders, cutting
+    # the span short before the actual https:// URL even started. A period
+    # anywhere inside a markdown link's span (display text OR url) must
+    # never end a sentence -- the whole link is one atomic unit.
+    sentence = (
+        'The DHS study guide specifies applicants must wait 10 days after U.S. arrival '
+        '*and* at least 2 government business days after the SEVIS record shows "Active" '
+        'before applying for a state license ([studyinthestates.dhs.gov]'
+        '(https://studyinthestates.dhs.gov/students/study/driving-in-the-united-states)).'
+    )
+    claims = classify_claims(sentence, "us_auto")
+    residual = [sentence[c["start"]:c["end"]] for c in claims if c["fact"] is None]
+    assert residual == [], f"real run-6 case must be covered: {residual}"
 
 
 # ---------------------------------------------------------------- adversarial: still safe
