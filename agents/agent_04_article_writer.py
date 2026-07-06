@@ -9,7 +9,7 @@ GLOBAL RULE: Maximum quality per dollar. Search intent satisfaction > article le
 import argparse, asyncio, json, logging, os, re, sys
 from agents._source_pool import select_official_sources, has_curated_pool, resolve_vertical
 from agents._vertical_facts import VERTICAL_FACTS  # Couche 1: verified .gov facts to cite
-from agents._real_internal_links import fetch_real_posts, select_relevant_links  # POINT 4: live sitemap/REST, never a static dict
+from agents._real_internal_links import fetch_real_posts, select_relevant_links, diagnose_relevance  # POINT 4: live sitemap/REST, never a static dict
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -216,9 +216,19 @@ def _validate_tier_standard(article: str, word_count: int, tier: dict) -> list:
             f"repeated link). Off-list external links ({offlist_sources}) and internal links "
             f"do NOT count toward the minimum."
         )
+    # GATE MIN_LINKS (2026-07-06): INFORMATIVE, not blocking. A live-verified,
+    # relevance-matched internal-link count below the tier target is an
+    # EXPECTED, accepted outcome when the site has few/no topically relevant
+    # real posts (see agents/_real_internal_links.py) -- it must never reject
+    # an otherwise-clean article, which would contradict "zero relevant = zero
+    # links". The detailed rejected-candidates diagnostic is already logged at
+    # the point of selection (_write_article_standalone); this is just the
+    # final text-level count, recorded in article_metadata.json regardless of
+    # pass/fail (see internal_link_count below).
     internal_links = len(re.findall(r"\[.*?\]\(https?://moneyabroadguide\.com[^\)]*\)", article, re.IGNORECASE))
     if internal_links < tier["min_links"]:
-        errors.append(f"Internal links {internal_links} < minimum {tier['min_links']}")
+        logger.warning(f"Internal links {internal_links} < tier target {tier['min_links']} -- "
+                       f"accepted (not blocking); see the selection-time diagnostic above for why.")
     case_studies = len(re.findall(r"(?i)(case study|real.?world example|success story)", article))
     if case_studies < tier["min_case_studies"]:
         errors.append(f"Case studies {case_studies} < minimum {tier['min_case_studies']}")
@@ -446,6 +456,21 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     links = [f"[{p['title']}]({p['url']})" for p in _relevant_posts]
     _links_sel = links[:tier["min_links"]]
     links_block = "\n".join(f"- {l}" for l in _links_sel) if _links_sel else "(no relevant internal links found for this topic)"
+    # GATE MIN_LINKS (2026-07-06): a fewer-than-tier-target count is EXPECTED and
+    # ACCEPTABLE when the live site genuinely has few/no topically relevant real
+    # posts -- never a defect to force-fill. Log it explicitly (visible in the
+    # run) instead of silently proceeding, so a short count is diagnosable
+    # (vertical, query, best rejected candidates) without being a hard failure.
+    if len(_relevant_posts) < tier["min_links"]:
+        _diag = diagnose_relevance(f"{keyword} {title}", _real_posts)
+        logger.warning(
+            f"[AGENT-04] Internal links: {len(_relevant_posts)}/{tier['min_links']} relevant real posts "
+            f"found for vertical={source_vertical} query='{keyword} {title}'. "
+            f"Fetched {_diag['real_posts_fetched']} real posts total (min_overlap={_diag['min_overlap']}, "
+            f"min_ratio={_diag['min_ratio']}). Best rejected candidates: {_diag['top_rejected']}. "
+            f"Proceeding with {len(_relevant_posts)} link(s) -- fewer than the tier target is accepted; "
+            f"a tenuous/forced match is never inserted just to fill the count."
+        )
     # SPRINT 2: split internal links so intro and Expert Recommendation never cite the SAME link verbatim.
     # NB: these blocks are already bounded by link COUNT (_links_sel[:_half]); NEVER char-slice them
     # ([:200]/[:300]) when interpolating into a prompt -- a char cut lands mid-URL and the model
@@ -453,6 +478,15 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     _half = max(1, (len(_links_sel) + 1) // 2)
     links_intro_block = "\n".join(f"- {l}" for l in _links_sel[:_half])
     links_expert_block = "\n".join(f"- {l}" for l in _links_sel[_half:]) or links_intro_block
+    # Control-run finding (2026-07-06): when given NO real candidates, the writer
+    # would otherwise invent its own "Also useful" section with dead "(#)" anchor
+    # placeholders to satisfy a "2-3 internal links:" instruction that has nothing
+    # after it. Swap in an explicit no-links instruction instead of an empty list.
+    _NO_LINKS_INSTRUCTION = ("Do NOT include an internal links section and do NOT link to "
+                             "moneyabroadguide.com -- no relevant page exists for this topic. "
+                             "Do NOT invent placeholder links (e.g. '(#)') or an 'Also useful' list.")
+    _intro_links_instruction = f"2-3 internal links:\n{links_intro_block}" if links_intro_block else _NO_LINKS_INSTRUCTION
+    _expert_links_instruction = f"2 internal links from:\n{links_expert_block}" if links_expert_block else _NO_LINKS_INSTRUCTION
 
     # FIX(writer): for known verticals, hand the model a SHORT list of REAL,
     # live-checked official sources (curated in agents/_source_pool.py) instead
@@ -524,7 +558,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
 
     intro = await _call_claude(api_key,
         f"Write introduction: {title} | {keyword} | {market} | Tier: {tier['tier']}\n"
-        f"300-400w. Quick Answer box (40-60w). 2-3 internal links:\n{links_intro_block}\nBe concise.\n"
+        f"300-400w. Quick Answer box (40-60w). {_intro_links_instruction}\nBe concise.\n"
         f"{sourcing_block}\n",
         SYSTEM_PROMPT, max_tokens=1200)
 
@@ -605,7 +639,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     case_studies = ""
 
     expert_section = await _call_claude(api_key,
-        f"Write Expert Recommendation section for: {keyword} ({market}). H2. Top pick + runner-up. 300-400w. 2 internal links from: {links_expert_block}{_facts_and_rules}{_dedup_digest}",
+        f"Write Expert Recommendation section for: {keyword} ({market}). H2. Top pick + runner-up. 300-400w. {_expert_links_instruction}{_facts_and_rules}{_dedup_digest}",
         SYSTEM_PROMPT, max_tokens=1000)
 
     min_faqs = tier["min_faqs"]

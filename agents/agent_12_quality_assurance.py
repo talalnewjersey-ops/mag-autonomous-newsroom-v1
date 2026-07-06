@@ -118,8 +118,11 @@ class QualityAssuranceAgent(BaseAgent):
                 "status": "PASS" if overall_score >= 85 else "NEEDS_REVIEW"
             }
             
-            output_path = await self.save_output("qa_report.json", qa_report)
-            logger.info(f"QA Report saved: {output_path}")
+            # PATH-DUPLICATION FIX (2026-07-06, same bug class as agent_11): main()
+            # below is the single authoritative writer of qa_report.json at args.output.
+            # This class's own save_output() used to ALSO write a copy, at a path
+            # doubled/tripled by BaseAgent.output_dir + StorageService's re-join --
+            # an orphan, never read by anything, removed instead of chased further.
             logger.info(f"Scores - SEO: {seo_score}, EEAT: {eeat_score}, Overall: {overall_score}")
             
             self.log_complete({
@@ -523,7 +526,12 @@ def main():
             llm_svc = LLMService({"anthropic_api_key": api_key, "llm_provider": "anthropic"})
             storage_svc = StorageService({"output_dir": str(output_path.parent)})
             agent = QualityAssuranceAgent(config, llm_svc, storage_svc)
-            qa_report = asyncio.run(agent.run({"article_content": content, "article_path": str(article_path), "title": title, "keyword": keyword, "meta_description": meta_description, "word_count": word_count, "faq_count": faq_count, "has_author": True, "has_author_bio": True}))
+            # FIX (2026-07-06): wp_report (loaded above from --wordpress-report, agent_11's
+            # own output) was never wired into this context dict -- _audit_images() reads
+            # data.get("uploaded_images")/("featured_image_id"), so this path ALWAYS saw
+            # zero images regardless of what agent_11 actually uploaded (masked the point-1
+            # image fallback on every run, independent of agent_11's own report-path bug).
+            qa_report = asyncio.run(agent.run({"article_content": content, "article_path": str(article_path), "title": title, "keyword": keyword, "meta_description": meta_description, "word_count": word_count, "faq_count": faq_count, "has_author": True, "has_author_bio": True, "uploaded_images": wp_report.get("uploaded_images", []), "featured_image_id": wp_report.get("featured_image_id")}))
             log.info("QA complete via DI stack")
         except Exception as e:
             log.warning(f"DI QA failed: {e} -- using heuristic QA")

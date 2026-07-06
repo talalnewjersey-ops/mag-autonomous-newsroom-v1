@@ -143,7 +143,15 @@ class WordPressIntegrationAgent(BaseAgent):
                 "meta_description": article_data.get("meta_description", ""),
                 "hardcoded_fallback_used": False,
             }
-            output_path = await self.save_output("wordpress_report.json", wp_report)
+            # PATH-DUPLICATION FIX (2026-07-06): this class's own save_output() call used
+            # to ALSO write "wordpress_report.json" here, via BaseAgent.output_dir (which
+            # appends self.AGENT_ID onto config["output_dir"] -- already the agent_11 folder
+            # as set by main() below) + StorageService.save() (which re-joins base_output_dir
+            # onto that already-complete path) -- producing doubly/triply-nested orphan
+            # copies of this report at DIFFERENT paths than the one main() writes to
+            # args.output (the ONLY path agent_12 actually reads). Removed: main() is the
+            # single, authoritative writer of this report (see main() below); this method
+            # just returns the dict so main() can build the real file from real data.
             self.log_complete({"post_id": post_id})
             return wp_report
         except Exception as e:
@@ -761,8 +769,16 @@ def main():
         featured_id = result.get("featured_image_id")
         wp_word_count = result.get("word_count", 0)
         wp_content_chars = result.get("content_chars", 0)
+        # DATA-COMPLETENESS FIX (2026-07-06): the report below used to hardcode
+        # uploaded_images/image_count/featured_image_id to empty/zero regardless
+        # of what run() actually uploaded -- agent_12's QA read THIS file (the
+        # only one at args.output) and saw "0 images" even on runs where images
+        # genuinely succeeded (bug since f4007c13, 2026-06-16). Carry the real
+        # values through instead.
+        uploaded_images = result.get("uploaded_images", [])
+        image_count = result.get("image_count", len(uploaded_images))
 
-        log.info(f"WP result: post_id={post_id} featured_media={featured_id} words={wp_word_count} chars={wp_content_chars}")
+        log.info(f"WP result: post_id={post_id} featured_media={featured_id} words={wp_word_count} chars={wp_content_chars} images={image_count}")
 
         # Use the values the run actually produced -- agent_04 no longer emits a
         # `title:` frontmatter (Sprint 8), so the pre-flight regex `title` is empty.
@@ -792,7 +808,7 @@ def main():
         "post_id": post_id, "post_url": post_url,
         "draft_url": post_url, "post_status": "draft", "draft_created": True,
         "word_count": word_count, "content_chars": content_chars,
-        "uploaded_images": [], "image_count": 0, "featured_image_id": None,
+        "uploaded_images": uploaded_images, "image_count": image_count, "featured_image_id": featured_id,
         "seo_title": title, "meta_description": f"Guide to {keyword} for expats.",
         "hardcoded_fallback_used": False,
     }
