@@ -247,10 +247,24 @@ def _validate_tier_standard(article: str, word_count: int, tier: dict) -> list:
         errors.append("Missing author bio / founder section")
     return errors
 
-SYSTEM_PROMPT = """You are Chief Content Officer for MoneyAbroadGuide.com, a licensed financial information platform.
+# 2026-07-06 FIX (marker leak + duplicated end sections): this prompt is
+# shared, verbatim, by EVERY stateless per-call generation (intro, each H2
+# section, comparison, expert_section, faq, the word-count top-up) -- none
+# of which can see what any OTHER call already produced. The old text (1)
+# claimed MoneyAbroadGuide.com is "a licensed financial information
+# platform", which is FALSE and directly contradicted the article's own
+# disclaimer ("not a licensed financial institution") -- fixed to
+# "independent"; (2) told every one of those stateless calls that a
+# "compliance disclaimer" and "author box" must exist "ONCE", which a
+# stateless call has no way to verify, so several calls independently
+# "helpfully" added their own copy. Both the disclaimer and the author bio
+# are now the sole responsibility of the dedicated end-of-article step
+# (closing() for the disclaimer; a fixed, human-approved literal for the
+# bio -- see _AUTHOR_BIO_MD) -- no other call is told about them at all.
+SYSTEM_PROMPT = """You are Chief Content Officer for MoneyAbroadGuide.com, an independent financial information platform.
 GLOBAL RULE: Maximum quality per dollar. No unnecessary padding. Satisfy search intent with authoritative financial content.
 Focus: newcomers, immigrants, expats in Canada and USA.
-ARTICLE-LEVEL STRUCTURE (each written ONCE, in its own dedicated end section — NEVER repeat inside body sections): comparison table | expert recommendation | compliance disclaimer | author box (Talal Eddaouahiri, founder MoneyAbroadGuide.com)
+ARTICLE-LEVEL STRUCTURE (each written ONCE, in its own dedicated section — NEVER repeat inside body sections): comparison table | expert recommendation
 EEAT REQUIREMENTS (Google E-E-A-T compliance — achieve score 90+/100):
 - EXPERTISE: Include technical terminology (FINTRAC, OSFI, FCAC, CRA, IFHP, provincial health authority, MSB, regulation, compliance, licensed)
   Include regulatory references with specific act names, regulatory bodies, official statistics
@@ -261,7 +275,6 @@ EEAT REQUIREMENTS (Google E-E-A-T compliance — achieve score 90+/100):
 - AUTHORITY: Reference government sources (Canada.ca, CRA, IRCC, provincial health), link to official documents
   Cite industry reports, regulatory publications, licensed provider comparisons
 - TRUST: Reference official regulatory oversight and mention licensed/regulated providers.
-  (The compliance disclaimer and the author box are written ONCE, only in their dedicated end sections — do NOT insert them into body sections.)
 OUTPUT: Raw Markdown only — articles must score 85+ on EEAT validation."""
 
 async def _call_claude(api_key: str, prompt: str, system: str = None, max_tokens: int = 5000,
@@ -345,6 +358,92 @@ def _rights_claim_already_made(text_blocks: List[str]):
         if m:
             return re.sub(r"\s+", " ", m.group(0).strip())
     return None
+
+
+# 2026-07-06 FIX (duplicated end sections + fabricated bio): user-approved,
+# word-for-word, fixed text -- no longer LLM-generated (see closing()'s
+# prompt above, which no longer asks for an "About the Author" section at
+# all). Deliberately contains no "licensed" (false -- contradicts the
+# article's own disclaimer, a real YMYL risk) and no "EEAT-compliant"
+# (internal SEO jargon, meaningless to a reader) -- only the honest,
+# factual background the user confirmed.
+_AUTHOR_BIO_MD = (
+    "## About the Author\n\n"
+    "**Talal Eddaouahiri** is the founder of [MoneyAbroadGuide.com](https://moneyabroadguide.com), "
+    "an independent financial information platform for immigrants and newcomers in the United States "
+    "and Canada. Originally from Morocco, he settled in the U.S. in 2015 and built his own credit "
+    "history and banking relationships from scratch in both countries. His background is in retail "
+    "banking and customer relations, and he draws on that firsthand experience to write independent, "
+    "source-based guides — citing regulators including the FCAC, FINTRAC, OSFI, CRA, IRS, and CDIC — "
+    "to help newcomers navigate financial systems with confidence."
+)
+
+_RESERVED_AUTHOR_HEADING_RE = re.compile(r"(?i)^#{1,3}\s*about\s+(?:the\s+author|talal)\b")
+_RESERVED_DISCLAIMER_HEADING_RE = re.compile(r"(?i)^#{1,3}\s*(?:compliance\s+)?disclaimer\b")
+_H2_HEADING_START_RE = re.compile(r"^##\s+.+$", re.MULTILINE)
+_TRAILING_SEPARATOR_RE = re.compile(r"(?:\n|^)---[ \t]*\n+\Z")
+
+
+def _dedupe_reserved_end_sections(text: str) -> str:
+    """Deterministic backstop against duplicated end-of-article sections
+    (2026-07-06). SYSTEM_PROMPT is shared, verbatim, by every stateless
+    per-call generation (intro, each H2 section, comparison, expert_section,
+    faq, the word-count top-up) -- none of which can see what any OTHER
+    call already produced, so more than one sometimes independently adds
+    its own "About the Author" / "Disclaimer" copy. A prompt instruction
+    can't reliably prevent this across stateless calls; this scans the
+    assembled body for H2-heading-delimited blocks and:
+      - removes EVERY "About the Author" block unconditionally (the real
+        bio is fixed text, appended separately right after this runs --
+        any block here is always a leaked duplicate, never legitimate).
+      - keeps only the LAST "Disclaimer" / "Compliance Disclaimer" block
+        (the legitimate one -- always the one closing() deliberately
+        wrote, since closing() is the final LLM call in the assembly
+        order) and removes any earlier duplicates.
+    A standalone "---" separator immediately preceding a removed block is
+    removed with it, so no orphaned rule is left behind. Every other
+    section is left untouched, in its original order.
+    """
+    starts = [m.start() for m in _H2_HEADING_START_RE.finditer(text)]
+    if not starts:
+        return text
+
+    def _extended_start(pos):
+        m = _TRAILING_SEPARATOR_RE.search(text[:pos])
+        return m.start() if m else pos
+
+    # compute every heading's extended start FIRST, then use the NEXT
+    # block's extended start (not its raw heading start) as this block's
+    # end -- otherwise a "---" separator between two headings gets counted
+    # twice: once as the tail of the block before it, once as the head of
+    # the block after it (extended_start pulls it forward into the next
+    # block, but a naive `end = next raw start` also leaves it in this one).
+    ext_starts = [_extended_start(s) for s in starts]
+    blocks = []
+    for i, s in enumerate(starts):
+        end = ext_starts[i + 1] if i + 1 < len(starts) else len(text)
+        blocks.append((ext_starts[i], s, end))
+
+    disclaimer_positions = [i for i, (_, s, e) in enumerate(blocks)
+                             if _RESERVED_DISCLAIMER_HEADING_RE.search(text[s:e].split("\n", 1)[0])]
+    keep_disclaimer_idx = disclaimer_positions[-1] if disclaimer_positions else None
+
+    kept = [text[:blocks[0][0]]]
+    for i, (ext_start, s, e) in enumerate(blocks):
+        heading_line = text[s:e].split("\n", 1)[0]
+        if _RESERVED_AUTHOR_HEADING_RE.search(heading_line):
+            continue
+        if _RESERVED_DISCLAIMER_HEADING_RE.search(heading_line) and i != keep_disclaimer_idx:
+            continue
+        kept.append(text[ext_start:e])
+    # removing a block can leave two surviving blocks glued together with no
+    # blank line between them (the separator/whitespace that used to sit
+    # between them belonged to the removed block) -- restore normal markdown
+    # spacing rather than leave a heading run on directly from prior prose.
+    out = "".join(kept)
+    out = re.sub(r"([^\n])\n(#{1,3}\s)", r"\1\n\n\2", out)
+    out = re.sub(r"\n{3,}", "\n\n", out)
+    return out
 
 
 def _build_digest(written_sections: List[str]) -> str:
@@ -765,17 +864,18 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     # Ensure minimum FAQ count — restore _ensure_faq_count (fixes FAQ validation failure)
     faq = await _ensure_faq_count(faq, keyword, market, target_audience, api_key, min_faqs, target_faqs, _facts_and_rules)
 
+    # 2026-07-06 FIX: "About the Author" removed from this prompt entirely --
+    # it is no longer LLM-generated at all (see _AUTHOR_BIO_MD, appended once,
+    # deterministically, after _dedupe_reserved_end_sections runs below).
     closing = await _call_claude(api_key,
-        f"Write 3 sections for: {title}\n"
+        f"Write 2 sections for: {title}\n"
         f"1. ## Conclusion (200-300w)\n"
-        f"2. ## Disclaimer (150-200w, legal, affiliate disclosure)\n"
-        f"3. ## About the Author (Talal Eddaouahiri, founder MoneyAbroadGuide.com, 100-150w){_facts_and_rules}{_dedup_digest}",
-        SYSTEM_PROMPT, max_tokens=1200)
+        f"2. ## Disclaimer (150-200w, legal, affiliate disclosure){_facts_and_rules}{_dedup_digest}",
+        SYSTEM_PROMPT, max_tokens=900)
 
     _updated = datetime.utcnow().strftime("%B %Y")
     body = "\n\n".join([s for s in [intro, "\n\n".join(written_sections) if written_sections else "",
-                          comparison, case_studies, expert_section, faq, closing,
-                          f"> **Last Updated**: {_updated} | **Tier**: {tier['tier']} | NEXUS-14 V5.0"] if s])
+                          comparison, case_studies, expert_section, faq, closing] if s])
     word_count = len(body.split())
     if word_count < min_words:
         try:
@@ -785,6 +885,28 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
             body = body + "\n\n" + extra
         except Exception as e:
             logger.warning(f"Expansion failed: {e}")
+
+    # 2026-07-06 FIX (duplicated end sections): SYSTEM_PROMPT is shared by
+    # every stateless per-call generation above, none of which can see what
+    # any OTHER call already produced -- some independently "helpfully" add
+    # their own About-the-Author/Disclaimer copy. Deterministic backstop,
+    # not just a prompt instruction: strips every spontaneous About-the-
+    # Author block (the real bio is fixed text, appended right after) and
+    # keeps only the LAST Disclaimer/Compliance-Disclaimer block (the
+    # legitimate one, from closing() above, since closing() is the final
+    # LLM call in this assembly).
+    body = _dedupe_reserved_end_sections(body)
+
+    # 2026-07-06 FIX (fabricated/contradictory bio): the bio is no longer
+    # LLM-generated -- it used to claim MoneyAbroadGuide.com is "a licensed
+    # financial information platform" (false, contradicts the article's own
+    # disclaimer) and "EEAT-compliant" (internal SEO jargon, meaningless to
+    # a reader). This exact text is user-approved, word for word.
+    # NOTE: the trailing "Tier/NEXUS-14 V5.0" marker leak is a SEPARATE,
+    # deliberately separate fix/PR (per the user's explicit lot ordering) --
+    # left untouched here on purpose, removed in that other lot.
+    body = "\n\n".join([body, _AUTHOR_BIO_MD,
+                          f"> **Last Updated**: {_updated} | **Tier**: {tier['tier']} | NEXUS-14 V5.0"])
 
     # Sprint 8: emit NO YAML frontmatter and NO body-level title heading. Frontmatter
     # fields used to render as visible <p> paragraphs (RCA-007) and a body title

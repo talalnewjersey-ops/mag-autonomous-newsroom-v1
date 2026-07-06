@@ -31,10 +31,15 @@ def test_dedup_digest_built_from_body():
 
 
 def test_dedup_digest_appended_to_all_trailing_sections():
+    # 2026-07-06: closing()'s marker updated -- it no longer asks for an
+    # "About the Author" section at all (the bio is now fixed text,
+    # _AUTHOR_BIO_MD, appended separately -- see tests/test_end_section_dedup.py).
+    # closing() still ends with the Disclaimer request, still carrying facts
+    # + dedup digest exactly as before.
     for marker in ["200-300w context.{_facts_and_rules}{_dedup_digest}",       # comparison
                    "{_expert_links_instruction}{_facts_and_rules}{_dedup_digest}",     # Expert
                    "ending with ?{_facts_and_rules}{_dedup_digest}",            # FAQ
-                   "100-150w){_facts_and_rules}{_dedup_digest}",                # closing
+                   "legal, affiliate disclosure){_facts_and_rules}{_dedup_digest}",  # closing
                    "Return ONLY new Markdown.{_facts_and_rules}{_dedup_digest}"]:  # expansion
         assert marker in SRC, f"missing dedup digest on: {marker}"
 

@@ -39,7 +39,10 @@ def test_faq_topup_gets_facts():
 
 
 def test_closing_gets_facts():
-    assert "100-150w){_facts_and_rules}" in SRC
+    # 2026-07-06: closing() no longer asks for an "About the Author" section
+    # (100-150w) -- it now ends with the Disclaimer request; the bio is
+    # fixed text (_AUTHOR_BIO_MD) appended separately, outside this call.
+    assert "legal, affiliate disclosure){_facts_and_rules}" in SRC
 
 
 def test_word_count_expansion_gets_facts():
