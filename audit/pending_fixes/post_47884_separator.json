@@ -1,0 +1,7 @@
+{
+  "post_id": 47884,
+  "slug": "student-bank-account-canada-newcomers-2026",
+  "reason": "Literal '<p>---</p>' markdown-separator artifact, never converted to a real <hr>, displayed as visible text before every H2/H3 section. Same exact artifact repeated 19 times in this one article -- verified count before writing.",
+  "old_text": "<p>---</p>",
+  "expected_count": 19
+}
