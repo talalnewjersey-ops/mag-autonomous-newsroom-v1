@@ -136,6 +136,49 @@ def test_table_row_commercial_figure_does_not_borrow_a_citation_from_the_next_pa
     assert row_claim["fact"] is None, "a table row must never borrow a citation from prose that follows the table"
 
 
+def test_soften_and_direct_classify_claims_agree_on_the_table_row_case():
+    # POINT (b) FOLLOW-UP (2026-07-06): root-caused and closed by this SAME
+    # redesign, not a separate fix. Real bug: scripts/soften_claims.py masks
+    # each markdown link down to a short placeholder (\x0e0\x0f) BEFORE
+    # running its own _find_unsourced check -- with the OLD fixed-char
+    # window, this artificially SHRANK the distance from a table cell's
+    # figure to its "citation" (a long .gov URL collapses to ~4 chars),
+    # so soften's OWN masked-text check saw the FCAC citation as "nearby"
+    # and treated the Tangerine/EQ row's "$0 permanently" as covered (never
+    # qualified) -- while a later, SEPARATE classify_claims call on the
+    # final UNMASKED text (mirroring G-Substance's real re-check) used the
+    # full, un-shrunk distance and correctly saw it as uncovered. Real
+    # run-5 case: this exact mismatch caused canada_newcomer's retry
+    # attempt to fail G-Substance ("1 unsourced figure survived soften")
+    # for a claim soften itself had already silently let through.
+    # Sentence/block boundaries don't care about character distance at
+    # all, so masking can no longer create this mismatch -- verified here
+    # by checking BOTH paths agree BEFORE any softening happens.
+    import scripts.soften_claims as soften_claims
+
+    table_text = (
+        "| Tangerine/EQ Bank | $0 permanently | Ongoing | No (fee applies) | "
+        "No-fee digital alternative; no waiver expiry |\n"
+        "\n"
+        "Under the [FCAC no-cost account commitment]"
+        "(https://www.canada.ca/en/financial-consumer-agency/services/industry/laws-regulations/low-cost-no-cost-accounts.html), "
+        "eligible newcomers can access $0/month accounts at participating institutions — a protection worth verifying."
+    )
+    direct = classify_claims(table_text, "canada_newcomer")
+    direct_residual_starts = {c["start"] for c in direct if c["fact"] is None}
+
+    masked, originals, _official = soften_claims._mask_links(table_text)
+    masked_spans = soften_claims._find_unsourced(masked, originals, "canada_newcomer")
+    masked_residual_starts = {s for (s, _e, _a) in masked_spans}
+
+    table_row_zero_dollar = table_text.index("$0 permanently")
+    assert table_row_zero_dollar in direct_residual_starts
+    assert table_row_zero_dollar in masked_residual_starts, (
+        "soften's own masked-text check must agree with a direct check on the "
+        "unmasked text -- masking must never shrink a citation into false coverage"
+    )
+
+
 def test_block_span_never_crosses_a_table_row_boundary():
     text = "| A | $500 | B |\n| C | $600 | D |\n"
     pos = text.index("$500")
