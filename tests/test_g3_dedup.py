@@ -14,7 +14,9 @@ SRC = open(os.path.join(ROOT, "agents/agent_04_article_writer.py"), encoding="ut
 
 def test_dedup_wording_defined_and_in_facts_and_rules():
     assert "_dedup_wording = (" in SRC
-    assert "_facts_and_rules = _anti_fab + _dedup_wording + _facts_block" in SRC
+    # RETRY MECHANISM (2026-07-06) prepends an optional _retry_block ahead of
+    # the existing anti-fab + dedup + facts chain -- never removes any of it.
+    assert "_facts_and_rules = _retry_block + _anti_fab + _dedup_wording + _facts_block" in SRC
 
 
 def test_facts_are_never_removed_veracity_preserved():

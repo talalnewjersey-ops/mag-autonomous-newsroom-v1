@@ -15,8 +15,9 @@ SRC = open(os.path.join(ROOT, "agents/agent_04_article_writer.py"), encoding="ut
 
 def test_facts_and_rules_is_defined():
     # _facts_and_rules must combine the anti-fab rule and the Couche 1 facts (a de-dup
-    # wording clause may sit between them; the facts must never be dropped).
-    assert re.search(r"_facts_and_rules = _anti_fab \+ .*_facts_block", SRC)
+    # wording clause may sit between them; the facts must never be dropped). RETRY
+    # MECHANISM (2026-07-06) may prepend an optional _retry_block ahead of _anti_fab.
+    assert re.search(r"_facts_and_rules = (?:_retry_block \+ )?_anti_fab \+ .*_facts_block", SRC)
 
 
 def test_comparison_gets_facts():

@@ -1,7 +1,7 @@
 """LEVIER C -- fact-coverage predicate (single source of truth).
 
 Closes the "proximity-false-sourced" blind spot: an allow-listed (.gov/.gc.ca)
-link sitting within +-100 chars of a number was, until now, treated as PROOF
+link sitting within +-150 chars of a number was, until now, treated as PROOF
 that the number is sourced (agents/agent_05_fact_checker.py + scripts/
 soften_claims.py) or that a Couche 1 fact was "cited" (scripts/
 g_substance_gate.py, plain `source_url in content` substring check). A real
@@ -46,6 +46,36 @@ import re
 
 from agents._claims import _ATTR_RE, _NUM_RE, _URL_IN
 from agents._vertical_facts import VERTICAL_FACTS
+
+# PROXIMITY WINDOW (2026-07-06): widened from 100 to 150 after a real false
+# positive (2026-07-06 control run, us_auto): a sentence citing multiple
+# dollar figures before a single trailing citation -- e.g. "Texas requires
+# ... $30,000 bodily injury per person, $60,000 per accident, and $25,000
+# property damage -- [per the Texas DOI](url)." -- had its FIRST figure fall
+# outside a 100-char window while later figures (closer to the link) stayed
+# covered. Measured on the real article: the two false positives sat 119 and
+# 134 chars from their own correct citation; 150 is the minimal round number
+# that covers both with margin (empirically, 140 was already sufficient).
+# SAFE BY CONSTRUCTION, not just by choice of number: widening this window
+# can only affect whether the CORRECT source_url is found nearby -- it can
+# never relax `covering_fact`'s separate, unconditional requirement that the
+# claim's own numeric token exactly equal one of that fact's engraved
+# tokens. A fabricated/divergent value sitting next to the right link stays
+# uncovered at ANY window size (verified up to a window of 999999 chars) --
+# see tests/test_proximity_window_150.py for both properties, proven, not
+# just asserted.
+PROXIMITY_WINDOW_CHARS = 150
+
+# The attribution-cue check (below) is a SEPARATE, narrower heuristic ("does an
+# 'according to'/'reports'/'says'-style word sit near this claim") -- kept at
+# its original 100 deliberately. Widening it to 150 exposed a real side effect
+# in testing: a long .gov URL's own slug can contain a cue-shaped substring
+# (e.g. ".../credit-report-en-323" -- "report" matches \breports?\b) that a
+# wider window reaches into, misclassifying `is_attr` for a citation that was
+# never actually attributed in prose. Not this fix's scope to redesign (would
+# need URL-masking before the cue search); keeping this window unchanged avoids
+# the regression entirely.
+_ATTR_CUE_WINDOW_CHARS = 100
 
 _UNIT_WORDS = ("percentage points", "basis points", "points", "pts", "bps")
 # LEVIER C PART 2: bare duration/count units -- deliberately days/weeks/months/
@@ -144,17 +174,21 @@ def _default_url_finder(text):
 
 def classify_claims(text, vertical, url_finder=None):
     """One pass over every _NUM_RE match in `text`: for each, resolve the URLs
-    whose citation overlaps its +-100 char window (via `url_finder(lo, hi)`,
-    default = `_default_url_finder(text)` on the unmasked text -- callers on
-    masked text, e.g. soften_claims, pass a mask-aware finder with the same
-    overlap-not-slice contract) and try to attach a covering STABLE fact.
-    Returns [{start, end, is_attr, fact}], `fact` is None when uncovered."""
+    whose citation overlaps its +-PROXIMITY_WINDOW_CHARS window (via
+    `url_finder(lo, hi)`, default = `_default_url_finder(text)` on the
+    unmasked text -- callers on masked text, e.g. soften_claims, pass a
+    mask-aware finder with the same overlap-not-slice contract) and try to
+    attach a covering STABLE fact. Returns [{start, end, is_attr, fact}],
+    `fact` is None when uncovered."""
     url_finder = url_finder or _default_url_finder(text)
     out = []
     for m in _NUM_RE.finditer(text):
-        lo, hi = max(0, m.start() - 100), min(len(text), m.end() + 100)
+        lo = max(0, m.start() - PROXIMITY_WINDOW_CHARS)
+        hi = min(len(text), m.end() + PROXIMITY_WINDOW_CHARS)
         fact = covering_fact(m.group(0), url_finder(lo, hi), vertical)
-        is_attr = fact is None and bool(_ATTR_RE.search(text[lo:hi]))
+        attr_lo = max(0, m.start() - _ATTR_CUE_WINDOW_CHARS)
+        attr_hi = min(len(text), m.end() + _ATTR_CUE_WINDOW_CHARS)
+        is_attr = fact is None and bool(_ATTR_RE.search(text[attr_lo:attr_hi]))
         out.append({"start": m.start(), "end": m.end(), "is_attr": is_attr, "fact": fact})
     return out
 
