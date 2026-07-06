@@ -24,11 +24,16 @@ def test_no_static_internal_links_dict_remains():
     # REMOVED (it had drifted to 18/21 = 86% dead links -- see
     # agents/_real_internal_links.py). This guards against reintroducing a
     # hardcoded internal-link list: no bare moneyabroadguide.com markdown link
-    # should appear literally in the source any more -- real links now come
-    # ONLY from a live WP REST API fetch at write time.
+    # to a specific ARTICLE PATH should appear literally in the source any
+    # more -- real article-to-article links now come ONLY from a live WP
+    # REST API fetch at write time. EXCLUDES the fixed author bio's own
+    # link to the bare homepage root (2026-07-06, _AUTHOR_BIO_MD) -- a
+    # single, permanent attribution link to the site itself, not a
+    # cross-article SEO link, and it can never go dead the way a
+    # hand-maintained deep link to another article's slug can.
     assert not re.search(r"^INTERNAL_LINKS\s*=\s*\{", SRC, re.MULTILINE), \
         "the static INTERNAL_LINKS dict reappeared"
-    hardcoded = re.findall(r"\[[^\]]+\]\(https?://moneyabroadguide\.com[^\)]*\)", SRC)
+    hardcoded = re.findall(r"\[[^\]]+\]\(https?://moneyabroadguide\.com/[^\)]+\)", SRC)
     assert hardcoded == [], f"a hardcoded internal link reappeared in source: {hardcoded}"
     assert "from agents._real_internal_links import" in SRC
 
