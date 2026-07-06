@@ -47,6 +47,8 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp
 
+from agents import _gemini_rate_limiter
+
 logger = logging.getLogger(__name__)
 
 # Supported image generation APIs
@@ -160,9 +162,12 @@ class ImageProductionAgent:
                         failed.append(img_type)
             results["secondary_images"] = secondary_results
 
-        # V3.8: Padding placeholder loop DISABLED — every image must be a real Gemini image
-        # If Gemini fails to generate an image, Gate 18 will FAIL the article
-        # No placeholder PNGs, no dummy graphics, no fallback images
+        # POINT 1 (2026-07-05): V3.8 had disabled the placeholder fallback below
+        # ("every image must be real, Gate 18 fails otherwise"), which meant a
+        # Gemini spending-cap/quota failure took the WHOLE article down with it.
+        # Re-enabled: _create_placeholder now returns a real, decorative,
+        # zero-data PNG as SUCCESS (see its docstring) when all retries are
+        # exhausted, so a quota outage degrades gracefully instead of blocking.
                 # Build production report
         report = self._build_report(results, failed, images_dir, start_time)
         Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -222,6 +227,13 @@ class ImageProductionAgent:
         gate18_str = "PASS" if quality_report["overall_passed"] else "FAIL"
         wp_cnt = len(wp_uploads_list)
         logger.info(f"Images: {success_cnt} ok, {report['summary']['failed']} failed | Gate 18: {gate18_str} | WordPress uploads: {wp_cnt}")
+        # POINT 1 consumption log: how many Gemini calls this WHOLE workflow run
+        # (all articles so far, shared state file) has made, vs the configured
+        # RPM limit -- visibility into when the free tier stops being enough.
+        gemini_calls = _gemini_rate_limiter.run_total()
+        rpm_limit = _gemini_rate_limiter._rpm_limit()
+        report["gemini_usage"] = {"run_total_calls": gemini_calls, "rpm_limit": rpm_limit}
+        logger.info(f"Gemini API usage this run (all articles so far): {gemini_calls} calls (RPM limit={rpm_limit})")
         return report
 
     def _collect_all(self, results: Dict) -> List[Dict]:
@@ -371,6 +383,14 @@ class ImageProductionAgent:
         timeout = aiohttp.ClientTimeout(total=api["timeout"])
 
         if api_name in ("gemini_imagen", "gemini_imagen_v1"):
+            # POINT 1 (2026-07-05): proactively respect the free-tier request
+            # rate BEFORE calling -- both gemini_imagen and gemini_imagen_v1
+            # share one Gemini billing account/quota, so they share one
+            # rate-limit bucket. See agents/_gemini_rate_limiter.py docstring
+            # for why this does NOT fix a spending-cap 429 (a different, $-
+            # based ceiling) -- it only avoids ALSO tripping a request-rate
+            # limit on top of it.
+            await _gemini_rate_limiter.wait_for_slot()
             # V3.5 FIX: Use generateContent API (Google AI Studio compatible)
             # Replaces Vertex AI :predict payload format that caused HTTP 404
             payload = {
@@ -487,26 +507,36 @@ class ImageProductionAgent:
             filename = f"{img_type}_placeholder_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
             filepath = output_dir / filename
             filepath.write_bytes(png_data)
-            
+
             file_size = filepath.stat().st_size
-            logger.error(f"Gemini image generation FAILED for {img_type}: {error}")
-            logger.error(f"PLACEHOLDER GENERATION DISABLED — article will FAIL per production rules")
-            # V3.8: Placeholder images DISABLED — every image must be a real Gemini image
-            # If Gemini fails, return FAILED so the article is rejected at Gate 18
+            # POINT 1 (2026-07-05, re-enables what V3.8 disabled): "never crash,
+            # at worst skip + log" -- retries are exhausted (see
+            # _generate_with_retry), so real generation for THIS image is
+            # skipped and a decorative placeholder is used instead. Explicit,
+            # identifiable log line (agent, image type/step, output dir ~=
+            # article) so a run's skips are visible, never silent. This is
+            # SAFE: the placeholder is a flat color block, no text, no data --
+            # zero hallucination risk (same invariant as agents/_fallback_image.py's
+            # decorative header). _validate_image_quality already has a lower,
+            # placeholder-aware quality bar for exactly this path.
+            logger.warning(
+                f"[AGENT-10] SKIP: real image generation failed for type={img_type} "
+                f"in {output_dir} after all retries (last error: {error}) -- "
+                f"using a decorative placeholder instead. Pipeline continues."
+            )
             return {
-                "status": "FAILED",
+                "status": "SUCCESS",
                 "type": img_type,
-                "filename": None,
-                "filepath": None,
-                "file_size_bytes": 0,
-                "format": None,
+                "filename": filename,
+                "filepath": str(filepath),
+                "file_size_bytes": file_size,
+                "format": "png",
                 "alt_text": prompt_data.get("alt_text", f"{img_type} image"),
                 "caption": prompt_data.get("caption", f"MoneyAbroadGuide {img_type}"),
                 "description": prompt_data.get("description", ""),
                 "generated_at": datetime.now().isoformat(),
-                "is_placeholder": False,
+                "is_placeholder": True,
                 "api_error": error,
-                "error": f"Gemini image generation failed: {error}",
             }
         except Exception as e:
             logger.error(f"Failed to create placeholder PNG for {img_type}: {e}")

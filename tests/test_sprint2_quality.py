@@ -360,6 +360,73 @@ def test_check_one_retries_transport_then_succeeds():
     assert len(out["live"]) == 1
     assert out["broken"] == []
     assert fc.session.calls == 2  # 1 failure + 1 retry success
+
+
+# ---- generic bot-block pattern (2026-07-05): a 403 on an OFFICIAL domain, even
+# after the HEAD->GET fallback, means the SITE blocks automated requests, not
+# that the page is dead. Pattern-based on (status code + official domain), NOT
+# a per-domain exclusion list that grows every time a new government site
+# blocks GitHub Actions' IPs (real incident: studyinthestates.dhs.gov and
+# dfs.ny.gov -- the latter a genuinely engraved, correctly-cited Couche 1 fact
+# URL -- both false-GATE-A-failed a real run).
+
+class _AlwaysForbiddenSession:
+    """HEAD and GET both return 403 -- the real-world bot-block signature."""
+    def head(self, url, **k):
+        return _FakeResp(403, url)
+    def get(self, url, **k):
+        return _FakeResp(403, url)
+
+
+class _FakeResp:
+    def __init__(self, status, url):
+        self.status = status
+        self.url = url
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, *a):
+        return False
+
+
+def test_check_one_classifies_403_on_official_domain_as_bot_blocked_not_hard():
+    fc = agent_05.FactCheckerAgent.__new__(agent_05.FactCheckerAgent)
+    fc.session = _AlwaysForbiddenSession()
+    out = _asyncio.run(fc._check_urls(["https://www.dfs.ny.gov/consumers/auto_insurance/minimum_auto_insurance_requirements"]))
+    assert out["broken"][0]["reason"] == "bot_blocked"
+    assert out["live"] == []
+
+
+def test_check_one_403_on_offlist_domain_stays_hard_http():
+    # The exemption is OFFICIAL-only -- a 403 from a non-.gov/.gc.ca/canada.ca
+    # domain stays a genuine hard failure (still eligible to FAIL the gate).
+    fc = agent_05.FactCheckerAgent.__new__(agent_05.FactCheckerAgent)
+    fc.session = _AlwaysForbiddenSession()
+    out = _asyncio.run(fc._check_urls(["https://somebank.com/nope"]))
+    assert out["broken"][0]["reason"] == "http"
+
+
+def test_ssa_gov_and_hhs_gov_403_treated_as_bot_blocked():
+    # These 2 domains were previously handled by excluding them from the source
+    # POOL (agents/_source_pool.py) -- a per-domain list. This proves the NEW
+    # generic pattern independently covers them too, so a writer that cites one
+    # from memory (bypassing the pool) is ALSO protected, without adding them
+    # to yet another list.
+    fc = agent_05.FactCheckerAgent.__new__(agent_05.FactCheckerAgent)
+    fc.session = _AlwaysForbiddenSession()
+    out = _asyncio.run(fc._check_urls(["https://www.ssa.gov/x", "https://www.hhs.gov/y"]))
+    reasons = {b["url"]: b["reason"] for b in out["broken"]}
+    assert reasons["https://www.ssa.gov/x"] == "bot_blocked"
+    assert reasons["https://www.hhs.gov/y"] == "bot_blocked"
+
+
+def test_official_bot_blocked_is_soft_warning_not_hard_fail(caplog):
+    import logging as _logging
+    with caplog.at_level(_logging.WARNING):
+        rep = _report([{"url": "https://www.dfs.ny.gov/x", "status_code": 403, "reason": "bot_blocked"}])
+    assert rep["summary"]["broken_official_hard"] == 0
+    assert rep["summary"]["broken_official_soft"] == 1
+    assert rep["verdict"] != "FAIL"
+    assert any("bot-blocked" in r.getMessage() for r in caplog.records)
 # ------------------------------------------- FIX(writer): curated source pool
 # These tests are deterministic and require NO network: the pool is static data
 # and classification is pure string logic. They guard the root-cause fix for the

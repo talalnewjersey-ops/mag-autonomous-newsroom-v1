@@ -1,0 +1,103 @@
+"""Live, WordPress-REST-verified internal links (2026-07-05).
+
+Replaces agent_04's static, hand-maintained INTERNAL_LINKS dict, which had
+drifted to 18 of 21 (86%) dead links -- see the multi-vertical control run
+diagnostic (memory: nexus14-next-session-backlog.md). The dict was written
+once and never re-verified against the live site as content evolved; a static
+list of this kind can only ever get staler, never self-correct.
+
+STRICT RULE: a link is offered to the writer ONLY if its URL is confirmed
+present in the LIVE WordPress REST API post list fetched at the START of this
+run. Zero relevant real posts found -> zero internal links for that article --
+an ACCEPTABLE outcome. NEVER invent, guess, or fall back to a hardcoded list.
+
+FAILURE MODE (network error, non-200, timeout, malformed JSON, at any page):
+returns [] and logs a clear warning identifying the failure -- the caller
+(agent_04) then writes the article with NO internal links rather than
+crashing or reverting to a stale dict. Same "skip + log, never crash, never
+guess" philosophy as the Gemini quota / gov-domain-block fixes (points 1-2 of
+this same lot).
+
+No WP credentials needed or used: published posts are public via the REST
+API, exactly like every other live-site read this project has done all
+along (no authentication available in this pipeline for agent_04 anyway).
+"""
+import json
+import logging
+import re
+import urllib.error
+import urllib.request
+
+logger = logging.getLogger(__name__)
+
+POSTS_ENDPOINT = "https://moneyabroadguide.com/wp-json/wp/v2/posts"
+_TIMEOUT_SECONDS = 10
+_PER_PAGE = 100
+_MAX_PAGES = 5  # hard cap (<=500 posts): headroom for site growth, never unbounded
+
+_STOP = {
+    "the", "a", "an", "and", "or", "but", "of", "to", "in", "for", "on", "with",
+    "as", "by", "is", "are", "be", "this", "that", "your", "you", "it", "at",
+    "from", "will", "can", "their", "they", "we", "our", "best", "guide",
+    "guides", "complete", "2026", "newcomers", "immigrants", "canada", "usa",
+    "how", "what", "new",
+}
+_WORD_RE = re.compile(r"[a-z0-9]+")
+
+
+def fetch_real_posts(endpoint=POSTS_ENDPOINT, timeout=_TIMEOUT_SECONDS, max_pages=_MAX_PAGES):
+    """Return [{"title": str, "url": str}, ...] for every published post
+    reachable via the public WP REST API, or [] on ANY failure. Never raises,
+    never falls back to a hardcoded list (see module docstring)."""
+    posts = []
+    for page in range(1, max_pages + 1):
+        url = f"{endpoint}?_fields=slug,link,title&per_page={_PER_PAGE}&page={page}"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "NEXUS-14-agent04/1.0"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if resp.status != 200:
+                    logger.warning(f"[AGENT-04] SKIP internal links: WP REST API returned "
+                                   f"{resp.status} at page {page} ({url})")
+                    break
+                body = resp.read().decode("utf-8", errors="replace")
+            batch = json.loads(body)
+        except Exception as e:
+            if page == 1:
+                logger.warning(f"[AGENT-04] SKIP internal links: WP REST API unreachable "
+                               f"({endpoint}): {e}")
+                return []
+            logger.warning(f"[AGENT-04] internal links: stopped paginating at page {page} ({e})")
+            break
+        if not isinstance(batch, list) or not batch:
+            break
+        for item in batch:
+            raw_title = item.get("title", "")
+            title = raw_title.get("rendered", "") if isinstance(raw_title, dict) else raw_title
+            link = item.get("link", "")
+            if title and link:
+                posts.append({"title": title, "url": link})
+        if len(batch) < _PER_PAGE:
+            break
+    return posts
+
+
+def _tokens(text):
+    return {w for w in _WORD_RE.findall((text or "").lower()) if w not in _STOP and len(w) > 2}
+
+
+def select_relevant_links(article_title, real_posts, n=3, min_overlap=2):
+    """Deterministic keyword-overlap match: score each real post by how many
+    significant words it shares with the article's own title/keyword, keep
+    only posts AT OR ABOVE min_overlap, return the top `n` as
+    [{"title","url"}]. Zero posts clearing the bar -> [] -- no forced or
+    tenuously-related link is ever inserted just to fill a quota."""
+    query_tokens = _tokens(article_title)
+    if not query_tokens:
+        return []
+    scored = []
+    for post in real_posts:
+        overlap = len(query_tokens & _tokens(post.get("title", "")))
+        if overlap >= min_overlap:
+            scored.append((overlap, post))
+    scored.sort(key=lambda t: t[0], reverse=True)
+    return [post for _score, post in scored[:n]]
