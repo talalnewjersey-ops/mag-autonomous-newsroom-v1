@@ -8,10 +8,13 @@ Safety, per the user's explicit rules for this workstream:
     (audit/pending_fixes/<name>.json: {"post_id": ..., "old_text": ...}),
     not a shell/YAML env var -- avoids escaping risk with HTML-heavy text,
     and leaves the exact removed text versioned/auditable in git history.
-  - Requires the OLD substring to be found EXACTLY ONCE in the post's
-    current raw content -- refuses to write if it's missing or ambiguous
-    (0 or >1 occurrences), so a stale/already-changed article can never be
-    silently mismatched.
+  - Requires the OLD substring to be found EXACTLY `expected_count` times
+    in the post's current raw content (defaults to 1) -- refuses to write
+    if the count doesn't match, so a stale/already-changed article can
+    never be silently mismatched. A count > 1 is only ever used for a
+    single, identical, verbatim artifact repeated within ONE article
+    (e.g. a literal "<p>---</p>" markdown-separator leak appearing many
+    times) -- never for distinct texts across multiple articles.
   - Never touches title, status, slug, or any other field -- only content.
   - Caller is expected to have already written a pre-edit backup (see
     scripts/fetch_one_post.py) before this runs.
@@ -52,14 +55,15 @@ def main():
         fix = json.load(f)
     post_id = fix["post_id"]
     old_text = fix["old_text"]
+    expected_count = fix.get("expected_count", 1)
 
     post = fetch_post(wp_url, user, app_pw, post_id)
     content = post["content"]["raw"]
 
     count = content.count(old_text)
-    if count != 1:
-        print(f"REFUSING TO WRITE: expected exactly 1 occurrence of OLD_TEXT, found {count}.")
-        print("No change made. Fix OLD_TEXT to match the current live content exactly.")
+    if count != expected_count:
+        print(f"REFUSING TO WRITE: expected exactly {expected_count} occurrence(s) of old_text, found {count}.")
+        print("No change made. Fix old_text/expected_count to match the current live content exactly.")
         raise SystemExit(1)
 
     new_content = content.replace(old_text, "")
