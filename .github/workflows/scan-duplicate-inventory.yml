@@ -1,0 +1,29 @@
+name: Scan Duplicate Article Inventory (read-only diagnostic)
+
+on:
+  workflow_dispatch:
+
+# READ-ONLY: builds a full inventory (metadata + internal link graph) of
+# every published post, for ÉTAPE 2 (duplicate-article planning) of the
+# published-content audit workstream. Never writes to WordPress, never
+# deletes, redirects, or merges anything -- planning data only.
+jobs:
+  scan-inventory:
+    name: "Scan duplicate inventory"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Scan inventory
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+        run: python3 scripts/scan_duplicate_inventory.py
+      - name: Upload inventory results
+        uses: actions/upload-artifact@v4
+        with:
+          name: duplicate-inventory
+          path: duplicate_inventory_results.json
