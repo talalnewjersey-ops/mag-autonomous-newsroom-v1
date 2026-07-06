@@ -21,6 +21,24 @@ from services.storage_service import StorageService
 
 logger = logging.getLogger(__name__)
 
+# SEO SCORE RECALIBRATION (2026-07-06): the "70" plateau seen on every article
+# that reached this gate was arithmetic, not content variance -- two criteria
+# failed EVERY time (verified: 100 - 15 keyword_density_ok - 15 word_count_ok
+# = 70 exactly). Both root-caused precisely (see git history / memory) and
+# fixed here, not just re-thresholded blindly:
+#  - word_count target is now TIER-RELATIVE (mirrors agents/agent_04_article_
+#    writer.py's own TARGET_WORDS per tier -- kept as a literal copy here,
+#    not a cross-module import, to avoid coupling agent_12 to agent_04's
+#    internals; if agent_04's targets change, this table must be updated too).
+#  - keyword density is no longer scored as a reward (a fixed floor rewards
+#    keyword-stuffing); the only thing scored is the inverse -- an
+#    UNNATURALLY HIGH density is a real stuffing signal and is penalized,
+#    never rewarded for merely clearing a minimum.
+_TIER_TARGET_WORDS = {"PILLAR": 4200, "STANDARD": 4000, "OPPORTUNITY": 4000, "GOLD": 4000}
+_WORD_COUNT_TOLERANCE = 0.10  # +-10% of the tier's own target
+_KEYWORD_STUFFING_DENSITY_PCT = 2.5  # widely-cited SEO stuffing threshold; natural
+                                      # long-tail keyword prose lands well under 1%
+
 
 class QualityAssuranceAgent(BaseAgent):
     """
@@ -202,44 +220,60 @@ class QualityAssuranceAgent(BaseAgent):
         content = data.get("article_content", "")
         keyword = data.get("keyword", "").lower()
         title = data.get("title", "")
-        
+
         checks = {}
-        
+
         # Keyword in title
         checks["keyword_in_title"] = keyword in title.lower() if keyword else False
-        
-        # Keyword density
+
+        # Keyword density (2026-07-06 RECALIBRATION): reported for visibility only --
+        # no longer scored as a reward. A fixed density FLOOR rewards keyword-stuffing
+        # (verified on real content: a 6-7 word long-tail keyword naturally lands at
+        # ~0.1% density; reaching the old 0.3% floor needed ~13 literal repeats of the
+        # keyword's first 3 words, which is exactly the old-style stuffing this
+        # project's own EEAT/natural-writing goals argue against). The only thing
+        # still SCORED here is the inverse: a density that is UNNATURALLY HIGH is a
+        # real stuffing signal and is penalized in _calculate_seo_score, never
+        # rewarded for being merely present.
         if keyword and content:
             word_count = len(content.split())
             kw_count = len(re.findall(re.escape(" ".join(keyword.split()[:3])), content.lower()))
             density = (kw_count / word_count) * 100 if word_count > 0 else 0
             checks["keyword_density"] = round(density, 2)
-            checks["keyword_density_ok"] = density >= 0.3
-        
+            checks["keyword_stuffing_detected"] = density > _KEYWORD_STUFFING_DENSITY_PCT
+
         # Headings structure
         h2_count = len(re.findall(r'^## .+', content, re.MULTILINE))
         h3_count = len(re.findall(r'^### .+', content, re.MULTILINE))
         checks["h2_count"] = h2_count
         checks["h3_count"] = h3_count
         checks["has_good_structure"] = h2_count >= 5 and h3_count >= 8
-        
+
         # Meta description
         checks["has_meta_description"] = bool(data.get("meta_description"))
-        
+
         # Tables
         table_count = len(re.findall(r'^\|.+\|$', content, re.MULTILINE))
         checks["table_count"] = max(0, table_count // 2)  # Approximate table count
         checks["has_tables"] = checks["table_count"] > 0
-        
+
         # Internal links
         internal_links = len(re.findall(r'\[[^\]]+\]\([^)]+\)', content)) or data.get('internal_link_count', 0)
         checks["internal_link_count"] = internal_links
         checks["has_internal_links"] = internal_links >= 3
-        
-        # Word count
+
+        # Word count (2026-07-06 RECALIBRATION): was a fixed >= 5000 floor that NO
+        # tier this pipeline produces can ever reach (agent_04's own tier word caps:
+        # PILLAR max=4200, STANDARD/OPPORTUNITY/GOLD max=4000 -- all below 5000, a
+        # mathematical impossibility, not a content deficiency). Now checks that the
+        # article holds its OWN requested tier's target length within +-10% --
+        # measuring "did the writer hit its target", not an unrelated absolute number.
         checks["word_count"] = data.get("word_count", len(content.split()))
-        checks["word_count_ok"] = checks["word_count"] >= 5000
-        
+        target_words = _TIER_TARGET_WORDS.get((data.get("article_type") or "STANDARD").upper(),
+                                                _TIER_TARGET_WORDS["STANDARD"])
+        checks["tier_target_words"] = target_words
+        checks["word_count_ok"] = abs(checks["word_count"] - target_words) <= _WORD_COUNT_TOLERANCE * target_words
+
         return checks
     
     async def _audit_eeat(self, data: Dict) -> Dict:
@@ -368,16 +402,25 @@ class QualityAssuranceAgent(BaseAgent):
         return {"score": score, "word_count": word_count}
     
     def _calculate_seo_score(self, seo_check: Dict) -> float:
-        """Calculate SEO score from checks."""
+        """Calculate SEO score from checks. RECALIBRATED 2026-07-06: the old
+        keyword_density_ok reward (15 pts) is removed -- rewarding a density
+        FLOOR pushes toward keyword-stuffing, which this project's own EEAT/
+        natural-writing goals argue against. Its 15 points are redistributed
+        across the remaining 6 criteria (still summing to 100, weighted toward
+        has_good_structure -- the most substantive SEO signal of the six).
+        A NEW, separate penalty fires only for genuinely UNNATURAL density
+        (stuffing) -- it can only subtract from the 100 ceiling, never add."""
         score = 0
         if seo_check.get("keyword_in_title"): score += 15
-        if seo_check.get("keyword_density_ok"): score += 15
-        if seo_check.get("has_good_structure"): score += 20
+        if seo_check.get("has_good_structure"): score += 30
         if seo_check.get("has_meta_description"): score += 10
-        if seo_check.get("has_tables"): score += 10
+        if seo_check.get("has_tables"): score += 15
         if seo_check.get("has_internal_links"): score += 15
         if seo_check.get("word_count_ok"): score += 15
-        return min(100, score)
+        score = min(100, score)
+        if seo_check.get("keyword_stuffing_detected"):
+            score = max(0, score - 20)
+        return score
     
     def _calculate_eeat_score(self, eeat_check: Dict) -> float:
         """Calculate EEAT score from checks."""
@@ -531,7 +574,7 @@ def main():
             # data.get("uploaded_images")/("featured_image_id"), so this path ALWAYS saw
             # zero images regardless of what agent_11 actually uploaded (masked the point-1
             # image fallback on every run, independent of agent_11's own report-path bug).
-            qa_report = asyncio.run(agent.run({"article_content": content, "article_path": str(article_path), "title": title, "keyword": keyword, "meta_description": meta_description, "word_count": word_count, "faq_count": faq_count, "has_author": True, "has_author_bio": True, "uploaded_images": wp_report.get("uploaded_images", []), "featured_image_id": wp_report.get("featured_image_id")}))
+            qa_report = asyncio.run(agent.run({"article_content": content, "article_path": str(article_path), "title": title, "keyword": keyword, "meta_description": meta_description, "word_count": word_count, "faq_count": faq_count, "has_author": True, "has_author_bio": True, "uploaded_images": wp_report.get("uploaded_images", []), "featured_image_id": wp_report.get("featured_image_id"), "article_type": args.article_type}))
             log.info("QA complete via DI stack")
         except Exception as e:
             log.warning(f"DI QA failed: {e} -- using heuristic QA")
