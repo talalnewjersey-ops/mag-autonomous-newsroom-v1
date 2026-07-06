@@ -297,6 +297,55 @@ _DIGEST_ENT_BLACKLIST = {
 }
 _DIGEST_MAX_TOTAL_CHARS = 1400  # hard cap on reinjected digest (~350 tokens max)
 
+# CANADA REPETITION FIX (2026-07-06, Option B): _build_digest's existing "rules"
+# pattern only catches FORMAL legal citations ("... Act", "R.S.C. 1985") -- a
+# real control run showed the writer independently creating a SECOND dedicated
+# subsection ("### Your Legal Right to Open an Account") around a GENERIC
+# rights/permission claim ("you have the legal right to open a personal bank
+# account even without a job...") that the writer itself had already stated
+# narratively (no heading) earlier in the SAME article. Two additive trackers,
+# neither replaces nor loosens G3 (the repetition GATE stays untouched -- this
+# only gives the WRITER better information before it generates):
+#  1. _extract_headings: every H2/H3 heading already used, so a section is
+#     warned before creating a heading for a topic that already has one.
+#  2. _RIGHTS_CLAIM_RE + _rights_claim_already_made: a generic "you have the
+#     right to / are entitled to / do not need X" statement is a DIFFERENT
+#     shape than a formal Act citation, so it needs its own detector.
+_HEADING_RE = re.compile(r"^#{2,3}\s+(.+)$", re.MULTILINE)
+_RIGHTS_CLAIM_RE = re.compile(
+    r"\b(?:have the (?:legal )?right to|are entitled to|do not need|is not required to|"
+    r"regardless of (?:your |their )?employment)[^.\n]{0,60}",
+    re.IGNORECASE,
+)
+
+
+def _extract_headings(text_blocks: List[str]) -> List[str]:
+    """All H2/H3 heading TEXTS already used across the given blocks (intro +
+    written_sections so far), de-duplicated, in order -- so a later section can
+    be told which topics already have their own dedicated heading elsewhere."""
+    seen, headings = set(), []
+    for block in text_blocks:
+        for m in _HEADING_RE.finditer(block or ""):
+            h = m.group(1).strip()
+            key = h.lower()
+            if h and key not in seen:
+                seen.add(key)
+                headings.append(h)
+    return headings
+
+
+def _rights_claim_already_made(text_blocks: List[str]):
+    """The first generic rights/permission claim ("you have the right to...",
+    "are entitled to...", "do not need...") already stated anywhere in the given
+    blocks, or None. Bounded excerpt, used only as a reference example -- not
+    for exact-string matching (real occurrences are reworded each time, which
+    is WHY a heading- or sentence-level exact-dedup alone would miss this)."""
+    for block in text_blocks:
+        m = _RIGHTS_CLAIM_RE.search(block or "")
+        if m:
+            return re.sub(r"\s+", " ", m.group(0).strip())
+    return None
+
 
 def _build_digest(written_sections: List[str]) -> str:
     """Bounded, deterministic summary of what was already written, to reinject
@@ -596,6 +645,28 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
         # SPRINT 2 (B / RCA-004): cumulative context. Include the intro (where
         # entities/figures are first planted) plus all prior sections.
         digest = _build_digest([intro] + written_sections)
+        # CANADA REPETITION FIX (2026-07-06, Option B): headings already used +
+        # any rights/permission claim already made, so THIS section doesn't
+        # independently create a second dedicated subsection for either.
+        _headings_so_far = _extract_headings([intro] + written_sections)
+        _rights_so_far = _rights_claim_already_made([intro] + written_sections)
+        _repetition_guard_block = ""
+        if _headings_so_far or _rights_so_far:
+            _repetition_guard_block = "\n\n=== ALREADY GIVEN THEIR OWN SUBSECTION/STATEMENT ===\n"
+            if _headings_so_far:
+                _repetition_guard_block += ("Headings already used: " + "; ".join(_headings_so_far[:12]) + "\n")
+            if _rights_so_far:
+                _repetition_guard_block += (
+                    f'A rights/eligibility claim has ALREADY been stated (e.g. "{_rights_so_far}") -- '
+                    "do NOT restate this claim or give it its own subsection elsewhere; mention it in "
+                    "passing (half a sentence) only if directly relevant here.\n"
+                )
+            _repetition_guard_block += (
+                "INSTRUCTION: do not create a subsection whose topic duplicates one of the headings "
+                "above, and do not re-introduce an already-stated rights/eligibility claim as if for "
+                "the first time. This section's heading must cover a genuinely NEW topic.\n"
+                "=== END ===\n"
+            )
         # FIX-WRITER: curated official sources available in EACH section call (not just intro);
         # distributed via "already cited" hint so they spread instead of piling up. Gate unchanged.
         section_sources_block = ""
@@ -635,7 +706,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
             )
         try:
             sec_text = await _call_claude(api_key,
-                f"Write section ## {i+1}. {h2} for: {title} | {keyword}\n{sec_target}-{sec_target+150}w. Concise. No padding. BODY ONLY: no compliance disclaimer, no author bio, no brand slogan, no 'not financial advice' notice, no internal-link CTA in this section — those are written elsewhere exactly once.{digest_block}{section_sources_block}",
+                f"Write section ## {i+1}. {h2} for: {title} | {keyword}\n{sec_target}-{sec_target+150}w. Concise. No padding. BODY ONLY: no compliance disclaimer, no author bio, no brand slogan, no 'not financial advice' notice, no internal-link CTA in this section — those are written elsewhere exactly once.{digest_block}{_repetition_guard_block}{section_sources_block}",
                 SYSTEM_PROMPT, max_tokens=1800)
             written_sections.append(sec_text)
             await asyncio.sleep(0.2)
@@ -652,6 +723,23 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
         "length; if this section must reference one, state it briefly in your OWN words, "
         "not the same sentences used above) ===\n" + _covered + "\n=== END ===\n"
     ) if _covered else ""
+    # CANADA REPETITION FIX (2026-07-06, Option B): same heading/rights-claim guard
+    # as the body-section loop, so trailing sections (FAQ/Expert/closing/etc.) don't
+    # independently create a duplicate subsection either -- the real regression had
+    # the duplicate land in a body section, but nothing structurally prevents it from
+    # landing here instead.
+    _final_headings = _extract_headings([intro] + written_sections)
+    _final_rights = _rights_claim_already_made([intro] + written_sections)
+    if _final_headings or _final_rights:
+        _dedup_digest += "\n=== ALREADY GIVEN THEIR OWN SUBSECTION/STATEMENT ===\n"
+        if _final_headings:
+            _dedup_digest += "Headings already used: " + "; ".join(_final_headings[:12]) + "\n"
+        if _final_rights:
+            _dedup_digest += (
+                f'A rights/eligibility claim has ALREADY been stated (e.g. "{_final_rights}") -- '
+                "do NOT restate it or give it its own subsection/heading here.\n"
+            )
+        _dedup_digest += "=== END ===\n"
 
     comparison = await _call_claude(api_key,
         f"Write comparison table section for: {keyword} ({market}). H2 header. 4+ cols 6+ rows. 200-300w context.{_facts_and_rules}{_dedup_digest}",
