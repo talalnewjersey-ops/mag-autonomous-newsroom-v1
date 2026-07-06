@@ -9,6 +9,7 @@ GLOBAL RULE: Maximum quality per dollar. Search intent satisfaction > article le
 import argparse, asyncio, json, logging, os, re, sys
 from agents._source_pool import select_official_sources, has_curated_pool, resolve_vertical
 from agents._vertical_facts import VERTICAL_FACTS  # Couche 1: verified .gov facts to cite
+from agents._real_internal_links import fetch_real_posts, select_relevant_links  # POINT 4: live sitemap/REST, never a static dict
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -372,38 +373,6 @@ def _build_digest(written_sections: List[str]) -> str:
     return digest
 
 
-INTERNAL_LINKS = {
-    "canada_newcomer": [
-        "[Best Bank Account for Newcomers to Canada](https://moneyabroadguide.com/best-bank-account-newcomers-canada/)",
-        "[How to Build Credit in Canada as a Newcomer](https://moneyabroadguide.com/build-credit-canada-newcomer/)",
-        "[Health Insurance for Newcomers in Canada](https://moneyabroadguide.com/health-insurance-newcomers-canada/)",
-        "[Cost of Living in Canada 2026 Guide](https://moneyabroadguide.com/cost-of-living-canada/)",
-        "[First 90 Days in Canada Checklist](https://moneyabroadguide.com/first-90-days-canada-checklist/)",
-        "[Taxes for New Immigrants to Canada](https://moneyabroadguide.com/taxes-new-immigrants-canada/)",
-        "[Best Phone Plans for Newcomers in Canada](https://moneyabroadguide.com/best-phone-plans-newcomers-canada/)",
-        "[Canada Banking Mistakes to Avoid](https://moneyabroadguide.com/canada-banking-mistakes/)",
-    ],
-    "credit_cards": [
-        "[Best Credit Cards for New Immigrants](https://moneyabroadguide.com/best-credit-cards-immigrants/)",
-        "[Credit Score Guide for Immigrants](https://moneyabroadguide.com/credit-score-immigrants/)",
-        "[Best No-Foreign-Transaction-Fee Cards 2026](https://moneyabroadguide.com/no-foreign-transaction-fee-cards/)",
-        "[Best Banks for New Immigrants USA 2026](https://moneyabroadguide.com/best-banks-immigrants-usa/)",
-    ],
-    "banking": [
-        "[Best Banks for New Immigrants USA 2026](https://moneyabroadguide.com/best-banks-immigrants-usa/)",
-        "[How to Open a Bank Account Without SSN](https://moneyabroadguide.com/bank-account-no-ssn/)",
-        "[Wise vs Revolut for Expats](https://moneyabroadguide.com/wise-vs-revolut/)",
-        "[International Wire Transfer Guide](https://moneyabroadguide.com/international-wire-transfer/)",
-    ],
-    "default": [
-        "[Complete Expat Financial Guide](https://moneyabroadguide.com/expat-financial-guide/)",
-        "[Best Banks for New Immigrants USA 2026](https://moneyabroadguide.com/best-banks-immigrants-usa/)",
-        "[Best Bank Account for Newcomers to Canada](https://moneyabroadguide.com/best-bank-account-newcomers-canada/)",
-        "[International Money Transfer Guide](https://moneyabroadguide.com/international-money-transfer/)",
-        "[Tax Guide for Expats and Immigrants](https://moneyabroadguide.com/tax-guide-expats/)",
-    ]
-}
-
 def _build_facts_block(source_vertical: str) -> str:
     """Couche 1 (SUPPLY, not a guarantee): hand the writer VERIFIED .gov facts so it
     cites real figures instead of inventing them. This lowers the invention RATE; it
@@ -461,13 +430,22 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     else:
         topic_key = "default"
     # Source vertical (official-source pool) is routed on the registry market +
-    # category (deterministic) and is SEPARATE from topic_key (which drives
-    # INTERNAL_LINKS). US topics resolve to a us_* vertical or us_default; non-US
-    # topics fall back to the keyword-derived topic_key (e.g. canada_newcomer).
+    # category (deterministic). US topics resolve to a us_* vertical or
+    # us_default; non-US topics fall back to the keyword-derived topic_key
+    # (e.g. canada_newcomer) -- topic_key's only remaining use.
     source_vertical = resolve_vertical(market, category) or topic_key
-    links = INTERNAL_LINKS[topic_key]
+    # POINT 4 (2026-07-05): the static INTERNAL_LINKS dict was removed -- it had
+    # drifted to 18/21 (86%) dead links, hardcoded and never re-verified. A link
+    # is now offered ONLY if it is confirmed present in the LIVE WP REST API
+    # post list fetched right now; zero relevant real posts -> zero internal
+    # links for this article (acceptable; never invented/guessed). Fail-soft:
+    # an unreachable REST API returns [] (logged), never a crash, never a
+    # fallback to a stale list.
+    _real_posts = fetch_real_posts()
+    _relevant_posts = select_relevant_links(f"{keyword} {title}", _real_posts, n=tier["min_links"])
+    links = [f"[{p['title']}]({p['url']})" for p in _relevant_posts]
     _links_sel = links[:tier["min_links"]]
-    links_block = "\n".join(f"- {l}" for l in _links_sel)
+    links_block = "\n".join(f"- {l}" for l in _links_sel) if _links_sel else "(no relevant internal links found for this topic)"
     # SPRINT 2: split internal links so intro and Expert Recommendation never cite the SAME link verbatim.
     # NB: these blocks are already bounded by link COUNT (_links_sel[:_half]); NEVER char-slice them
     # ([:200]/[:300]) when interpolating into a prompt -- a char cut lands mid-URL and the model
