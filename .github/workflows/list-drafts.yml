@@ -1,7 +1,12 @@
 name: List WordPress Drafts (read-only diagnostic)
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      diagnose_ids:
+        description: "Comma-separated post IDs to also check directly by ID (context=edit, bypasses the list endpoint's own status filter/cache)"
+        required: false
+        default: ""
 
 # READ-ONLY: lists existing draft posts via the WP REST API so residual drafts
 # from prior control runs can be identified before a cleanup. Never writes to
@@ -20,4 +25,5 @@ jobs:
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
           WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
           WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          DIAGNOSE_IDS: ${{ github.event.inputs.diagnose_ids }}
         run: python3 scripts/list_wp_drafts.py
