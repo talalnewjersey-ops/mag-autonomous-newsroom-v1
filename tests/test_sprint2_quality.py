@@ -500,7 +500,9 @@ def test_section_call_injects_curated_sources():
     src = inspect.getsource(agent_04._write_article_standalone)
     assert "section_sources_block" in src
     assert "if has_curated_pool(source_vertical) and _official_sel:" in src
-    assert "{digest_block}{section_sources_block}" in src, \
+    # CANADA REPETITION FIX (2026-07-06) inserted _repetition_guard_block between
+    # digest_block and section_sources_block -- both original blocks stay, in order.
+    assert "{digest_block}{_repetition_guard_block}{section_sources_block}" in src, \
         "section prompt must include the sources block next to the digest"
 
 
