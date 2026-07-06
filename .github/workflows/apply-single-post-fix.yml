@@ -1,0 +1,35 @@
+name: Apply Single Post Fix (published-content audit)
+
+on:
+  workflow_dispatch:
+    inputs:
+      fix_file:
+        description: "Path to the fix spec (audit/pending_fixes/<name>.json)"
+        required: true
+
+# WRITES to WordPress -- but ONLY the one post named in the fix file, and
+# ONLY if its exact `old_text` is found exactly once in that post's current
+# content. Part of the published-content audit workstream, separate from
+# the article-generation pipeline. One article per run, by design -- no
+# batch input is accepted.
+jobs:
+  apply-fix:
+    name: "Apply one post fix"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Apply fix
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          FIX_FILE: ${{ github.event.inputs.fix_file }}
+        run: python3 scripts/apply_single_post_fix.py
+      - name: Upload post-fix content
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-fix-result
+          path: post_*_after_fix.json
