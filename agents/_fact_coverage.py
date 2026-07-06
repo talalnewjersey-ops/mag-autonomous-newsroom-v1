@@ -101,6 +101,23 @@ _BLANK_LINE_RE = re.compile(r"\n[ \t]*\n")
 # guard, "...after U.S. arrival..." was cut mid-abbreviation, right after "U.",
 # which excluded the actual citation later in the same real sentence.
 _SENTENCE_END_RE = re.compile(r"(?<!\b[A-Z])[.!?]")
+# A markdown link's DISPLAY TEXT is sometimes itself a domain-shaped string,
+# e.g. "[studyinthestates.dhs.gov](https://studyinthestates.dhs.gov/...)" --
+# another real case found while testing this redesign: the dots in the
+# display text (which comes BEFORE the real URL) were being treated as
+# sentence-enders, cutting the span short before the actual https:// URL
+# even started. A period/link-dot anywhere inside a markdown link's span
+# (display text OR URL) must never end a sentence -- the whole link is one
+# atomic unit.
+_MD_LINK_RE = re.compile(r"\[[^\]]*\]\([^)]*\)")
+
+
+def _link_spans(text):
+    return [(m.start(), m.end()) for m in _MD_LINK_RE.finditer(text)]
+
+
+def _inside_a_link(pos, link_spans):
+    return any(s <= pos < e for (s, e) in link_spans)
 
 
 def _block_span(text, pos):
@@ -124,18 +141,27 @@ def _block_span(text, pos):
     return lo, hi
 
 
-def _sentence_span(text, start, end):
+def _sentence_span(text, start, end, link_spans=None):
     """[lo, hi) of the sentence containing text[start:end]: bounded first by
     its paragraph/table-row block (_block_span), then narrowed to the nearest
-    preceding/following sentence-ending punctuation within that block. No
-    fixed length -- a citation anywhere in the SAME sentence is found,
-    however long that sentence is."""
+    preceding/following sentence-ending punctuation within that block -- a
+    punctuation mark INSIDE a markdown link's span (display text or URL) is
+    never treated as a sentence end (see _MD_LINK_RE). No fixed length -- a
+    citation anywhere in the SAME sentence is found, however long that
+    sentence is. `link_spans` may be precomputed once per text by the caller
+    (classify_claims) to avoid re-scanning the whole text per claim."""
+    if link_spans is None:
+        link_spans = _link_spans(text)
     block_lo, block_hi = _block_span(text, start)
     lo = block_lo
     for m in _SENTENCE_END_RE.finditer(text, block_lo, start):
-        lo = m.end()
-    m2 = _SENTENCE_END_RE.search(text, end, block_hi)
-    hi = m2.end() if m2 else block_hi
+        if not _inside_a_link(m.start(), link_spans):
+            lo = m.end()
+    hi = block_hi
+    for m in _SENTENCE_END_RE.finditer(text, end, block_hi):
+        if not _inside_a_link(m.start(), link_spans):
+            hi = m.end()
+            break
     return lo, hi
 
 
@@ -243,9 +269,10 @@ def classify_claims(text, vertical, url_finder=None):
     attach a covering STABLE fact. Returns [{start, end, is_attr, fact}],
     `fact` is None when uncovered."""
     url_finder = url_finder or _default_url_finder(text)
+    link_spans = _link_spans(text)
     out = []
     for m in _NUM_RE.finditer(text):
-        lo, hi = _sentence_span(text, m.start(), m.end())
+        lo, hi = _sentence_span(text, m.start(), m.end(), link_spans=link_spans)
         fact = covering_fact(m.group(0), url_finder(lo, hi), vertical)
         attr_lo = max(0, m.start() - _ATTR_CUE_WINDOW_CHARS)
         attr_hi = min(len(text), m.end() + _ATTR_CUE_WINDOW_CHARS)
