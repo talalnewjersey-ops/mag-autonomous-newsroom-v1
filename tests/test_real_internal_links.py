@@ -123,6 +123,89 @@ def test_min_overlap_prevents_a_forced_tenuous_match():
     assert rel == []
 
 
+# ---------------- ratio floor (2026-07-06): the 3 REAL control-run cases ----------------
+# Fixtures below are the ACTUAL real post titles/URLs fetched live from the site
+# during the control run (not invented) -- frozen here so the test is offline
+# and doesn't depend on the live site's content staying identical over time.
+
+_REAL_SUBSET_FOR_AUTO_INSURANCE = [
+    {"title": "Best High-Interest Savings Accounts For International Students In Canada: Complete Guide for Canada &#8211; International Students Immigrants (2026)",
+     "url": "https://moneyabroadguide.com/best-high-interest-savings-accounts-for-international-students-in-canada-complete-guide-for-canada-i/"},
+    {"title": "Best Banks For Canadian Newcomers International Students: Complete Guide for Canada Immigrants (2026)",
+     "url": "https://moneyabroadguide.com/best-banks-for-canadian-newcomers-international-students-complete-guide-for-canada-immigrants-2026/"},
+    {"title": "How to Open a Bank Account in Canada as an International Student (2026 Guide)",
+     "url": "https://moneyabroadguide.com/student-bank-account-canada-newcomers-2026/"},
+    {"title": "Health Insurance for New Immigrants in the USA (2026 Complete Guide)",
+     "url": "https://moneyabroadguide.com/health-insurance-new-immigrants-usa/"},
+]
+
+_REAL_SUBSET_FOR_BANK_ACCOUNTS = [
+    {"title": "Best Bank Accounts for Newcomers to Canada (2026 Guide)",
+     "url": "https://moneyabroadguide.com/best-bank-accounts-newcomers-canada-2026/"},
+    {"title": "Best ITIN-Friendly Bank Accounts for New Immigrants in the USA (2026)",
+     "url": "https://moneyabroadguide.com/best-itin-friendly-bank-accounts-usa/"},
+    {"title": "How to Open a Bank Account as a Newcomer in the USA (2026 Guide)",
+     "url": "https://moneyabroadguide.com/open-bank-account-newcomer-usa-2026/"},
+    {"title": "Best High-Interest Savings Accounts for Newcomers to Canada (2026 Guide)",
+     "url": "https://moneyabroadguide.com/high-interest-savings-newcomers-canada-2026/"},
+    {"title": "RBC vs Scotiabank vs TD for Newcomers Canada 2026: Which Big Bank Wins?",
+     "url": "https://moneyabroadguide.com/rbc-vs-scotiabank-vs-td-newcomers/"},
+]
+
+_REAL_SUBSET_FOR_PERSONAL_LOANS = [
+    {"title": "How to Rent Without Credit History in Canada 2026: No Credit Check Options",
+     "url": "https://moneyabroadguide.com/rent-without-credit-canada/"},
+    {"title": "Best Credit Cards for Newcomers in Canada (2026 Complete Guide)",
+     "url": "https://moneyabroadguide.com/best-credit-cards-newcomers-canada/"},
+    {"title": "Building Credit in Canada for Newcomers: 2026 Complete Guide",
+     "url": "https://moneyabroadguide.com/building-credit-canada-newcomers-2026/"},
+]
+
+
+def test_real_case_auto_insurance_zero_links_ratio_too_low():
+    # Best real candidates only share "international"+"students" (overlap=2) out
+    # of the query's 6 distinctive words (car/insurance/foreign/drivers/
+    # international/students) -- ratio 0.33, below the 0.5 floor. NONE of the
+    # query's actual topic (car/insurance/foreign/drivers) is represented.
+    query = ("car insurance for foreign drivers and international students Best Car "
+             "Insurance For Foreign Drivers And International Students: Complete Guide "
+             "for USA Immigrants (2026)")
+    rel = ril.select_relevant_links(query, _REAL_SUBSET_FOR_AUTO_INSURANCE, n=4)
+    assert rel == []
+
+
+def test_real_case_bank_accounts_three_links_ratio_067():
+    query = ("best newcomer bank accounts in canada Best Newcomer Bank Accounts In "
+             "Canada: Complete Guide for Canada Immigrants (2026)")
+    rel = ril.select_relevant_links(query, _REAL_SUBSET_FOR_BANK_ACCOUNTS, n=4)
+    urls = {p["url"] for p in rel}
+    assert len(rel) == 3
+    assert urls == {
+        "https://moneyabroadguide.com/best-bank-accounts-newcomers-canada-2026/",
+        "https://moneyabroadguide.com/best-itin-friendly-bank-accounts-usa/",
+        "https://moneyabroadguide.com/open-bank-account-newcomer-usa-2026/",
+    }
+
+
+def test_real_case_personal_loans_one_link_at_inclusive_ratio_050():
+    # Exactly at the boundary (overlap=2/4=0.50) -- inclusive: it PASSES.
+    query = ("personal loans for immigrants no credit history Best Personal Loans For "
+             "Immigrants No Credit History: Complete Guide for USA Immigrants (2026)")
+    rel = ril.select_relevant_links(query, _REAL_SUBSET_FOR_PERSONAL_LOANS, n=4)
+    assert len(rel) == 1
+    assert rel[0]["url"] == "https://moneyabroadguide.com/rent-without-credit-canada/"
+
+
+def test_ratio_boundary_is_inclusive_not_exclusive():
+    # Sanity-check the boundary logic directly: overlap=2, query has 4 tokens ->
+    # ratio EXACTLY 0.5 -> must pass (>=), not fail (>).
+    assert ril.select_relevant_links(
+        "alpha beta gamma delta",
+        [{"title": "alpha beta", "url": "https://moneyabroadguide.com/x/"}],
+        n=1,
+    ) != []
+
+
 # ---------------- end-to-end: "sitemap/REST down" -> zero internal links ----------------
 
 def test_rest_api_down_yields_zero_internal_links_end_to_end(monkeypatch):
