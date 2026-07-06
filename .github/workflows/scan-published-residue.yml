@@ -1,0 +1,29 @@
+name: Scan Published Articles for Pipeline Residue (read-only diagnostic)
+
+on:
+  workflow_dispatch:
+
+# READ-ONLY: scans every PUBLISHED WordPress post for leaked pipeline-
+# internal text. Separate workstream from the article-generation pipeline
+# (production_v2.yml). Never writes to WordPress, never deletes, never
+# redirects, never merges anything.
+jobs:
+  scan-residue:
+    name: "Scan published posts for residue"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Scan published posts
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+        run: python3 scripts/scan_published_residue.py
+      - name: Upload scan results
+        uses: actions/upload-artifact@v4
+        with:
+          name: published-residue-scan
+          path: residue_scan_results.json
