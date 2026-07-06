@@ -15,7 +15,13 @@ Safety, per the user's explicit rules for this workstream:
     single, identical, verbatim artifact repeated within ONE article
     (e.g. a literal "<p>---</p>" markdown-separator leak appearing many
     times) -- never for distinct texts across multiple articles.
-  - Never touches title, status, slug, or any other field -- only content.
+  - Two fix-file shapes, mutually exclusive:
+      1. {"post_id", "old_text", "expected_count"} -- remove an exact,
+         verified-count substring from the post's raw CONTENT.
+      2. {"post_id", "set_excerpt": "..."} -- set the post's EXCERPT field
+         to an explicit, pre-approved value (used when the issue is an
+         empty/auto-generated excerpt, not literal residue to remove).
+  - Never touches title, status, slug, or any other field.
   - Caller is expected to have already written a pre-edit backup (see
     scripts/fetch_one_post.py) before this runs.
 """
@@ -33,10 +39,10 @@ def fetch_post(wp_url, user, app_password, post_id):
         return json.loads(resp.read().decode("utf-8"))
 
 
-def update_post_content(wp_url, user, app_password, post_id, new_content):
+def update_post_field(wp_url, user, app_password, post_id, field, value):
     auth = base64.b64encode(f"{user}:{app_password}".encode()).decode()
     url = f"{wp_url.rstrip('/')}/wp-json/wp/v2/posts/{post_id}"
-    payload = json.dumps({"content": new_content}).encode("utf-8")
+    payload = json.dumps({field: value}).encode("utf-8")
     req = urllib.request.Request(url, data=payload, method="POST", headers={
         "Authorization": f"Basic {auth}",
         "Content-Type": "application/json",
@@ -54,23 +60,28 @@ def main():
     with open(fix_path, "r", encoding="utf-8") as f:
         fix = json.load(f)
     post_id = fix["post_id"]
-    old_text = fix["old_text"]
-    expected_count = fix.get("expected_count", 1)
 
     post = fetch_post(wp_url, user, app_pw, post_id)
-    content = post["content"]["raw"]
 
-    count = content.count(old_text)
-    if count != expected_count:
-        print(f"REFUSING TO WRITE: expected exactly {expected_count} occurrence(s) of old_text, found {count}.")
-        print("No change made. Fix old_text/expected_count to match the current live content exactly.")
-        raise SystemExit(1)
+    if "set_excerpt" in fix:
+        result = update_post_field(wp_url, user, app_pw, post_id, "excerpt", fix["set_excerpt"])
+        print(f"Updated post {post_id} excerpt.")
+        print("New excerpt (rendered):", result.get("excerpt", {}).get("rendered", ""))
+    else:
+        old_text = fix["old_text"]
+        expected_count = fix.get("expected_count", 1)
+        content = post["content"]["raw"]
 
-    new_content = content.replace(old_text, "")
-    result = update_post_content(wp_url, user, app_pw, post_id, new_content)
+        count = content.count(old_text)
+        if count != expected_count:
+            print(f"REFUSING TO WRITE: expected exactly {expected_count} occurrence(s) of old_text, found {count}.")
+            print("No change made. Fix old_text/expected_count to match the current live content exactly.")
+            raise SystemExit(1)
 
-    print(f"Updated post {post_id}.")
-    print("New content length:", len(result.get("content", {}).get("rendered", "")))
+        new_content = content.replace(old_text, "")
+        result = update_post_field(wp_url, user, app_pw, post_id, "content", new_content)
+        print(f"Updated post {post_id} content.")
+        print("New content length:", len(result.get("content", {}).get("rendered", "")))
 
     with open(f"post_{post_id}_after_fix.json", "w", encoding="utf-8") as f:
         json.dump(result, f, indent=2, ensure_ascii=False)
