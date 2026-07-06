@@ -85,6 +85,78 @@ GEMINI_SPECS = {
     "comparison_table":   {"width": 1200, "height": 675,  "aspect": "16:9", "aspect_ratio": "16:9"},
 }
 
+# 2026-07-06 FIX (image content off-topic): the featured/supporting image
+# prompts used to pick a SUBJECT from a hardcoded, 7-bucket "broad category"
+# dict keyed by simple keyword counting over the whole article (see the
+# removed `topic_context`/`topic_scenes` dicts in git history) -- a CAR
+# insurance article and a HEALTH insurance article both landed in the same
+# "insurance" bucket, whose hardcoded visual was "diverse family protected
+# under symbolic umbrella" (a health/life insurance scene), producing a
+# family-in-a-living-room image on a car insurance article. Replaced with a
+# deterministic subject-injection approach: the REAL article subject
+# (keyword, not a category) is embedded directly in the prompt and grounded
+# toward a concrete, photographable scene -- no LLM call, no per-topic
+# bucket list to maintain as new verticals are added. Verified empirically
+# (real Gemini calls, not just reasoned about) on 3 genuinely ABSTRACT
+# topics before this landed -- savings, credit-building, money transfer --
+# all three produced clearly on-topic, concrete images.
+_CONTENT_GUARDRAIL = (
+    "No text overlays, no numbers, no watermarks, no logos, no brand names, "
+    "no readable signage, no identifiable real individuals -- only anonymous, "
+    "generic figures if a person appears"
+)
+
+
+def _clean_title_for_subject(title: str) -> str:
+    """Strip generic SEO/marketing boilerplate down to the core topic phrase,
+    e.g. 'Best Car Insurance For Foreign Drivers And International Students:
+    Complete Guide for USA Immigrants (2026)' -> 'Car Insurance For Foreign
+    Drivers And International Students'. Used only as a FALLBACK when no
+    structured keyword is available (see _resolve_subject)."""
+    t = re.sub(r"^(?:Best|Ultimate|Top)\s+", "", title, flags=re.IGNORECASE)
+    t = re.sub(r":?\s*Complete Guide.*$", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"\(\s*20\d\d\s*\)", "", t)
+    return t.strip(" :-")
+
+
+def _resolve_subject(meta: dict, metadata_json: dict = None) -> str:
+    """The real article subject the image prompt should be built from, most
+    reliable source first -- NEVER falls through to an empty string (an
+    empty subject is exactly what re-opens the generic/off-topic risk this
+    fix closes):
+      1. article_metadata.json's `keyword` (agent_04's exact, structured SEO
+         phrase -- no marketing boilerplate like "Best"/"Complete Guide").
+      2. that same file's `title`, cleaned of boilerplate.
+      3. the title already best-effort-extracted from the draft text itself.
+      4. a safe, still-financial generic default.
+    """
+    if metadata_json:
+        kw = (metadata_json.get("keyword") or "").strip()
+        if kw:
+            return kw
+        json_title = (metadata_json.get("title") or "").strip()
+        if json_title:
+            return _clean_title_for_subject(json_title)
+    title = (meta.get("title") or "").strip()
+    if title:
+        return _clean_title_for_subject(title)
+    return "personal finance and banking services"
+
+
+def _subject_scene_phrase(subject: str) -> str:
+    """Deterministic subject -> visual grounding, no LLM call. Embeds the
+    real subject verbatim and nudges toward a concrete, photographable
+    scene (device/app-screen/document) rather than an abstract or symbolic
+    render -- this is what made the empirically-tested abstract topics
+    (savings, credit-building, money transfer) work, not just the visually
+    obvious ones (a car for car insurance)."""
+    return (
+        f"an authentic, real-world editorial scene grounded in the everyday, tangible side of "
+        f"'{subject}' -- a person engaging with a relevant physical setting, device, app screen, "
+        f"or document, photographed in a realistic, non-symbolic style"
+    )
+
+
 # Nano Banana compatible specs (fallback, not used in Gemini-only mode)
 NANO_BANANA_SPECS = {
     "featured_image":     {"width": 1200, "height": 675,  "model": "realistic"},
@@ -105,7 +177,6 @@ class ImagePromptGeneratorAgent(BaseAgent):
 
     def __init__(self, config: dict):
         super().__init__(agent_id="agent_09", name="ImagePromptGeneratorAgent", config=config)
-        self.llm_service = None
         self.image_provider = config.get("image_provider", "gemini")
         self.site_name = config.get("site_name", "MoneyAbroadGuide.com")
 
@@ -113,6 +184,7 @@ class ImagePromptGeneratorAgent(BaseAgent):
         self,
         article_draft_path: str,
         article_outline_path: str = None,
+        article_metadata_path: str = None,
         output_dir: str = "outputs",
     ) -> dict:
         """Generate all required image prompts for the article."""
@@ -126,7 +198,22 @@ class ImagePromptGeneratorAgent(BaseAgent):
 
         # Extract article metadata
         meta = self._extract_metadata(article_text)
-        self.logger.info(f"Article: {meta['title']} | Market: {meta['market']}")
+
+        # 2026-07-06 FIX: prefer agent_04's own structured article_metadata.json
+        # (exact keyword/title, no re-inference needed) over the best-effort
+        # text extraction above -- see _resolve_subject for the full fallback
+        # chain. Missing/unreadable file is not fatal: falls back cleanly.
+        metadata_json = None
+        if article_metadata_path:
+            metadata_path = Path(article_metadata_path)
+            if metadata_path.exists():
+                try:
+                    metadata_json = json.loads(metadata_path.read_text(encoding="utf-8"))
+                except Exception as e:
+                    self.logger.warning(f"Could not read article_metadata.json: {e}")
+        meta["subject"] = _resolve_subject(meta, metadata_json)
+
+        self.logger.info(f"Article: {meta['title']} | Market: {meta['market']} | Subject: {meta['subject']}")
 
         # Extract H2 sections for section images
         sections = self._extract_sections(article_text)
@@ -149,13 +236,6 @@ class ImagePromptGeneratorAgent(BaseAgent):
 
         # 5. Supporting graphic (contextual lifestyle / finance image, 16:9)
         prompts["supporting_graphic"] = self._generate_supporting_graphic_prompt(meta)
-
-        # LLM enhancement for richer prompts
-        if self.llm_service:
-            try:
-                prompts = await self._llm_enhance_prompts(prompts, article_text, meta)
-            except Exception as e:
-                self.logger.warning(f"LLM prompt enhancement failed: {e}")
 
         # Add provider-specific specs
         final_prompts = self._add_provider_specs(prompts)
@@ -185,7 +265,6 @@ class ImagePromptGeneratorAgent(BaseAgent):
         meta = {
             "title": "",
             "market": "both",
-            "topic": "",
             "keywords": [],
         }
         lines = text.split("\n")[:10]
@@ -201,22 +280,7 @@ class ImagePromptGeneratorAgent(BaseAgent):
             meta["market"] = "usa"
         elif canada_signals > usa_signals * 1.5:
             meta["market"] = "canada"
-        meta["topic"] = self._infer_topic(text)
         return meta
-
-    def _infer_topic(self, text: str) -> str:
-        text_lower = text.lower()
-        topics = {
-            "banking": ["bank account", "checking", "savings account", "banking"],
-            "money_transfer": ["transfer", "send money", "remittance", "wire transfer"],
-            "credit_cards": ["credit card", "rewards", "cashback", "points"],
-            "taxes": ["tax", "irs", "cra", "filing", "return"],
-            "insurance": ["insurance", "coverage", "policy", "premium"],
-            "immigration": ["visa", "immigration", "permit", "pr", "citizenship"],
-            "investing": ["invest", "portfolio", "etf", "rrsp", "401k"],
-        }
-        scores = {topic: sum(1 for kw in kws if kw in text_lower) for topic, kws in topics.items()}
-        return max(scores, key=scores.get) if max(scores.values()) > 0 else "general_finance"
 
     def _extract_sections(self, text: str) -> list:
         sections = []
@@ -241,7 +305,7 @@ class ImagePromptGeneratorAgent(BaseAgent):
         """Generate publication-grade featured image prompt (1200x675, 16:9)."""
         title = meta["title"]
         market = meta["market"]
-        topic = meta["topic"]
+        subject = meta["subject"]
         style = IMAGE_STYLES["publication_finance"]
 
         market_context = {
@@ -250,25 +314,15 @@ class ImagePromptGeneratorAgent(BaseAgent):
             "both": "International finance hub, diverse multicultural professionals, global financial services",
         }
 
-        topic_context = {
-            "banking": "diverse newcomer professional opening bank account on laptop in modern Canadian bank branch, warm welcoming atmosphere",
-            "money_transfer": "hands holding smartphone showing international money transfer app, financial connectivity",
-            "credit_cards": "professional hand holding premium credit card, contactless payment terminal, modern financial lifestyle",
-            "taxes": "organized tax documents, calculator, laptop on clean desk, professional tax filing environment",
-            "insurance": "diverse family protected under symbolic umbrella, health insurance concept, trust and security",
-            "immigration": "passport, airplane window with city view, new arrival excitement, opportunity ahead",
-            "investing": "financial charts on screens, growth upward trajectory, confident investor, wealth building",
-        }
-
         prompt = (", ".join([
             f"Ultra realistic magazine editorial hero image, financial publication quality",
-            f"Subject: {topic_context.get(topic, 'diverse professional financial services scene')}",
+            f"Subject: {_subject_scene_phrase(subject)}",
             f"Setting: {market_context.get(market, market_context['both'])}",
             style["style"],
             style["lighting"],
             style["color_palette"],
             style["quality"],
-            "No text overlays, no watermarks, no logos, pristine editorial photography",
+            _CONTENT_GUARDRAIL,
             f"Avoid: {style['avoid']}",
         ]))
 
@@ -276,20 +330,20 @@ class ImagePromptGeneratorAgent(BaseAgent):
             "image_type": "featured_image",
             "prompt": prompt,
             "alt_text": f"Featured: {title[:80]}",
-            "caption": f"Complete guide to {topic.replace('_', ' ')} for newcomers",
+            "caption": f"Complete guide to {subject}",
             "description": f"Publication-grade featured image for {title[:60]}",
-            "keywords": [topic, market, "expat", "newcomer", "finance", "moneyabroadguide"],
+            "keywords": [subject, market, "expat", "newcomer", "finance", "moneyabroadguide"],
             "format": "jpg",
         }
 
     def _generate_comparison_graphic_prompt(self, meta: dict, article_text: str) -> dict:
         """Generate comparison graphic prompt (side-by-side analysis, 16:9)."""
-        topic = meta["topic"]
+        subject = meta["subject"]
         style = IMAGE_STYLES["comparison_table"]
         has_table = "|" in article_text and "---" in article_text
 
         prompt = (", ".join([
-            f"Professional financial comparison chart graphic for {topic.replace('_', ' ')} guide",
+            f"Professional financial comparison chart graphic for {subject} guide",
             "Ultra clean minimalist design, side-by-side comparison columns with checkmarks and feature icons",
             "Publication quality data visualization, magazine style infographic",
             "Deep blue and white color scheme, green checkmarks, clear hierarchy",
@@ -302,23 +356,23 @@ class ImagePromptGeneratorAgent(BaseAgent):
         return {
             "image_type": "comparison_graphic",
             "prompt": prompt,
-            "alt_text": f"Comparison guide: {topic.replace('_', ' ')} options for newcomers",
-            "caption": f"Comparing the best {topic.replace('_', ' ')} options",
-            "description": f"Professional comparison graphic for {topic} guide",
+            "alt_text": f"Comparison guide: {subject} options for newcomers",
+            "caption": f"Comparing the best {subject} options",
+            "description": f"Professional comparison graphic for {subject} guide",
             "has_existing_table": has_table,
             "format": "png",
         }
 
     def _generate_checklist_graphic_prompt(self, meta: dict, sections: list) -> dict:
         """Generate checklist graphic prompt (portrait, 9:16 vertical)."""
-        topic = meta["topic"]
+        subject = meta["subject"]
         market = meta["market"]
         style = IMAGE_STYLES["infographic"]
         section_titles = [s["heading"] for s in sections[:5]]
         steps_text = " | ".join(section_titles[:4]) if section_titles else "Step-by-step guide"
 
         prompt = (", ".join([
-            f"Professional checklist infographic for {topic.replace('_', ' ')} newcomer guide",
+            f"Professional checklist infographic for {subject} newcomer guide",
             f"Vertical portrait format, numbered checklist items with checkbox icons",
             f"Steps overview: {steps_text[:150]}",
             "Clean flat design, professional icons, modern financial publication quality",
@@ -331,23 +385,23 @@ class ImagePromptGeneratorAgent(BaseAgent):
         return {
             "image_type": "checklist_graphic",
             "prompt": prompt,
-            "alt_text": f"Step-by-step checklist: {topic.replace('_', ' ')} guide for {market} newcomers",
-            "caption": f"Complete {topic.replace('_', ' ')} checklist",
-            "description": f"Visual checklist infographic for {topic} newcomer guide",
+            "alt_text": f"Step-by-step checklist: {subject} guide for {market} newcomers",
+            "caption": f"Complete {subject} checklist",
+            "description": f"Visual checklist infographic for {subject} newcomer guide",
             "steps": section_titles[:5],
             "format": "png",
         }
 
     def _generate_process_graphic_prompt(self, meta: dict, sections: list) -> dict:
         """Generate process/flow graphic prompt (how-it-works, 16:9)."""
-        topic = meta["topic"]
+        subject = meta["subject"]
         market = meta["market"]
         style = IMAGE_STYLES["infographic"]
         section_titles = [s["heading"] for s in sections[:4]]
         steps_text = " → ".join(section_titles[:4]) if section_titles else "Apply → Verify → Approve → Complete"
 
         prompt = (", ".join([
-            f"Professional process flow diagram for {topic.replace('_', ' ')} in {market}",
+            f"Professional process flow diagram for {subject} in {market}",
             f"Horizontal flow chart showing step-by-step process: {steps_text[:150]}",
             "Ultra clean flat design, numbered steps with connecting arrows, modern icons",
             "Deep navy blue and white, orange accent arrows, professional publication quality",
@@ -359,28 +413,18 @@ class ImagePromptGeneratorAgent(BaseAgent):
         return {
             "image_type": "process_graphic",
             "prompt": prompt,
-            "alt_text": f"How to {topic.replace('_', ' ')}: step-by-step process for newcomers",
-            "caption": f"How the {topic.replace('_', ' ')} process works",
-            "description": f"Process flow diagram for {topic} guide",
+            "alt_text": f"How to {subject}: step-by-step process for newcomers",
+            "caption": f"How the {subject} process works",
+            "description": f"Process flow diagram for {subject} guide",
             "steps": section_titles[:4],
             "format": "png",
         }
 
     def _generate_supporting_graphic_prompt(self, meta: dict) -> dict:
         """Generate contextual supporting image (lifestyle/finance scene, 16:9)."""
-        topic = meta["topic"]
+        subject = meta["subject"]
         market = meta["market"]
         style = IMAGE_STYLES["publication_finance"]
-
-        topic_scenes = {
-            "banking": "young diverse professional smiling confidently while using banking app on phone, modern city background",
-            "money_transfer": "multicultural family video calling relatives while showing phone with successful money transfer confirmation",
-            "credit_cards": "professional using premium card for contactless payment at modern retail establishment",
-            "taxes": "confident professional reviewing organized financial documents at clean modern desk, success feeling",
-            "insurance": "diverse young family feeling secure and protected, modern home, financial peace of mind",
-            "immigration": "newcomer professional arriving in new city with skyline background, hopeful and confident expression",
-            "investing": "financial advisor showing growth portfolio on tablet to client, modern office setting",
-        }
 
         canada_elements = {
             "canada": "Toronto or Vancouver skyline subtly visible, Canadian multicultural setting",
@@ -390,46 +434,24 @@ class ImagePromptGeneratorAgent(BaseAgent):
 
         prompt = (", ".join([
             f"Ultra realistic lifestyle editorial photography, magazine quality",
-            f"Scene: {topic_scenes.get(topic, 'diverse professionals in modern financial services environment')}",
+            f"Scene: {_subject_scene_phrase(subject)}",
             f"Context: {canada_elements.get(market, canada_elements['both'])}",
             style["style"],
             style["lighting"],
             style["color_palette"],
             style["quality"],
-            "No text overlays, authentic real-life feel, editorial photography standard",
+            _CONTENT_GUARDRAIL,
             f"Avoid: {style['avoid']}",
         ]))
 
         return {
             "image_type": "supporting_graphic",
             "prompt": prompt,
-            "alt_text": f"Supporting image: {topic.replace('_', ' ')} lifestyle for {market} newcomers",
-            "caption": f"Real stories: newcomers navigating {topic.replace('_', ' ')}",
-            "description": f"Lifestyle supporting image for {topic} newcomer guide",
+            "alt_text": f"Supporting image: {subject} lifestyle for {market} newcomers",
+            "caption": f"Real stories: newcomers navigating {subject}",
+            "description": f"Lifestyle supporting image for {subject} newcomer guide",
             "format": "jpg",
         }
-
-    async def _llm_enhance_prompts(self, prompts: dict, article_text: str, meta: dict) -> dict:
-        title = meta["title"]
-        existing = json.dumps({k: v.get("prompt", "")[:100] for k, v in prompts.items()}, indent=2)
-        llm_prompt = (
-            f"You are an image prompt expert for {self.site_name}.\n"
-            f"Article: {title}\nTopic: {meta['topic']}\nMarket: {meta['market']}\n\n"
-            "Enhance these prompts to be more specific and photorealistic:\n"
-            f"{existing}\n\n"
-            "Return JSON with same keys, enhanced prompts only."
-        )
-        response = await self.llm_service.complete(llm_prompt, max_tokens=1200)
-        try:
-            start = response.find("{")
-            end = response.rfind("}") + 1
-            enhanced = json.loads(response[start:end])
-            for key, enhanced_prompt in enhanced.items():
-                if key in prompts and isinstance(enhanced_prompt, str) and len(enhanced_prompt) > 50:
-                    prompts[key]["prompt"] = enhanced_prompt
-        except Exception as e:
-            self.logger.warning(f"LLM prompt enhancement parse error: {e}")
-        return prompts
 
     def _add_provider_specs(self, prompts: dict) -> dict:
         specs = GEMINI_SPECS if self.image_provider == "gemini" else NANO_BANANA_SPECS
@@ -470,6 +492,11 @@ def main():
     parser.add_argument("--input", required=True, help="Path to article_draft.md")
     parser.add_argument("--output", required=True, help="Output path for image_prompts.json")
     parser.add_argument("--count", type=int, default=5, help="Number of images to generate prompts for")
+    # 2026-07-06 FIX: optional, structured source of the real article subject
+    # (agent_04's own article_metadata.json, written right alongside the
+    # draft) -- see _resolve_subject. Missing/omitted is not fatal: falls
+    # back to best-effort extraction from the draft text itself.
+    parser.add_argument("--metadata", default=None, help="Path to agent_04's article_metadata.json (optional)")
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -487,6 +514,7 @@ def main():
         import asyncio
         result = asyncio.run(agent.run(
             article_draft_path=str(input_path),
+            article_metadata_path=args.metadata,
             output_dir=str(output_path.parent)
         ))
         prompts = result.get("prompts", result.get("image_prompts", []))

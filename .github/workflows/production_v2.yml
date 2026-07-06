@@ -361,6 +361,7 @@ jobs:
             echo "[${ARTICLE_NUM}] Phase 9: Image Prompts"
             python -m agents.agent_09_image_prompt_generator \
               --input "${ARTICLE_DIR}/agent_04/article_draft.md" \
+              --metadata "${ARTICLE_DIR}/agent_04/article_metadata.json" \
               --output "${ARTICLE_DIR}/agent_09/image_prompts.json" \
               --count ${{ env.MIN_IMAGES }} || true
 
