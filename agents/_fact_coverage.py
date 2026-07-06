@@ -47,24 +47,41 @@ import re
 from agents._claims import _ATTR_RE, _NUM_RE, _URL_IN
 from agents._vertical_facts import VERTICAL_FACTS
 
-# PROXIMITY WINDOW (2026-07-06): widened from 100 to 150 after a real false
-# positive (2026-07-06 control run, us_auto): a sentence citing multiple
-# dollar figures before a single trailing citation -- e.g. "Texas requires
-# ... $30,000 bodily injury per person, $60,000 per accident, and $25,000
-# property damage -- [per the Texas DOI](url)." -- had its FIRST figure fall
-# outside a 100-char window while later figures (closer to the link) stayed
-# covered. Measured on the real article: the two false positives sat 119 and
-# 134 chars from their own correct citation; 150 is the minimal round number
-# that covers both with margin (empirically, 140 was already sufficient).
-# SAFE BY CONSTRUCTION, not just by choice of number: widening this window
-# can only affect whether the CORRECT source_url is found nearby -- it can
-# never relax `covering_fact`'s separate, unconditional requirement that the
-# claim's own numeric token exactly equal one of that fact's engraved
-# tokens. A fabricated/divergent value sitting next to the right link stays
-# uncovered at ANY window size (verified up to a window of 999999 chars) --
-# see tests/test_proximity_window_150.py for both properties, proven, not
-# just asserted.
-PROXIMITY_WINDOW_CHARS = 150
+# PROXIMITY CHECK REDESIGN (2026-07-06): a fixed character window was tried
+# first (100, then widened to 150 -- see git history/tests/test_proximity_
+# window_150.py) but kept getting beaten by longer real sentences: Texas/NY
+# state minimums sat 119/134 chars from their citation (fixed by 150), then a
+# THIRD real case -- "students must wait at least 10 days after U.S. arrival
+# and at least 2 government business days after their SEVIS record is marked
+# Active before applying for a state driver's license -- [DHS link]" -- sat
+# 203 chars away, beating 150 too. A fixed window is structurally guaranteed
+# to keep losing this way; there is no "big enough" number, only a bigger
+# real sentence waiting to be written.
+#
+# Replaced with a SENTENCE boundary: a claim's citation is "nearby" if it
+# sits in the SAME SENTENCE, regardless of how many words that takes -- see
+# _sentence_span(). This closes the whole class of "longer sentence beats
+# the window" false positives, not just the 3 instances found so far.
+#
+# SAFE BY CONSTRUCTION, same argument as the old fixed window: widening what
+# counts as "nearby" can only affect whether the CORRECT source_url is found
+# -- it can never relax `covering_fact`'s separate, unconditional requirement
+# that the claim's own numeric token exactly equal one of that fact's
+# engraved tokens. A fabricated/divergent value in the same sentence as the
+# right link still stays uncovered (verified with a window of 999999 chars
+# in the old design; a same-sentence span is bounded even MORE tightly than
+# that, so the property holds a fortiori).
+#
+# TABLE-ROW / PARAGRAPH SAFETY: markdown table cells rarely contain a period,
+# so a naive "nearest .!?" search could otherwise let a claim in one table
+# row "borrow" a citation from unrelated PROSE many paragraphs later (a real
+# near-miss found during this redesign: a comparison table's last row sat
+# right before a citation-bearing paragraph with no period in between). Two
+# extra, deliberately conservative stops close this: a table row (a line
+# starting with "|") never looks past its OWN line; ordinary prose never
+# looks past the nearest blank line (paragraph break) in either direction.
+# Both are real structural boundaries in this project's article format, not
+# arbitrary cutoffs.
 
 # The attribution-cue check (below) is a SEPARATE, narrower heuristic ("does an
 # 'according to'/'reports'/'says'-style word sit near this claim") -- kept at
@@ -76,6 +93,51 @@ PROXIMITY_WINDOW_CHARS = 150
 # need URL-masking before the cue search); keeping this window unchanged avoids
 # the regression entirely.
 _ATTR_CUE_WINDOW_CHARS = 100
+
+_BLANK_LINE_RE = re.compile(r"\n[ \t]*\n")
+# A period is NOT a sentence end if the character right before it is a single
+# uppercase letter that itself starts a word (the "U."/"S." shape of "U.S.",
+# "N.Y.", etc.) -- a real case found while testing this redesign: without this
+# guard, "...after U.S. arrival..." was cut mid-abbreviation, right after "U.",
+# which excluded the actual citation later in the same real sentence.
+_SENTENCE_END_RE = re.compile(r"(?<!\b[A-Z])[.!?]")
+
+
+def _block_span(text, pos):
+    """[lo, hi) of the paragraph/table-row containing `pos`. A markdown TABLE
+    ROW (a line starting with "|") never extends beyond its own line -- rows
+    rarely contain a period, and must never borrow a citation from an
+    unrelated row or from prose that follows the table. Ordinary prose is
+    bounded by the nearest blank line (paragraph break) on either side -- a
+    real structural boundary in this project's article format, not an
+    arbitrary cutoff."""
+    line_start = text.rfind("\n", 0, pos) + 1
+    line_end_idx = text.find("\n", pos)
+    line_end = line_end_idx if line_end_idx != -1 else len(text)
+    if text[line_start:line_end].lstrip().startswith("|"):
+        return line_start, line_end
+    lo = 0
+    for m in _BLANK_LINE_RE.finditer(text, 0, pos):
+        lo = m.end()
+    m2 = _BLANK_LINE_RE.search(text, pos)
+    hi = m2.start() if m2 else len(text)
+    return lo, hi
+
+
+def _sentence_span(text, start, end):
+    """[lo, hi) of the sentence containing text[start:end]: bounded first by
+    its paragraph/table-row block (_block_span), then narrowed to the nearest
+    preceding/following sentence-ending punctuation within that block. No
+    fixed length -- a citation anywhere in the SAME sentence is found,
+    however long that sentence is."""
+    block_lo, block_hi = _block_span(text, start)
+    lo = block_lo
+    for m in _SENTENCE_END_RE.finditer(text, block_lo, start):
+        lo = m.end()
+    m2 = _SENTENCE_END_RE.search(text, end, block_hi)
+    hi = m2.end() if m2 else block_hi
+    return lo, hi
+
 
 _UNIT_WORDS = ("percentage points", "basis points", "points", "pts", "bps")
 # LEVIER C PART 2: bare duration/count units -- deliberately days/weeks/months/
@@ -174,7 +236,7 @@ def _default_url_finder(text):
 
 def classify_claims(text, vertical, url_finder=None):
     """One pass over every _NUM_RE match in `text`: for each, resolve the URLs
-    whose citation overlaps its +-PROXIMITY_WINDOW_CHARS window (via
+    whose citation is in the SAME SENTENCE (via `_sentence_span`, then
     `url_finder(lo, hi)`, default = `_default_url_finder(text)` on the
     unmasked text -- callers on masked text, e.g. soften_claims, pass a
     mask-aware finder with the same overlap-not-slice contract) and try to
@@ -183,8 +245,7 @@ def classify_claims(text, vertical, url_finder=None):
     url_finder = url_finder or _default_url_finder(text)
     out = []
     for m in _NUM_RE.finditer(text):
-        lo = max(0, m.start() - PROXIMITY_WINDOW_CHARS)
-        hi = min(len(text), m.end() + PROXIMITY_WINDOW_CHARS)
+        lo, hi = _sentence_span(text, m.start(), m.end())
         fact = covering_fact(m.group(0), url_finder(lo, hi), vertical)
         attr_lo = max(0, m.start() - _ATTR_CUE_WINDOW_CHARS)
         attr_hi = min(len(text), m.end() + _ATTR_CUE_WINDOW_CHARS)
