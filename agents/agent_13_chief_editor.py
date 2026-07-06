@@ -117,9 +117,12 @@ class ChiefEditorAgent(BaseAgent):
                 "summary": await self._generate_summary(decisions)
             }
             
-            output_path = await self.save_output("editor_report.json", editor_report)
-            logger.info(f"Editor report saved: {output_path}")
-            
+            # PATH-DUPLICATION FIX (2026-07-06, same bug class as agent_11/12): main()
+            # below is the single authoritative writer of editor_report.json at
+            # args.output. This class's own save_output() used to ALSO write a copy,
+            # at a path doubled/tripled by BaseAgent.output_dir + StorageService's
+            # re-join -- an orphan, never read by anything, removed rather than chased.
+
             self.log_complete({
                 "audited": len(qa_reports),
                 "ready": ready_count,

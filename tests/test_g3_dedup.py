@@ -30,7 +30,7 @@ def test_dedup_digest_built_from_body():
 
 def test_dedup_digest_appended_to_all_trailing_sections():
     for marker in ["200-300w context.{_facts_and_rules}{_dedup_digest}",       # comparison
-                   "{links_expert_block}{_facts_and_rules}{_dedup_digest}",     # Expert
+                   "{_expert_links_instruction}{_facts_and_rules}{_dedup_digest}",     # Expert
                    "ending with ?{_facts_and_rules}{_dedup_digest}",            # FAQ
                    "100-150w){_facts_and_rules}{_dedup_digest}",                # closing
                    "Return ONLY new Markdown.{_facts_and_rules}{_dedup_digest}"]:  # expansion

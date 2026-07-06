@@ -24,7 +24,7 @@ def test_comparison_gets_facts():
 
 
 def test_expert_recommendation_gets_facts():
-    assert "{links_expert_block}{_facts_and_rules}" in SRC
+    assert "{_expert_links_instruction}{_facts_and_rules}" in SRC
 
 
 def test_faq_gets_facts():

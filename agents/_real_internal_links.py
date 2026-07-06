@@ -85,6 +85,31 @@ def _tokens(text):
     return {w for w in _WORD_RE.findall((text or "").lower()) if w not in _STOP and len(w) > 2}
 
 
+def diagnose_relevance(article_title, real_posts, min_overlap=2, min_ratio=0.5, top_n=3):
+    """Diagnostic companion to select_relevant_links: reports what was fetched
+    and -- for visibility when the selected count comes up short of a tier's
+    target -- the best-ratio REJECTED candidates (posts that shared some
+    words but didn't clear both floors). Read-only, never affects selection."""
+    query_tokens = _tokens(article_title)
+    scored = []
+    for post in real_posts:
+        overlap = len(query_tokens & _tokens(post.get("title", "")))
+        ratio = (overlap / len(query_tokens)) if query_tokens else 0.0
+        scored.append((overlap, ratio, post))
+    scored.sort(key=lambda t: t[1], reverse=True)
+    rejected = [
+        {"title": post["title"], "overlap": overlap, "ratio": round(ratio, 2)}
+        for overlap, ratio, post in scored
+        if not (overlap >= min_overlap and ratio >= min_ratio)
+    ]
+    return {
+        "real_posts_fetched": len(real_posts),
+        "min_overlap": min_overlap,
+        "min_ratio": min_ratio,
+        "top_rejected": rejected[:top_n],
+    }
+
+
 def select_relevant_links(article_title, real_posts, n=3, min_overlap=2, min_ratio=0.5):
     """Deterministic keyword-overlap match: score each real post by how many
     significant words it shares with the article's own title/keyword, keep
