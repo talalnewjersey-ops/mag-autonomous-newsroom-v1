@@ -902,11 +902,13 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     # financial information platform" (false, contradicts the article's own
     # disclaimer) and "EEAT-compliant" (internal SEO jargon, meaningless to
     # a reader). This exact text is user-approved, word for word.
-    # NOTE: the trailing "Tier/NEXUS-14 V5.0" marker leak is a SEPARATE,
-    # deliberately separate fix/PR (per the user's explicit lot ordering) --
-    # left untouched here on purpose, removed in that other lot.
+    # 2026-07-10 FIX (internal marker leak, tests/test_no_internal_marker_
+    # leak.py): the trailing line used to also print "**Tier**: OPPORTUNITY |
+    # NEXUS-14 V5.0" -- internal pipeline artifacts (tier name, engine
+    # version) the reader was never meant to see, straight into published
+    # HTML. The reader only ever sees the update date now.
     body = "\n\n".join([body, _AUTHOR_BIO_MD,
-                          f"> **Last Updated**: {_updated} | **Tier**: {tier['tier']} | NEXUS-14 V5.0"])
+                          f"> **Last Updated**: {_updated}"])
 
     # Sprint 8: emit NO YAML frontmatter and NO body-level title heading. Frontmatter
     # fields used to render as visible <p> paragraphs (RCA-007) and a body title
