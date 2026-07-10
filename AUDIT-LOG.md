@@ -116,7 +116,7 @@ Ces décisions ont déjà été tranchées sur le prototype. Ne pas les re-déba
 
 ## ÉTAT MOTEUR DE PRODUCTION (infra NEXUS-14, distinct du contenu ci-dessus)
 
-### 2026-07-10 — Session : résolution du blocage WordPress + validation Sprint 9
+### 2026-07-10 — Session : résolution du blocage WordPress + validation Sprint 9 ET Sprint 10
 
 - **Cause racine du blocage identifiée** : ce n'était PAS (ou plus) le WAF Hostinger hCDN
   suspecté précédemment. Le secret GitHub Actions `WORDPRESS_APP_PASSWORD` était périmé
@@ -136,19 +136,40 @@ Ces décisions ont déjà été tranchées sur le prototype. Ne pas les re-déba
   - ANGLE 2 PROVEN — un second reconcile sur ce même draft ne le promeut jamais
     (`status=candidate post_id=None`).
   - Le draft `[QA-FAILED]` `post_id=48616` reste sur WordPress pour inspection.
-- **Bug distinct découvert** via `control_qa_hallucination.yml` (run `29128628639`,
-  sans rapport avec WordPress — ce workflow ne touche pas ses secrets) :
-  - ASSERTION 1 PROVEN — article avec 6 stats non sourcées → `hallucination_penalty=40`,
-    `status=FAIL` (90-40=50 < 85). Détection OK.
-  - ASSERTION 2 ÉCHOUÉE — article où chaque stat est sourcée par un lien `.gov` entre
-    parenthèses juste après la stat → toujours détecté avec `unsourced_stat_count=5`
-    (attendu 0). `AssertionError: sourced stats must NOT be flagged`. Bug dans la
-    détection déterministe d'agent_05 (chemin sans LLM, `ANTHROPIC_API_KEY=""` volontaire
-    dans ce workflow) — ne reconnaît pas un lien inline entre parenthèses comme sourcing
-    de la stat qui précède. **Diagnostic en cours (TEMPS 1), fix pas encore appliqué.**
-- **Crons** : **toujours désactivés**. Ne pas réactiver avant validation conjointe
-  (utilisateur) du diagnostic + fix du bug agent_05 ci-dessus.
-- **Prochaine session, si celle-ci s'arrête ici** : reprendre le diagnostic du bug
-  agent_05 (ASSERTION 2), proposer un fix en PR séparée avec tests (sur le modèle de la
-  PR #64), obtenir l'accord avant de merger, puis seulement ensuite discuter de la
-  réactivation des crons.
+- **Bug distinct découvert puis résolu** via `control_qa_hallucination.yml`
+  (run initial `29128628639`, sans rapport avec WordPress — ce workflow ne touche pas
+  ses secrets) :
+  - ASSERTION 1 PROVEN dès le départ — article avec 6 stats non sourcées →
+    `hallucination_penalty=40`, `status=FAIL` (90-40=50 < 85). Détection OK.
+  - ASSERTION 2 ÉCHOUÉE initialement — `unsourced_stat_count=5` au lieu de 0 sur un
+    article où chaque stat était suivie d'un lien `.gov` générique.
+  - **Diagnostic (TEMPS 1)** : PAS un bug de détection — `tests/test_sprint10_anti_
+    hallucination.py` prouvait déjà que le chemin "vraie verticale" fonctionne. Cause
+    réelle : le workflow appelait `agent_05_fact_checker` sans `--market`/`--category`,
+    donc `resolve_gate_vertical("", "")` retombait sur `"us_default"`, qui n'a AUCUNE
+    entrée dans `agents/_vertical_facts.py` — `covering_fact()` ne peut alors jamais
+    matcher la moindre stat, quelle que soit la qualité du sourcing (LEVIER C : un lien
+    `.gov` générique à côté d'un chiffre non engravé reste volontairement non couvert,
+    voir incident réel run `28731153809`).
+  - **Fix (TEMPS 2, PR #65, mergée `b5c8f21`)** : `run_case()` route maintenant vers
+    `us_credit` (`--market USA --category credit`) ; le fixture "good" reconstruit à
+    partir de 5 vrais faits `STABLE` engravés (`agents/_vertical_facts.py`), valeur +
+    `source_url` exacts. Ajout d'un `logger.warning` dans `agent_05_fact_checker.py`
+    (`warn_if_us_default`) quand la verticale résolue est `us_default`, pour que ce cas
+    ne soit plus jamais silencieux en production. 4 nouveaux tests unitaires.
+  - **Re-vérifié en CI réelle sur la branche de la PR avant merge** (run `29129636783`) :
+    ASSERTION 1 PROVEN (`unsourced=6, status=FAIL, penalty=40`) ET ASSERTION 2 PROVEN
+    (`unsourced=0, status=PASS, penalty=0`) — **Sprint 10 (anti-hallucination) prouvé
+    en réel**, en plus du Sprint 9 (invariant de publication) déjà prouvé plus haut.
+  - **Scan de production associé** : les 26 topics `candidate` de `data/topic_registry.json`
+    ont été vérifiés contre `resolve_gate_vertical` — **aucun ne tombe sur `us_default`**
+    actuellement (10 `canada_newcomer`, 4 `us_credit`, 3 `us_transfers`, 2 chacun
+    `us_auto`/`us_banking`/`us_housing`, 1 chacun `us_health`/`us_mortgage`/`us_students`).
+    Risque latent identifié pour le futur : la catégorie brute `"assurance"` (sans
+    suffixe `auto`/`sante`) n'est PAS une clé de `CATEGORY_TO_VERTICAL` — inoffensif
+    aujourd'hui car son seul porteur (`ca-health-mutuelle-new-immigrants`) est marché
+    Canada, mais un futur topic US avec cette catégorie tomberait sur `us_default`
+    (désormais visible via le warning ci-dessus au lieu d'être silencieux).
+- **Crons** : **toujours désactivés**. Sprint 9 ET Sprint 10 sont maintenant prouvés en
+  réel (WordPress + anti-hallucination) — la réactivation reste une décision à prendre
+  ensemble, pas encore faite à ce stade de la session.
