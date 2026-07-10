@@ -198,6 +198,13 @@ class QualityAssuranceAgent(BaseAgent):
                 data["has_faq"] = bool(
                     re.search(r'##\s+(?:Frequently Asked Questions|FAQ)', content, re.IGNORECASE)
                 )
+
+            # 2026-07-10 FIX: has_update_date was read by _audit_eeat's trust_score
+            # (the +25 bonus) but never SET anywhere -- always None, so the bonus
+            # could never fire even on an article with a real "Last Updated" line
+            # (confirmed on real draft 48624). Mirrors has_faq's pattern above.
+            if "has_update_date" not in data:
+                data["has_update_date"] = bool(re.search(r'Last Updated', content, re.IGNORECASE))
         
         # Load metadata
         metadata_path = "output/agent_04/article_metadata.json"
@@ -339,7 +346,16 @@ class QualityAssuranceAgent(BaseAgent):
         
         if has_faq:
             # Count FAQ questions (H3 in FAQ section)
-            faq_section = re.search(r'## (?:FAQ|Frequently Asked Questions).*?(?=## |$)', content, re.DOTALL | re.IGNORECASE)
+            # 2026-07-10 FIX: the old boundary lookahead "(?=## |$)" matched
+            # INSIDE a "### " (H3) heading -- "##" is a substring of "###", so
+            # e.g. "### Can I drive..." satisfies "## " at offset 1. That
+            # truncated the captured section to just the H2 title line, right
+            # before the first real question, so question_count was always 0
+            # even on a real article with 10 genuine FAQ questions (draft
+            # 48624). Fixed boundary: the next TRUE H2 (exactly two #, not
+            # three) at the start of a line, via MULTILINE "^##(?!#)\s".
+            faq_section = re.search(r'## (?:FAQ|Frequently Asked Questions).*?(?=\n##(?!#)\s|\Z)',
+                                     content, re.DOTALL | re.IGNORECASE)
             if faq_section:
                 faq_content = faq_section.group()
                 question_count = len(re.findall(r'^### ', faq_content, re.MULTILINE))
