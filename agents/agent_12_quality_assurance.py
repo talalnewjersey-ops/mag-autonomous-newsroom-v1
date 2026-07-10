@@ -198,6 +198,13 @@ class QualityAssuranceAgent(BaseAgent):
                 data["has_faq"] = bool(
                     re.search(r'##\s+(?:Frequently Asked Questions|FAQ)', content, re.IGNORECASE)
                 )
+
+            # 2026-07-10 FIX: has_update_date was read by _audit_eeat's trust_score
+            # (the +25 bonus) but never SET anywhere -- always None, so the bonus
+            # could never fire even on an article with a real "Last Updated" line
+            # (confirmed on real draft 48624). Mirrors has_faq's pattern above.
+            if "has_update_date" not in data:
+                data["has_update_date"] = bool(re.search(r'Last Updated', content, re.IGNORECASE))
         
         # Load metadata
         metadata_path = "output/agent_04/article_metadata.json"
@@ -339,7 +346,16 @@ class QualityAssuranceAgent(BaseAgent):
         
         if has_faq:
             # Count FAQ questions (H3 in FAQ section)
-            faq_section = re.search(r'## (?:FAQ|Frequently Asked Questions).*?(?=## |$)', content, re.DOTALL | re.IGNORECASE)
+            # 2026-07-10 FIX: the old boundary lookahead "(?=## |$)" matched
+            # INSIDE a "### " (H3) heading -- "##" is a substring of "###", so
+            # e.g. "### Can I drive..." satisfies "## " at offset 1. That
+            # truncated the captured section to just the H2 title line, right
+            # before the first real question, so question_count was always 0
+            # even on a real article with 10 genuine FAQ questions (draft
+            # 48624). Fixed boundary: the next TRUE H2 (exactly two #, not
+            # three) at the start of a line, via MULTILINE "^##(?!#)\s".
+            faq_section = re.search(r'## (?:FAQ|Frequently Asked Questions).*?(?=\n##(?!#)\s|\Z)',
+                                     content, re.DOTALL | re.IGNORECASE)
             if faq_section:
                 faq_content = faq_section.group()
                 question_count = len(re.findall(r'^### ', faq_content, re.MULTILINE))
@@ -386,20 +402,37 @@ class QualityAssuranceAgent(BaseAgent):
         return checks
     
     async def _audit_content_quality(self, data: Dict) -> Dict:
-        """Audit overall content quality."""
+        """Audit overall content quality. RECALIBRATED 2026-07-10: the old flat
+        >=5000/>=7000-word thresholds ignored article TIER entirely -- agent_04's
+        own tier system caps PILLAR at 4200w and STANDARD/OPPORTUNITY/GOLD at
+        4000w (agents/agent_04_article_writer.py), so these 40 points were a
+        mathematical impossibility for every tier this pipeline actually
+        produces, not a content deficiency (real case: draft 48624, OPPORTUNITY
+        tier, 4304 words -- structurally capped at content_check.score=60/100
+        regardless of quality). Same class of fix as the SEO score's own
+        2026-07-06 tier-relative recalibration (_TIER_TARGET_WORDS above,
+        word_count_ok in _audit_seo) -- reused here instead of a second,
+        divergent word-count rule. The old separate ">=7000" stretch bonus is
+        dropped rather than scaled: exceeding your OWN tier's target isn't a
+        quality signal under the tier-capped model (agent_04 enforces an upper
+        bound per tier), so the full 40 points now go to hitting the tier
+        target within the same +-10% tolerance the SEO score already uses."""
         content = data.get("article_content", "")
         word_count = len(content.split())
-        
+        target_words = _TIER_TARGET_WORDS.get((data.get("article_type") or "STANDARD").upper(),
+                                                _TIER_TARGET_WORDS["STANDARD"])
+        word_count_ok = abs(word_count - target_words) <= _WORD_COUNT_TOLERANCE * target_words
+
         score = 0
-        
-        if word_count >= 5000: score += 30
-        if word_count >= 7000: score += 10
+
+        if word_count_ok: score += 40
         if len(re.findall(r'^## ', content, re.MULTILINE)) >= 5: score += 15
         if len(re.findall(r'^### ', content, re.MULTILINE)) >= 8: score += 15
         if re.search(r'## Frequently Asked Questions', content, re.IGNORECASE): score += 20
         if len(re.findall(r'^\|', content, re.MULTILINE)) > 5: score += 10
-        
-        return {"score": score, "word_count": word_count}
+
+        return {"score": score, "word_count": word_count, "tier_target_words": target_words,
+                "word_count_ok": word_count_ok}
     
     def _calculate_seo_score(self, seo_check: Dict) -> float:
         """Calculate SEO score from checks. RECALIBRATED 2026-07-06: the old
