@@ -78,6 +78,26 @@ def detect_unsourced_claims(text, vertical):
     return {"unsourced_stats": unsourced, "unbacked_attributions": attributions}
 
 
+def warn_if_us_default(logger, vertical, market, category):
+    """us_default has no entry in agents/_vertical_facts.py (VERTICAL_FACTS) --
+    LEVIER C's covering_fact() can then never match ANY numeric claim, so every
+    stat in the article is treated as uncovered regardless of citation quality
+    (agents/_source_pool.py resolve_gate_vertical: "fails the cited-facts floor
+    by design"). That is a real, silent risk for production articles whose
+    market/category doesn't map to one of the 9 routed verticals (e.g. an
+    unmapped category spelling) -- surfaced here so it shows up in the run log
+    instead of only manifesting as an unexplained QA penalty."""
+    if vertical == "us_default":
+        logger.warning(
+            "vertical resolved to us_default (market=%r category=%r) -- no "
+            "engraved fact sheet exists for this vertical, so EVERY numeric "
+            "claim in this article will be flagged as unsourced/uncovered by "
+            "LEVIER C regardless of citation quality. Check this topic's "
+            "market/category routing (agents/_source_pool.py CATEGORY_TO_VERTICAL).",
+            market, category,
+        )
+
+
 class FactCheckerAgent(BaseAgent):
     """Agent 05: Automated fact-checking for NEXUS-14 articles."""
 
@@ -94,6 +114,7 @@ class FactCheckerAgent(BaseAgent):
         self.logger.info("Agent 05 - Fact Checker starting...")
         start_time = datetime.now()
         vertical = resolve_gate_vertical(market, category)
+        warn_if_us_default(self.logger, vertical, market, category)
 
         draft_path = Path(article_draft_path)
         if not draft_path.exists():

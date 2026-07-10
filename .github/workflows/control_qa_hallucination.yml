@@ -13,6 +13,17 @@ name: "CONTROL: QA rejects hallucinations (anti-hallucination exit proof)"
 #
 # Includes a MASSIVELY hallucinated variant (5 unsourced stats + 1 false attribution)
 # to prove the -40 cap still lands below the 85 gate. Manual dispatch only.
+#
+# 2026-07-10 fix: both cases now pass --market/--category so agent_05 routes to
+# the real "us_credit" vertical instead of falling through to "us_default" (which
+# has NO entry in agents/_vertical_facts.py -- LEVIER C's covering_fact() can then
+# never match ANY claim, so ASSERTION 2's "good" fixture was structurally
+# guaranteed to fail regardless of how well-sourced it was; see AUDIT-LOG.md for
+# the diagnosis). The "good" fixture's stats were also rebuilt to reuse REAL
+# STABLE us_credit facts (agents/_vertical_facts.py) at their exact engraved
+# value + source_url -- a generic .gov link next to an invented number is,
+# correctly, still NOT sufficient under LEVIER C (see tests/test_sprint10_anti_
+# hallucination.py::test_generic_official_link_no_longer_shelters_an_uncovered_number).
 
 on:
   workflow_dispatch: {}
@@ -47,18 +58,30 @@ jobs:
               f"\n### Question number {i}?\nA clear, useful answer for newcomers about US finance and insurance basics.\n"
               for i in range(1, 10))
           SRC = "https://www.consumerfinance.gov/consumer-tools/bank-accounts/"
-          # BAD: 5 unsourced stats + 1 false attribution, NO links on the claims.
           # BAD: 6 UNSOURCED numeric stats, NO attribution -> passes GATE A, so the
           # ONLY thing that can reject it is the agent_12 QA-SCORE penalty (Sprint 10).
           bad = ("## Overview\n" + filler +
                  "\n\nDrivers pay 25% more without US history. Roughly 60% of newcomers lack a credit file. "
                  "Deposits can reach $500 with some insurers. Premiums rose 15% last year. "
                  "About 74% of applicants overpay. Around 40% of them never compare quotes.\n" + faq)
-          # GOOD: same figures, each backed by a live .gov link on the same claim.
+          # GOOD: 5 REAL STABLE us_credit facts (agents/_vertical_facts.py), each
+          # cited at its exact engraved value + its own real source_url -- a
+          # generic link next to an invented number is deliberately NOT enough
+          # under LEVIER C (agents/_fact_coverage.py), so this fixture must reuse
+          # genuine engraved facts, not just any .gov URL, to legitimately prove
+          # "no false positive on properly-sourced content".
+          UTIL = "https://www.consumerfinance.gov/ask-cfpb/how-do-i-get-and-keep-a-good-credit-score-en-318/"
+          NEG = "https://www.consumerfinance.gov/ask-cfpb/how-long-does-negative-information-remain-on-my-credit-report-en-323/"
+          BK = "https://www.consumerfinance.gov/ask-cfpb/how-long-does-a-bankruptcy-appear-on-credit-reports-en-325/"
+          DISPUTE = "https://consumer.ftc.gov/articles/disputing-errors-your-credit-reports"
+          FREE = "https://consumer.ftc.gov/articles/free-credit-reports"
           good = ("## Overview\n" + filler +
-                  f"\n\nDrivers pay 25% more without US history ({SRC}). Roughly 60% of newcomers lack a credit file ({SRC}). "
-                  f"Deposits can reach $500 with some insurers ({SRC}). Premiums rose 15% last year ({SRC}). "
-                  f"About 74% of applicants overpay ({SRC}). Comparing quotes helps, per {SRC}.\n" + faq)
+                  f"\n\nExperts advise keeping your credit use to no more than 30% of your total credit limit "
+                  f"([CFPB]({UTIL})). Most negative information stays on a credit report for 7 years "
+                  f"([CFPB]({NEG})). A bankruptcy can stay on a credit report for up to 10 years "
+                  f"([CFPB]({BK})). If you dispute an error, the credit bureau must investigate within 30 days "
+                  f"([FTC]({DISPUTE})). You can get one free credit report from each of the 3 nationwide "
+                  f"bureaus every week ([FTC]({FREE})).\n" + faq)
           open("out/bad/agent_04_article_draft.md", "w").write(bad)
           open("out/good/agent_04_article_draft.md", "w").write(good)
           for d in ("bad", "good"):
@@ -72,7 +95,8 @@ jobs:
             D=$1
             python -m agents.agent_05_fact_checker \
               --input out/$D/agent_04_article_draft.md \
-              --output out/$D/agent_05/fact_check_report.json --min-sources 4 || true
+              --output out/$D/agent_05/fact_check_report.json --min-sources 4 \
+              --market "USA" --category "credit" || true
             # agent_05 writes to <output_dir>/fact_check_report.json
             FC=$(find out/$D -name fact_check_report.json | head -1)
             python -m agents.agent_12_quality_assurance \

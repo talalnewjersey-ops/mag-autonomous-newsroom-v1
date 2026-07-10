@@ -247,3 +247,47 @@ def test_all_sourced_article_has_no_penalty_and_passes():
     # Anti-false-positive: no hallucination -> 0 penalty -> a >=85 article still passes.
     assert penalty(0, 0) == 0
     assert (90 - penalty(0, 0)) >= PASS_GATE
+
+
+# ---------------- us_default silent-blind-spot warning ----------------
+# 2026-07-10: control_qa_hallucination.yml's ASSERTION 2 failed against a
+# genuinely well-sourced fixture because agent_05 was invoked with no
+# --market/--category, so resolve_gate_vertical("", "") fell through to
+# "us_default" -- which has NO entry in agents/_vertical_facts.py, so
+# covering_fact() can never match ANY claim there. Not a detection bug (see
+# the CFPB_UTIL tests above, which prove the real vertical path works); the
+# risk is this failure mode being SILENT for a real production article whose
+# market/category doesn't route to one of the 9 known verticals. warn_if_us_
+# default() surfaces it in the run log instead.
+
+from agents._source_pool import resolve_gate_vertical
+
+warn_if_us_default = agent_05.warn_if_us_default
+
+
+def test_unmapped_us_category_resolves_to_us_default():
+    # "assurance" (bare, no "auto"/"sante" suffix) is not a CATEGORY_TO_VERTICAL
+    # key -- documents the exact gap that would trigger this warning in prod.
+    assert resolve_gate_vertical("USA", "assurance") == "us_default"
+
+
+def test_mapped_us_category_does_not_resolve_to_us_default():
+    assert resolve_gate_vertical("USA", "credit") == "us_credit"
+
+
+def test_warn_if_us_default_logs_when_vertical_is_us_default(caplog):
+    import logging
+    logger = logging.getLogger("test.agent05.us_default")
+    with caplog.at_level(logging.WARNING, logger=logger.name):
+        warn_if_us_default(logger, "us_default", "USA", "assurance")
+    assert len(caplog.records) == 1
+    assert "us_default" in caplog.text
+    assert "assurance" in caplog.text
+
+
+def test_warn_if_us_default_silent_for_a_real_vertical(caplog):
+    import logging
+    logger = logging.getLogger("test.agent05.us_credit")
+    with caplog.at_level(logging.WARNING, logger=logger.name):
+        warn_if_us_default(logger, "us_credit", "USA", "credit")
+    assert not caplog.records
