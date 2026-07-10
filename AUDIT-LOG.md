@@ -111,3 +111,44 @@ Ces décisions ont déjà été tranchées sur le prototype. Ne pas les re-déba
   "Astra Header Fix" inactif préparé mais jamais activé — lire son code avant), lien eBook
   /?page_id=46505, "Privacy & Cookie Policy" → #, grammaire newsletter (Bloc 3).
 - **Images gabarit "taxes"** : balayage systématique sur tout le site.
+
+---
+
+## ÉTAT MOTEUR DE PRODUCTION (infra NEXUS-14, distinct du contenu ci-dessus)
+
+### 2026-07-10 — Session : résolution du blocage WordPress + validation Sprint 9
+
+- **Cause racine du blocage identifiée** : ce n'était PAS (ou plus) le WAF Hostinger hCDN
+  suspecté précédemment. Le secret GitHub Actions `WORDPRESS_APP_PASSWORD` était périmé
+  (rotation manuelle du 2026-07-01 qui a introduit une valeur invalide). Confirmé par
+  `wp_diagnostic.yml` × 3 runs identiques : `401 rest_not_logged_in` / `rest_cannot_create`
+  avec réponse JSON propre de WordPress (pas de page de challenge HTML), preuve que la
+  requête passait le WAF mais échouait sur l'auth elle-même.
+- **Fix appliqué** : les 3 secrets `WORDPRESS_APP_PASSWORD`, `WORDPRESS_USERNAME`,
+  `WORDPRESS_URL` resynchronisés depuis le `.env` local valide (celui qui authentifie
+  correctement en local via `scripts/list_wp_drafts.py`). Noms de secrets confirmés
+  cohérents avec ce qu'attendent `wp_diagnostic.yml` et `control_publish_invariant.yml`.
+- **Vérification post-fix** : `wp_diagnostic.yml` → `200/200/201`, plus aucune erreur.
+- **Sprint 9 (invariant de publication) re-prouvé en réel** via
+  `control_publish_invariant.yml` (run `29128544472`) :
+  - ANGLE 1 PROVEN — un draft QA-FAILED (post WP réel `post_id=48616`) reste
+    `status=candidate`, jamais publié après reconcile.
+  - ANGLE 2 PROVEN — un second reconcile sur ce même draft ne le promeut jamais
+    (`status=candidate post_id=None`).
+  - Le draft `[QA-FAILED]` `post_id=48616` reste sur WordPress pour inspection.
+- **Bug distinct découvert** via `control_qa_hallucination.yml` (run `29128628639`,
+  sans rapport avec WordPress — ce workflow ne touche pas ses secrets) :
+  - ASSERTION 1 PROVEN — article avec 6 stats non sourcées → `hallucination_penalty=40`,
+    `status=FAIL` (90-40=50 < 85). Détection OK.
+  - ASSERTION 2 ÉCHOUÉE — article où chaque stat est sourcée par un lien `.gov` entre
+    parenthèses juste après la stat → toujours détecté avec `unsourced_stat_count=5`
+    (attendu 0). `AssertionError: sourced stats must NOT be flagged`. Bug dans la
+    détection déterministe d'agent_05 (chemin sans LLM, `ANTHROPIC_API_KEY=""` volontaire
+    dans ce workflow) — ne reconnaît pas un lien inline entre parenthèses comme sourcing
+    de la stat qui précède. **Diagnostic en cours (TEMPS 1), fix pas encore appliqué.**
+- **Crons** : **toujours désactivés**. Ne pas réactiver avant validation conjointe
+  (utilisateur) du diagnostic + fix du bug agent_05 ci-dessus.
+- **Prochaine session, si celle-ci s'arrête ici** : reprendre le diagnostic du bug
+  agent_05 (ASSERTION 2), proposer un fix en PR séparée avec tests (sur le modèle de la
+  PR #64), obtenir l'accord avant de merger, puis seulement ensuite discuter de la
+  réactivation des crons.
