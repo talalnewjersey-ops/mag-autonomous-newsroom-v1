@@ -601,6 +601,25 @@ def _build_facts_block(source_vertical: str) -> str:
     )
 
 
+# GATE LENGTH RETRY (2026-07-11, PR #80): scripts/gate_feedback.py::length() emits a
+# fixed, parseable message shape ("GATE LENGTH: {word_count}w exceeds the ceiling of
+# {ceiling}w by {over_by}w. ..."). Extract the overage so the retry can shrink its OWN
+# generation targets by a proportional amount instead of relying on prose alone --
+# witness run 6 bis proved prose alone doesn't work: 2 of 3 articles came out LONGER
+# on retry, because the body-section loop (the largest word-count contributor) never
+# saw retry_feedback at all and regenerated at the exact same fixed per-tier target as
+# attempt 0. Returns None for every other gate's feedback (or no feedback at all), so
+# non-length retries are completely unaffected.
+_LENGTH_OVERAGE_RE = re.compile(r"GATE LENGTH:\s*\d+w exceeds the ceiling of \d+w by (\d+)w")
+
+
+def _parse_length_overage(retry_feedback: str) -> Optional[int]:
+    if not retry_feedback:
+        return None
+    m = _LENGTH_OVERAGE_RE.search(retry_feedback)
+    return int(m.group(1)) if m else None
+
+
 async def _write_article_standalone(outline: Dict, api_key: str, min_words: int = STANDARD_MIN_WORDS,
                                      target_words: int = STANDARD_TARGET_WORDS, tier: dict = None,
                                      retry_feedback: str = "") -> str:
@@ -778,19 +797,42 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     )
     _facts_and_rules = _retry_block + _anti_fab + _dedup_wording + _facts_block
 
+    # GATE LENGTH RETRY (2026-07-11, PR #80): the body-section loop below is the
+    # single largest word-count contributor (up to 5 sections x 400-750w) and, until
+    # now, was the ONE part of this function that never received retry_feedback in
+    # any form -- neither as a prose instruction nor as a smaller numeric target. On
+    # a length-gate retry, shrink its per-section target proportionally to the
+    # measured overage, split across the sections this tier writes. Floored at 280w/
+    # section so a retry trims prose rather than gutting a section into thin,
+    # incomplete content (which would risk under-shooting min_words or reading as
+    # unfinished) -- for a very large overage relative to this tier's section budget,
+    # the floor may cap the achievable cut below what's needed; that attempt can then
+    # still fail GATE LENGTH a second time, which correctly ends the article rather
+    # than force through a hollow rewrite (see tests/test_length_retry_convergence.py).
+    max_sections = 5 if tier["tier"] == "PILLAR" else (4 if tier["tier"] == "STANDARD" else 3)
+    sec_target_base = 600 if tier["tier"] == "PILLAR" else (500 if tier["tier"] == "STANDARD" else 400)
+    _length_overage = _parse_length_overage(retry_feedback)
+    if _length_overage:
+        _cut_per_section = min(sec_target_base - 280, -(-_length_overage // max_sections))  # ceil division
+        sec_target = sec_target_base - _cut_per_section
+        logger.info(
+            f"[AGENT-04] GATE LENGTH retry: overage={_length_overage}w over {max_sections} section(s) "
+            f"-- body section target cut {sec_target_base}w -> {sec_target}w (-{_cut_per_section}w/section)"
+        )
+    else:
+        sec_target = sec_target_base
+
     logger.info(f"Writing {tier['tier']} article: {title} (target: {target_words}w)")
 
     intro = await _call_claude(api_key,
         f"Write introduction: {title} | {keyword} | {market} | Tier: {tier['tier']}\n"
         f"300-400w. Quick Answer box (40-60w). {_intro_links_instruction}\nBe concise.\n"
-        f"{sourcing_block}\n",
+        f"{sourcing_block}{_retry_block}\n",
         SYSTEM_PROMPT, max_tokens=1200)
 
     written_sections = []
-    max_sections = 5 if tier["tier"] == "PILLAR" else (4 if tier["tier"] == "STANDARD" else 3)
     for i, section in enumerate(sections[:max_sections]):
         h2 = section.get("h2", f"Section {i+1}")
-        sec_target = 600 if tier["tier"] == "PILLAR" else (500 if tier["tier"] == "STANDARD" else 400)
         # SPRINT 2 (B / RCA-004): cumulative context. Include the intro (where
         # entities/figures are first planted) plus all prior sections.
         digest = _build_digest([intro] + written_sections)
@@ -855,7 +897,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
             )
         try:
             sec_text = await _call_claude(api_key,
-                f"Write section ## {i+1}. {h2} for: {title} | {keyword}\n{sec_target}-{sec_target+150}w. Concise. No padding. BODY ONLY: no compliance disclaimer, no author bio, no brand slogan, no 'not financial advice' notice, no internal-link CTA in this section — those are written elsewhere exactly once.{digest_block}{_repetition_guard_block}{section_sources_block}",
+                f"Write section ## {i+1}. {h2} for: {title} | {keyword}\n{sec_target}-{sec_target+150}w. Concise. No padding. BODY ONLY: no compliance disclaimer, no author bio, no brand slogan, no 'not financial advice' notice, no internal-link CTA in this section — those are written elsewhere exactly once.{digest_block}{_repetition_guard_block}{section_sources_block}{_retry_block}",
                 SYSTEM_PROMPT, max_tokens=1800)
             written_sections.append(sec_text)
             await asyncio.sleep(0.2)
