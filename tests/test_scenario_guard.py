@@ -29,6 +29,7 @@ from agents._scenario_guard import (
     build_scenario_block,
     find_invented_names,
     find_uncovered_numeric_claims,
+    strip_leading_duplicate_heading,
     validate_scenario_block,
 )
 
@@ -168,6 +169,55 @@ def test_build_scenario_block_empty_input_produces_empty_output():
     assert is_clean is True  # nothing to validate, nothing published -- not a failure
 
 
+# ---------------- strip_leading_duplicate_heading (2026-07-11 real-run fix) ----------------
+# Real bug found on draft 48632 (production_v2.yml run 29134020416): the LLM's
+# raw output echoed its OWN "## Illustrative Scenarios" H2 -- on top of the
+# SAME heading build_scenario_block adds deterministically -- producing a
+# visible duplicate H2 in the published article:
+#   ## Illustrative Scenarios
+#
+#   *The following are illustrative scenarios, not real testimonials...*
+#
+#   ## Illustrative Scenarios          <-- the bug
+#
+#   ### Illustrative Scenario: F-1 International Student, ...
+
+def test_strip_leading_duplicate_heading_removes_it():
+    raw = "## Illustrative Scenarios\n\n### Illustrative Scenario: The Applicant\n\nBody text here."
+    stripped = strip_leading_duplicate_heading(raw)
+    assert stripped == "### Illustrative Scenario: The Applicant\n\nBody text here."
+    assert stripped.count("## Illustrative Scenarios") == 0
+
+
+def test_strip_leading_duplicate_heading_is_a_noop_when_absent():
+    raw = "### Illustrative Scenario: The Applicant\n\nBody text here."
+    assert strip_leading_duplicate_heading(raw) == raw
+
+
+def test_strip_leading_duplicate_heading_only_touches_the_leading_line():
+    # a legitimate "### " (H3, not H2) at the very start must survive untouched.
+    raw = "### Illustrative Scenario: The Applicant\n\nSee ## for details (not a real heading)."
+    assert strip_leading_duplicate_heading(raw) == raw
+
+
+def test_build_scenario_block_deduplicates_the_real_48632_shaped_output():
+    # exact shape observed in production: LLM echoes the H2, THEN the real
+    # H3 + body. build_scenario_block must publish it ONCE, not twice.
+    raw_llm_output = (
+        "## Illustrative Scenarios\n\n"
+        "### Illustrative Scenario: F-1 International Student, Graduate Program (New York)\n\n"
+        "A graduate student arrives on an F-1 visa and seeks auto insurance without a US "
+        "driving record, qualifying only for higher-risk pricing tiers initially."
+    )
+    block, is_clean, reasons = build_scenario_block(raw_llm_output, "us_auto")
+    assert is_clean is True
+    assert block.count("## Illustrative Scenarios") == 1, (
+        f"duplicate H2 heading regressed -- real bug from draft 48632: {block!r}"
+    )
+    assert "### Illustrative Scenario: F-1 International Student" in block
+    assert SCENARIO_DISCLAIMER in block
+
+
 def test_disclaimer_explicitly_denies_being_a_real_testimonial():
     # constraint (4) from the user: never presented as a real testimonial.
     assert "not real testimonials" in SCENARIO_DISCLAIMER
@@ -196,7 +246,8 @@ def test_agent_04_prompt_explicitly_forbids_names_and_unsourced_numbers():
     # incidental prompt rewrapping.
     assert "no first names/invented" in AGENT_04_SRC
     assert "identities (role/status only)" in AGENT_04_SRC
-    assert "no $/%/number unless already established elsewhere" in AGENT_04_SRC
+    assert "no $/%/number unless already" in AGENT_04_SRC
+    assert "established elsewhere in this article" in AGENT_04_SRC
     assert "never a real testimonial" in AGENT_04_SRC
 
 
@@ -204,24 +255,39 @@ def test_agent_04_logs_a_warning_on_rejection_never_silently_drops():
     assert "Illustrative Scenarios REJECTED (anti-fabrication guard)" in AGENT_04_SRC
 
 
-def test_scenario_call_is_short_deliberately_capped(monkeypatch=None):
+def test_scenario_call_is_short_deliberately_capped():
     # 2026-07-10 real-run finding on draft 48624: a verbose 2-scenario call
     # (max_tokens=700) pushed an OPPORTUNITY-tier article (already 4304w,
     # +7.6% over its own 4000w target) past the +-10% word-count tolerance --
-    # costing 15 SEO points (word_count_ok) + 40 content_check points (both
-    # tier-relative checks, see agent_12), a NET SCORE REGRESSION despite the
-    # EEAT gain. Verified fix: ONE short scenario (40-70w), max_tokens<=200,
-    # stays inside the headroom on every tier this pipeline produces. Locks
-    # in the budget so it can't silently grow verbose again.
-    m = re.search(r"Write '## Illustrative Scenarios'.*?max_tokens=(\d+)\)", AGENT_04_SRC, re.DOTALL)
+    # costing 15 SEO points (word_count_ok) + 40 content_check points, a NET
+    # SCORE REGRESSION despite the EEAT gain. First fix: ONE scenario,
+    # 40-70w, max_tokens=200 -- STILL not enough (see next test's docstring):
+    # a real-run on draft 48632 showed the fixed costs (H2 3w + disclaimer
+    # 14w + H3 ~10w = ~27w non-negotiable) plus even an in-target 63w body
+    # totalled 93w, pushing a 4344w base article (normal generation
+    # variance) 34w over 4400. Tightened further: body target 25-40w,
+    # max_tokens=150. NOT fixed by widening agent_12's shared +-10%
+    # tolerance (that governs every article, not just ones with a scenario).
+    m = re.search(r"Write ONE short sub-section for:.*?max_tokens=(\d+)\)", AGENT_04_SRC, re.DOTALL)
     assert m, "the Illustrative Scenarios _call_claude invocation was not found"
-    assert int(m.group(1)) <= 250, (
-        f"scenario max_tokens={m.group(1)} is too generous -- a real-run test showed "
-        f"700 regresses the score by pushing an OPPORTUNITY-tier article over its "
-        f"own +-10% word-count tolerance (SEO word_count_ok + content_check both fail)"
+    assert int(m.group(1)) <= 200, (
+        f"scenario max_tokens={m.group(1)} is too generous -- real-run tests showed 700 and even "
+        f"200-with-a-40-70w-target regress the score by pushing an OPPORTUNITY-tier article over "
+        f"its own +-10% word-count tolerance (SEO word_count_ok + content_check both fail)"
     )
-    assert "ONE short sub-section only" in AGENT_04_SRC
-    assert "40-70 words" in AGENT_04_SRC
+    assert "ONE short sub-section" in AGENT_04_SRC
+    assert "25-40 words" in AGENT_04_SRC
+
+
+def test_scenario_prompt_asks_the_llm_not_to_duplicate_the_heading():
+    # layer-1 defense (prompt wording) alongside layer-2 (code-level dedup,
+    # tested in test_strip_leading_duplicate_heading_* above) -- the prompt
+    # no longer even mentions the literal "## Illustrative Scenarios" text
+    # (the old wording "Write '## Illustrative Scenarios' for: ..." directly
+    # invited the LLM to echo it), and explicitly says not to add another
+    # heading before the "### " one.
+    assert "Write '## Illustrative Scenarios' for:" not in AGENT_04_SRC
+    assert "no other heading before it" in AGENT_04_SRC
 
 
 def test_min_case_studies_still_zero_sprint_8_floor_unchanged():
