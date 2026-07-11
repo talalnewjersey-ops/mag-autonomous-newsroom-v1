@@ -8,6 +8,7 @@ Proves the 3 cases the user asked for explicitly:
   - REST API unreachable ("sitemap down") -> article gets ZERO internal
     links, never a crash, never a fallback to a hardcoded list
 """
+import io
 import json
 import os
 import sys
@@ -76,6 +77,87 @@ def test_fetch_real_posts_malformed_json_returns_empty_not_raise(monkeypatch):
     monkeypatch.setattr(ril.urllib.request, "urlopen", fake_urlopen)
 
     assert ril.fetch_real_posts() == []
+
+
+# ---------------- OBSERVABILITY (2026-07-11, PR express): request-id/ray-id/body capture ----------------
+# Real finding, witness run 7: 3/3 articles hit "HTTP Error 403: Forbidden" on both
+# endpoints with ZERO further detail -- undiagnosable whether it's a WAF blocking
+# the runner's IP or WordPress rejecting the request for some other reason.
+
+def _http_error(code=403, msg="Forbidden", headers=None, body=b""):
+    return urllib.error.HTTPError(
+        url="https://moneyabroadguide.com/wp-json/wp/v2/posts",
+        code=code, msg=msg, hdrs=(headers or {}), fp=io.BytesIO(body),
+    )
+
+
+def test_describe_http_error_captures_request_id_and_ray_headers():
+    e = _http_error(headers={"x-hcdn-request-id": "1fbf9fb6-phx-edge6", "server": "hcdn"})
+    desc = ril._describe_http_error(e)
+    assert "HTTP Error 403: Forbidden" in desc
+    assert "x-hcdn-request-id=1fbf9fb6-phx-edge6" in desc
+    assert "server=hcdn" in desc
+
+
+def test_describe_http_error_captures_cf_ray_too():
+    e = _http_error(headers={"cf-ray": "8a1b2c3d4e5f-LAX"})
+    assert "cf-ray=8a1b2c3d4e5f-LAX" in ril._describe_http_error(e)
+
+
+def test_describe_http_error_omits_absent_headers_cleanly():
+    e = _http_error(headers={})
+    desc = ril._describe_http_error(e)
+    assert "x-hcdn-request-id" not in desc
+    assert "cf-ray" not in desc
+    assert desc == "HTTP Error 403: Forbidden"  # no stray "header=None" noise
+
+
+def test_describe_http_error_captures_a_bounded_body_snippet():
+    body = b'{"code":"rest_forbidden","message":"Sorry, you are not allowed to do that."}'
+    e = _http_error(body=body)
+    desc = ril._describe_http_error(e)
+    assert "rest_forbidden" in desc
+
+
+def test_describe_http_error_body_is_truncated_not_unbounded():
+    huge_body = b'{"code":"rest_forbidden"}' + b"x" * 5000
+    e = _http_error(body=huge_body)
+    desc = ril._describe_http_error(e, body_limit=500)
+    assert len(desc) < 700  # base message + headers + the 500-char cap, not 5000+
+
+
+def test_describe_http_error_never_crashes_if_body_cannot_be_read():
+    e = _http_error(headers={"x-hcdn-request-id": "abc"})
+    e.read = lambda: (_ for _ in ()).throw(IOError("already consumed"))  # simulate a used-up stream
+    desc = ril._describe_http_error(e)
+    assert "x-hcdn-request-id=abc" in desc  # headers still captured even if body read fails
+
+
+def test_describe_http_error_non_http_error_falls_back_to_plain_str():
+    e = urllib.error.URLError("no route to host")
+    assert ril._describe_http_error(e) == str(e)
+
+
+def test_fetch_real_posts_403_logs_the_request_id(monkeypatch, caplog):
+    def fake_urlopen(req, timeout=None):
+        raise _http_error(headers={"x-hcdn-request-id": "run7-abc123"},
+                           body=b'{"code":"rest_forbidden"}')
+    monkeypatch.setattr(ril.urllib.request, "urlopen", fake_urlopen)
+
+    with caplog.at_level("WARNING"):
+        assert ril.fetch_real_posts() == []
+    assert "run7-abc123" in caplog.text
+    assert "rest_forbidden" in caplog.text
+
+
+def test_fetch_methodology_links_403_logs_the_request_id(monkeypatch, caplog):
+    def fake_urlopen(req, timeout=None):
+        raise _http_error(headers={"cf-ray": "run7-ray-xyz"})
+    monkeypatch.setattr(ril.urllib.request, "urlopen", fake_urlopen)
+
+    with caplog.at_level("WARNING"):
+        assert ril.fetch_methodology_links() == []
+    assert "run7-ray-xyz" in caplog.text
 
 
 def test_fetch_real_posts_paginates_until_a_short_page(monkeypatch):

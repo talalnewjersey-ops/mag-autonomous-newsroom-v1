@@ -44,6 +44,41 @@ _MAX_PAGES = 5  # hard cap (<=500 posts): headroom for site growth, never unboun
 # produce a dead link the way the old static INTERNAL_LINKS dict did.
 _METHODOLOGY_SLUGS = ("fact-checking-process", "how-we-test")
 
+# OBSERVABILITY (2026-07-11, PR express): a bare str(HTTPError) is just "HTTP
+# Error 403: Forbidden" -- real finding, witness run 7, 3/3 articles hit this on
+# BOTH endpoints with zero further detail, leaving it undiagnosable whether a
+# WAF is blocking the runner's IP (Hostinger's hCDN fronts this site -- see
+# wp_diag.py, which already captures this on its own diagnostic path) or
+# WordPress itself is rejecting the request for some other reason. Same
+# observability principle as agent_04's own HTTP-400 body logging (#77):
+# capture what's available NOW so the NEXT occurrence is diagnosable directly
+# from the logs, without needing to reproduce it.
+_DIAGNOSTIC_HEADERS = ("x-hcdn-request-id", "cf-ray", "server")
+
+
+def _describe_http_error(e, body_limit=500):
+    """Best-effort diagnostic string for an HTTPError: request-id/ray-id
+    headers (if the response carried any) plus a bounded body snippet -- so a
+    WAF challenge page (HTML) is distinguishable from a clean WordPress JSON
+    error at a glance. Never raises; a non-HTTPError (timeout, DNS, connection
+    refused, ...) falls back to plain str(e), unchanged from before."""
+    if not isinstance(e, urllib.error.HTTPError):
+        return str(e)
+    parts = [str(e)]
+    headers = e.headers or {}
+    for h in _DIAGNOSTIC_HEADERS:
+        v = headers.get(h)
+        if v:
+            parts.append(f"{h}={v}")
+    try:
+        body = e.read()
+        if body:
+            parts.append(f"body={body[:body_limit].decode('utf-8', errors='replace')!r}")
+    except Exception:
+        pass  # reading the body is a bonus, never let it mask the original error
+    return " | ".join(parts)
+
+
 _STOP = {
     "the", "a", "an", "and", "or", "but", "of", "to", "in", "for", "on", "with",
     "as", "by", "is", "are", "be", "this", "that", "your", "you", "it", "at",
@@ -73,9 +108,10 @@ def fetch_real_posts(endpoint=POSTS_ENDPOINT, timeout=_TIMEOUT_SECONDS, max_page
         except Exception as e:
             if page == 1:
                 logger.warning(f"[AGENT-04] SKIP internal links: WP REST API unreachable "
-                               f"({endpoint}): {e}")
+                               f"({endpoint}): {_describe_http_error(e)}")
                 return []
-            logger.warning(f"[AGENT-04] internal links: stopped paginating at page {page} ({e})")
+            logger.warning(f"[AGENT-04] internal links: stopped paginating at page {page} "
+                           f"({_describe_http_error(e)})")
             break
         if not isinstance(batch, list) or not batch:
             break
@@ -109,7 +145,8 @@ def fetch_methodology_links(endpoint=PAGES_ENDPOINT, slugs=_METHODOLOGY_SLUGS, t
             body = resp.read().decode("utf-8", errors="replace")
         batch = json.loads(body)
     except Exception as e:
-        logger.warning(f"[AGENT-04] SKIP methodology links: WP REST API unreachable ({endpoint}): {e}")
+        logger.warning(f"[AGENT-04] SKIP methodology links: WP REST API unreachable ({endpoint}): "
+                       f"{_describe_http_error(e)}")
         return []
     if not isinstance(batch, list):
         return []
