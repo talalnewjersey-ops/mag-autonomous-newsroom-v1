@@ -81,7 +81,7 @@ def run_eeat_validation(article_path, output_dir, threshold=90):
     # the way agent_12's pipeline data does) -- see derive_flags_from_content's
     # docstring for why that's reliable for this pipeline's fixed output shape.
     flags = derive_flags_from_content(article_text)
-    checks = audit_eeat(article_text, **flags)
+    checks = audit_eeat(article_text, word_count=word_count, **flags)
     total_score = calculate_eeat_score(checks)
     scores = {
         "experience": checks["experience_score"],
