@@ -48,6 +48,9 @@ from typing import Any, Dict, List, Optional
 import aiohttp
 
 from agents import _gemini_rate_limiter
+from agents._wp_challenge import (
+    RETRY_DELAYS_SECONDS, INTER_CALL_SPACING_SECONDS, call_with_challenge_retry_async,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -309,23 +312,38 @@ class ImageProductionAgent:
         if alt_text:
             headers["X-WP-Alt-Text"] = alt_text
 
-        # Use a new session for each upload to avoid "Session is closed" errors
-        async with aiohttp.ClientSession() as upload_session:
-            async with upload_session.post(
-                self.wp_media_endpoint,
-                data=image_bytes,
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=60),
-            ) as resp:
-                if resp.status in [200, 201]:
-                    result = await resp.json()
-                    # Update alt text via separate call if needed
-                    if alt_text and result.get("id"):
-                        await self._update_media_alt(result["id"], alt_text)
-                    return result
-                else:
-                    error = await resp.text()
-                    raise Exception(f"WordPress media upload failed ({resp.status}): {error[:200]}")
+        # Hostinger hCDN challenge-403 retry (2026-07-11, PR express -- see
+        # agents/_wp_challenge.py): the FULL body is checked for the challenge
+        # signature BEFORE any truncation, since the interstitial's
+        # <meta http-equiv="refresh" content="30"> tag starts well past the
+        # first 200 characters (doctype + viewport/robots meta tags come
+        # first) -- truncating first would have made the signature
+        # undetectable. A new session per attempt, matching this method's
+        # existing "fresh session per upload" pattern.
+        async def _attempt():
+            async with aiohttp.ClientSession() as upload_session:
+                async with upload_session.post(
+                    self.wp_media_endpoint,
+                    data=image_bytes,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=60),
+                ) as resp:
+                    return resp.status, await resp.text(), None
+
+        await asyncio.sleep(INTER_CALL_SPACING_SECONDS)  # light preventive pacing before every WP call
+        status, body, _ = await call_with_challenge_retry_async(
+            _attempt, asyncio.sleep,
+            log_fn=lambda n, d: logger.warning(
+                f"[AGENT-10] WP challenge 403 detected on media upload, retry {n}/{len(RETRY_DELAYS_SECONDS)} in {d}s"),
+        )
+        if status in (200, 201):
+            result = json.loads(body)
+            # Update alt text via separate call if needed
+            if alt_text and result.get("id"):
+                await self._update_media_alt(result["id"], alt_text)
+            return result
+        else:
+            raise Exception(f"WordPress media upload failed ({status}): {body[:200]}")
 
     async def _update_media_alt(self, media_id: int, alt_text: str):
         """Update alt_text on an uploaded media item."""

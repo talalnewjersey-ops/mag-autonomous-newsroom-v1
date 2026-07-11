@@ -16,6 +16,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 from agents.base_agent import BaseAgent
+from agents._wp_challenge import (
+    RETRY_DELAYS_SECONDS, INTER_CALL_SPACING_SECONDS, call_with_challenge_retry_async,
+)
 from services.llm_service import LLMService
 from services.storage_service import StorageService
 from services.wordpress_service import WordPressService
@@ -612,11 +615,27 @@ class WordPressIntegrationAgent(BaseAgent):
                 headers['Authorization'] = auth
             async with aiohttp.ClientSession() as session:
                 for slug in slugs:
-                    async with session.get(f"{wp_url}/wp-json/wp/v2/categories", params={'slug': slug, 'per_page': 1}, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            if data and data[0].get('id'):
-                                ids.append(data[0]['id'])
+                    # Hostinger hCDN challenge-403 retry (2026-07-11, PR express --
+                    # see agents/_wp_challenge.py); reuses THIS shared session
+                    # (unlike services/wordpress_service.py's fresh-session-per-call
+                    # pattern) since that's this function's existing design.
+                    async def _attempt(slug=slug):
+                        async with session.get(
+                            f"{wp_url}/wp-json/wp/v2/categories", params={'slug': slug, 'per_page': 1},
+                            headers=headers, timeout=aiohttp.ClientTimeout(total=10),
+                        ) as resp:
+                            return resp.status, await resp.text(), None
+
+                    await asyncio.sleep(INTER_CALL_SPACING_SECONDS)  # light preventive pacing before every WP call
+                    status, body, _ = await call_with_challenge_retry_async(
+                        _attempt, asyncio.sleep,
+                        log_fn=lambda n, d, slug=slug: logger.warning(
+                            f"WP challenge 403 on category lookup '{slug}', retry {n}/{len(RETRY_DELAYS_SECONDS)} in {d}s"),
+                    )
+                    if status == 200:
+                        data = json.loads(body)
+                        if data and data[0].get('id'):
+                            ids.append(data[0]['id'])
         except Exception as e:
             logger.warning(f"Category lookup failed: {e}")
         return ids

@@ -1,12 +1,17 @@
 """
 NEXUS-14: WordPress Service v2.1 - FIX: per-request sessions (no unclosed session errors)
 """
+import asyncio
 import json
 import logging
 import base64
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 import aiohttp
+
+from agents._wp_challenge import (
+    RETRY_DELAYS_SECONDS, INTER_CALL_SPACING_SECONDS, call_with_challenge_retry_async,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +35,31 @@ class WordPressService:
             "User-Agent": "NEXUS-14/2.1",
         }
 
+    async def _request_with_challenge_retry(self, method: str, url: str, **kwargs):
+        """Makes ONE aiohttp request (a fresh ClientSession per attempt, matching
+        this file's existing per-request-session pattern), retrying with
+        backoff if the response is the Hostinger hCDN "please wait" challenge-
+        403 interstitial (2026-07-11, PR express -- see
+        agents/_wp_challenge.py). A hard 403 (e.g. a clean `rest_forbidden`
+        JSON error) or any other status returns immediately, un-retried.
+
+        Returns (status, body_text) -- callers read the status/body directly
+        instead of a live response object, since that can't be kept open
+        across a retry's fresh session anyway; json.loads(body) on success
+        replaces the old `await response.json()`."""
+        async def _attempt():
+            async with aiohttp.ClientSession() as session:
+                async with session.request(method, url, **kwargs) as response:
+                    return response.status, await response.text(), None
+
+        await asyncio.sleep(INTER_CALL_SPACING_SECONDS)  # light preventive pacing before every WP call
+        status, body, _ = await call_with_challenge_retry_async(
+            _attempt, asyncio.sleep,
+            log_fn=lambda n, d: logger.warning(
+                f"WP challenge 403 detected on {method} {url}, retry {n}/{len(RETRY_DELAYS_SECONDS)} in {d}s"),
+        )
+        return status, body
+
     async def create_post(self, post_data: Dict) -> Dict:
         payload = {
             "title": post_data.get("title", ""),
@@ -45,34 +75,26 @@ class WordPressService:
         if post_data.get("tags"):
             payload["tags"] = post_data["tags"]
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{self.api_url}/posts",
-                json=payload,
-                headers=self._get_headers(),
-                timeout=aiohttp.ClientTimeout(total=60),
-            ) as response:
-                if response.status in [200, 201]:
-                    result = await response.json()
-                    logger.info(f"Created WordPress post ID: {result.get('id')}")
-                    return result
-                else:
-                    error_text = await response.text()
-                    raise Exception(f"WordPress post creation failed ({response.status}): {error_text[:300]}")
+        status, body = await self._request_with_challenge_retry(
+            "POST", f"{self.api_url}/posts", json=payload, headers=self._get_headers(),
+            timeout=aiohttp.ClientTimeout(total=60),
+        )
+        if status in (200, 201):
+            result = json.loads(body)
+            logger.info(f"Created WordPress post ID: {result.get('id')}")
+            return result
+        else:
+            raise Exception(f"WordPress post creation failed ({status}): {body[:300]}")
 
     async def update_post(self, post_id: int, update_data: Dict) -> Dict:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{self.api_url}/posts/{post_id}",
-                json=update_data,
-                headers=self._get_headers(),
-                timeout=aiohttp.ClientTimeout(total=60),
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    error = await response.text()
-                    raise Exception(f"WordPress update failed ({response.status}): {error[:200]}")
+        status, body = await self._request_with_challenge_retry(
+            "POST", f"{self.api_url}/posts/{post_id}", json=update_data, headers=self._get_headers(),
+            timeout=aiohttp.ClientTimeout(total=60),
+        )
+        if status == 200:
+            return json.loads(body)
+        else:
+            raise Exception(f"WordPress update failed ({status}): {body[:200]}")
 
     async def upload_image(self, file_path: str, title: str = "",
                            alt_text: str = "", description: str = "") -> Dict:
@@ -97,49 +119,39 @@ class WordPressService:
         with open(file_path, "rb") as f:
             image_data = f.read()
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{self.api_url}/media",
-                data=image_data,
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=120),
-            ) as response:
-                if response.status in [200, 201]:
-                    result = await response.json()
-                    logger.info(f"Uploaded image: {result.get('id')} - {result.get('source_url', '')}")
-                    return result
-                else:
-                    error = await response.text()
-                    raise Exception(f"Image upload failed ({response.status}): {error[:200]}")
+        status, body = await self._request_with_challenge_retry(
+            "POST", f"{self.api_url}/media", data=image_data, headers=headers,
+            timeout=aiohttp.ClientTimeout(total=120),
+        )
+        if status in (200, 201):
+            result = json.loads(body)
+            logger.info(f"Uploaded image: {result.get('id')} - {result.get('source_url', '')}")
+            return result
+        else:
+            raise Exception(f"Image upload failed ({status}): {body[:200]}")
 
     async def update_media(self, media_id: int, data: Dict) -> Dict:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{self.api_url}/media/{media_id}",
-                json=data,
-                headers=self._get_headers(),
-                timeout=aiohttp.ClientTimeout(total=30),
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                return {}
+        status, body = await self._request_with_challenge_retry(
+            "POST", f"{self.api_url}/media/{media_id}", json=data, headers=self._get_headers(),
+            timeout=aiohttp.ClientTimeout(total=30),
+        )
+        if status == 200:
+            return json.loads(body)
+        return {}
 
     async def set_featured_image(self, post_id: int, media_id: int):
         await self.update_post(post_id, {"featured_media": media_id})
 
     async def _get_or_create_author(self, name: str, bio: str) -> Optional[int]:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{self.api_url}/users",
-                params={"search": name},
-                headers=self._get_headers(),
-                timeout=aiohttp.ClientTimeout(total=30),
-            ) as response:
-                if response.status == 200:
-                    users = await response.json()
-                    if users:
-                        return users[0]["id"]
-                return self.config.get("wordpress_author_id", 1)
+        status, body = await self._request_with_challenge_retry(
+            "GET", f"{self.api_url}/users", params={"search": name}, headers=self._get_headers(),
+            timeout=aiohttp.ClientTimeout(total=30),
+        )
+        if status == 200:
+            users = json.loads(body)
+            if users:
+                return users[0]["id"]
+        return self.config.get("wordpress_author_id", 1)
 
     async def set_post_author(self, post_id: int, author_name: str = "", author_bio: str = "") -> Optional[int]:
         author_id = await self._get_or_create_author(author_name, author_bio)
@@ -151,15 +163,12 @@ class WordPressService:
             logger.warning(f"set_post_author: update author failed: {e}")
         if author_bio:
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        f"{self.api_url}/users/{author_id}",
-                        json={"description": author_bio},
-                        headers=self._get_headers(),
-                        timeout=aiohttp.ClientTimeout(total=30),
-                    ) as response:
-                        if response.status not in (200, 201):
-                            logger.warning(f"set_post_author: bio update returned {response.status}")
+                status, _body = await self._request_with_challenge_retry(
+                    "POST", f"{self.api_url}/users/{author_id}", json={"description": author_bio},
+                    headers=self._get_headers(), timeout=aiohttp.ClientTimeout(total=30),
+                )
+                if status not in (200, 201):
+                    logger.warning(f"set_post_author: bio update returned {status}")
             except Exception as e:
                 logger.warning(f"set_post_author: bio update failed: {e}")
         logger.info(f"set_post_author: post={post_id} author={author_id}")
@@ -170,45 +179,36 @@ class WordPressService:
         if not clean:
             return False
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{self.api_url}/posts/{post_id}",
-                    json={"meta": clean},
-                    headers=self._get_headers(),
-                    timeout=aiohttp.ClientTimeout(total=60),
-                ) as response:
-                    if response.status in (200, 201):
-                        logger.info(f"set_post_meta: post={post_id} keys={list(clean.keys())}")
-                        return True
-                    body = await response.text()
-                    logger.warning(f"set_post_meta: returned {response.status}: {body[:200]}")
-                    return False
+            status, body = await self._request_with_challenge_retry(
+                "POST", f"{self.api_url}/posts/{post_id}", json={"meta": clean}, headers=self._get_headers(),
+                timeout=aiohttp.ClientTimeout(total=60),
+            )
+            if status in (200, 201):
+                logger.info(f"set_post_meta: post={post_id} keys={list(clean.keys())}")
+                return True
+            logger.warning(f"set_post_meta: returned {status}: {body[:200]}")
+            return False
         except Exception as e:
             logger.warning(f"set_post_meta: failed: {e}")
             return False
 
     async def get_categories(self) -> List[Dict]:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{self.api_url}/categories",
-                params={"per_page": 100},
-                headers=self._get_headers(),
-                timeout=aiohttp.ClientTimeout(total=30),
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                return []
+        status, body = await self._request_with_challenge_retry(
+            "GET", f"{self.api_url}/categories", params={"per_page": 100}, headers=self._get_headers(),
+            timeout=aiohttp.ClientTimeout(total=30),
+        )
+        if status == 200:
+            return json.loads(body)
+        return []
 
     async def get_post(self, post_id: int) -> Optional[Dict]:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{self.api_url}/posts/{post_id}",
-                headers=self._get_headers(),
-                timeout=aiohttp.ClientTimeout(total=30),
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                return None
+        status, body = await self._request_with_challenge_retry(
+            "GET", f"{self.api_url}/posts/{post_id}", headers=self._get_headers(),
+            timeout=aiohttp.ClientTimeout(total=30),
+        )
+        if status == 200:
+            return json.loads(body)
+        return None
 
     async def find_posts(self, search: str, per_page: int = 20) -> List[Dict]:
         """Search existing posts (published + drafts) by text -- used for the
@@ -217,12 +217,13 @@ class WordPressService:
         q = urllib.parse.urlencode({"search": search[:120], "status": "publish,draft",
                                     "per_page": per_page, "context": "edit"})
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.api_url}/posts?{q}", headers=self._get_headers(),
-                                       timeout=aiohttp.ClientTimeout(total=30)) as response:
-                    if response.status == 200:
-                        return await response.json()
-                    return []
+            status, body = await self._request_with_challenge_retry(
+                "GET", f"{self.api_url}/posts?{q}", headers=self._get_headers(),
+                timeout=aiohttp.ClientTimeout(total=30),
+            )
+            if status == 200:
+                return json.loads(body)
+            return []
         except Exception as e:
             logger.warning(f"find_posts failed for {search!r}: {e}")
             return []

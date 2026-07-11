@@ -25,8 +25,14 @@ along (no authentication available in this pipeline for agent_04 anyway).
 import json
 import logging
 import re
+import time
 import urllib.error
 import urllib.request
+
+from agents._wp_challenge import (
+    RETRY_DELAYS_SECONDS, INTER_CALL_SPACING_SECONDS,
+    call_with_challenge_retry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +76,17 @@ def _describe_http_error(e, body_limit=500):
         v = headers.get(h)
         if v:
             parts.append(f"{h}={v}")
+    # 2026-07-11 (PR express, challenge retry): _urlopen_with_challenge_retry
+    # already reads the body ONCE to check for the Hostinger challenge
+    # signature -- HTTPError.read() is a stream, calling it again here would
+    # return nothing. Use the cached copy if this exception went through that
+    # path; otherwise fall back to reading it fresh (unchanged prior behavior
+    # for any HTTPError NOT wrapped by that helper).
+    cached_body = getattr(e, "_wp_challenge_body", None)
+    if cached_body is not None:
+        if cached_body:
+            parts.append(f"body={cached_body[:body_limit]!r}")
+        return " | ".join(parts)
     try:
         body = e.read()
         if body:
@@ -77,6 +94,39 @@ def _describe_http_error(e, body_limit=500):
     except Exception:
         pass  # reading the body is a bonus, never let it mask the original error
     return " | ".join(parts)
+
+
+def _urlopen_with_challenge_retry(url, timeout, agent_label):
+    """urlopen() wrapped with the Hostinger hCDN challenge-403 backoff retry
+    (2026-07-11, PR express -- see agents/_wp_challenge.py) plus a light,
+    fixed pacing delay before every call. Returns (status, body_text) on any
+    response the server actually sent (200 or otherwise); RE-RAISES the last
+    urllib.error.HTTPError if it's a hard 403 (no challenge signature) or if
+    challenge retries are exhausted -- callers keep their EXISTING
+    except-Exception handling completely unchanged (including
+    _describe_http_error(e), which still receives a real HTTPError)."""
+    def _attempt():
+        req = urllib.request.Request(url, headers={"User-Agent": "NEXUS-14-agent04/1.0"})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.status, resp.read().decode("utf-8", errors="replace"), None
+        except urllib.error.HTTPError as e:
+            try:
+                body = e.read().decode("utf-8", errors="replace")
+            except Exception:
+                body = ""
+            e._wp_challenge_body = body  # cache: HTTPError.read() is a stream, consumed above
+            return e.code, body, e
+
+    time.sleep(INTER_CALL_SPACING_SECONDS)  # light preventive pacing before every WP call
+    status, body, err = call_with_challenge_retry(
+        _attempt, time.sleep,
+        log_fn=lambda n, d: logger.warning(
+            f"[AGENT-04] {agent_label}: WP challenge 403 detected, retry {n}/{len(RETRY_DELAYS_SECONDS)} in {d}s"),
+    )
+    if err is not None:
+        raise err
+    return status, body
 
 
 _STOP = {
@@ -97,13 +147,11 @@ def fetch_real_posts(endpoint=POSTS_ENDPOINT, timeout=_TIMEOUT_SECONDS, max_page
     for page in range(1, max_pages + 1):
         url = f"{endpoint}?_fields=slug,link,title&per_page={_PER_PAGE}&page={page}"
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "NEXUS-14-agent04/1.0"})
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                if resp.status != 200:
-                    logger.warning(f"[AGENT-04] SKIP internal links: WP REST API returned "
-                                   f"{resp.status} at page {page} ({url})")
-                    break
-                body = resp.read().decode("utf-8", errors="replace")
+            status, body = _urlopen_with_challenge_retry(url, timeout, "internal links")
+            if status != 200:
+                logger.warning(f"[AGENT-04] SKIP internal links: WP REST API returned "
+                               f"{status} at page {page} ({url})")
+                break
             batch = json.loads(body)
         except Exception as e:
             if page == 1:
@@ -136,13 +184,11 @@ def fetch_methodology_links(endpoint=PAGES_ENDPOINT, slugs=_METHODOLOGY_SLUGS, t
     slug_param = ",".join(slugs)
     url = f"{endpoint}?slug={slug_param}&_fields=slug,link,title&status=publish"
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "NEXUS-14-agent04/1.0"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            if resp.status != 200:
-                logger.warning(f"[AGENT-04] SKIP methodology links: WP REST API returned "
-                               f"{resp.status} ({url})")
-                return []
-            body = resp.read().decode("utf-8", errors="replace")
+        status, body = _urlopen_with_challenge_retry(url, timeout, "methodology links")
+        if status != 200:
+            logger.warning(f"[AGENT-04] SKIP methodology links: WP REST API returned "
+                           f"{status} ({url})")
+            return []
         batch = json.loads(body)
     except Exception as e:
         logger.warning(f"[AGENT-04] SKIP methodology links: WP REST API unreachable ({endpoint}): "
