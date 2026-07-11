@@ -15,6 +15,7 @@ from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 from agents.base_agent import BaseAgent
+from agents._eeat_scoring import audit_eeat, calculate_eeat_score  # single source of truth, shared with agent_06 (2026-07-11)
 from services.llm_service import LLMService
 from services.storage_service import StorageService
 
@@ -324,66 +325,17 @@ class QualityAssuranceAgent(BaseAgent):
         return checks
     
     async def _audit_eeat(self, data: Dict) -> Dict:
-        """Audit Experience, Expertise, Authority, Trust signals."""
-        content = data.get("article_content", "")
-        
-        checks = {}
-        
-        # Experience signals
-        experience_patterns = [
-            r'(?:based on|according to|our experience|we found|in practice)',
-            r'(?:real-world|case study|example|scenario)',
-            r'(?:tested|reviewed|analyzed|compared)',
-            # 2026-07-10: recognizes genuine firsthand-experience language
-            # already present in the deterministic author bio (agent_04_
-            # article_writer.py _AUTHOR_BIO_MD) -- "he draws on that
-            # firsthand experience", "built his own credit history and
-            # banking relationships from scratch". Not a new signal source
-            # or a bio rewrite -- the bio's true content was simply
-            # invisible to this scorer before. Scoped tight (not a bare
-            # "experience") so it can't be gamed by unrelated prose.
-            r'firsthand experience',
-            r'built (?:his|her|their|our) own .{0,60}from scratch',
-        ]
-        experience_count = sum(len(re.findall(p, content, re.IGNORECASE)) for p in experience_patterns)
-        checks["experience_signals"] = experience_count
-        checks["experience_score"] = min(100, experience_count * 5)
-        
-        # Expertise signals
-        expertise_patterns = [
-            r'(?:expert|professional|specialist|certified)',
-            r'(?:according to|research shows|studies indicate|data from)',
-            r'(?:official|government|regulation|requirement)',
-            r'(?:\$|USD|CAD|€|percent|%|annual|monthly)'
-        ]
-        expertise_count = sum(len(re.findall(p, content, re.IGNORECASE)) for p in expertise_patterns)
-        checks["expertise_signals"] = expertise_count
-        checks["expertise_score"] = min(100, expertise_count * 3)
-        
-        # Authority signals
-        checks["has_author"] = data.get("has_author", False)
-        checks["has_author_bio"] = data.get("has_author_bio", False)
-        checks["has_credentials"] = bool(re.search(r'(?:CPA|CFA|CFP|attorney|lawyer|advisor)', content, re.IGNORECASE))
-        checks["authority_score"] = (
-            (25 if checks["has_author"] else 0) +
-            (25 if checks["has_author_bio"] else 0) +
-            (25 if checks["has_credentials"] else 0) +
-            (25 if expertise_count > 10 else 0)
+        """Audit Experience, Expertise, Authority, Trust signals -- delegates to
+        agents/_eeat_scoring.py (2026-07-11), the single EEAT implementation
+        shared with agent_06 (GATE B). Same patterns/weights/formulas as
+        before this refactor -- a migration, not a behavior change here."""
+        return audit_eeat(
+            data.get("article_content", ""),
+            has_author=data.get("has_author", False),
+            has_author_bio=data.get("has_author_bio", False),
+            has_update_date=data.get("has_update_date"),
         )
-        
-        # Trust signals
-        trust_patterns = [
-            r'(?:updated|last reviewed|fact.checked)',
-            r'(?:source:|citation|reference)',
-            r'(?:FDIC|CFPB|CRA|IRS|government|official)',
-            r'(?:privacy|security|encrypted|SSL)'
-        ]
-        trust_count = sum(len(re.findall(p, content, re.IGNORECASE)) for p in trust_patterns)
-        checks["trust_signals"] = trust_count
-        checks["trust_score"] = min(100, trust_count * 5 + (25 if data.get("has_update_date") else 0))
-        
-        return checks
-    
+
     async def _audit_faq(self, data: Dict) -> Dict:
         """Audit FAQ section."""
         content = data.get("article_content", "")
@@ -506,12 +458,8 @@ class QualityAssuranceAgent(BaseAgent):
         return score
     
     def _calculate_eeat_score(self, eeat_check: Dict) -> float:
-        """Calculate EEAT score from checks."""
-        exp = eeat_check.get("experience_score", 0)
-        exp_score = eeat_check.get("expertise_score", 0)
-        auth = eeat_check.get("authority_score", 0)
-        trust = eeat_check.get("trust_score", 0)
-        return round((exp * 0.25 + exp_score * 0.25 + auth * 0.25 + trust * 0.25), 1)
+        """Calculate EEAT score from checks -- delegates to agents/_eeat_scoring.py."""
+        return calculate_eeat_score(eeat_check)
     
     def _identify_critical_issues(self, seo, eeat, faq, images, links) -> List[str]:
         """Identify critical quality issues."""
