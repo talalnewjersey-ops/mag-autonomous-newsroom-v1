@@ -253,6 +253,28 @@ jobs:
               --input "$DRAFT" \
               --report "${ARTICLE_DIR}/agent_04/polish_report.json" || true
 
+            # GATE LENGTH [BLOCKING] (2026-07-11): symmetric ceiling counterpart to agent_04's
+            # floor-only word-count expansion. agent_12's own tier-relative check catches an
+            # overshoot too, but sits OUTSIDE this retry loop (GATE QA/EDITOR are single-shot) --
+            # real finding: witness run 5 article 2 (STANDARD, 5232w vs 4000w target, +30.8%) had
+            # zero chance to self-correct before landing on that non-retriable gate. Same
+            # tolerance as agent_12_quality_assurance.py's _WORD_COUNT_TOLERANCE (0.10).
+            echo "[${ARTICLE_NUM}] Phase 4.442: Length Gate [BLOCKING]"
+            python scripts/length_gate.py \
+              --input "$DRAFT" \
+              --article-type "${ARTICLE_TYPE}" \
+              --output "${ARTICLE_DIR}/agent_04/length_report.json" || {
+              if [ "$RETRY_ATTEMPT" -eq 0 ]; then
+                echo "GATE LENGTH FAIL (attempt 1/2) for article ${ARTICLE_NUM} -- retrying once with gate feedback"
+                GATE_FEEDBACK=$(python3 scripts/gate_feedback.py --gate length --report "${ARTICLE_DIR}/agent_04/length_report.json" 2>/dev/null)
+                python3 scripts/structure_completeness_gate.py --input "$DRAFT" --snapshot "${ARTICLE_DIR}/agent_04/pre_retry_snapshot.json" || true
+                cp "${ARTICLE_DIR}/agent_04/length_report.json" "${ARTICLE_DIR}/agent_04/length_report_attempt0.json" || true
+                continue
+              fi
+              echo "GATE LENGTH FAIL (attempt 2/2, retry exhausted): article ${ARTICLE_NUM} still over the word-count ceiling"
+              ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue 2
+            }
+
             # Couche 3 G-Substance gate [BLOCKING]: rejects a hollow article before it can reach WordPress.
             echo "[${ARTICLE_NUM}] Phase 4.45: G-Substance Gate [BLOCKING]"
             python scripts/g_substance_gate.py \

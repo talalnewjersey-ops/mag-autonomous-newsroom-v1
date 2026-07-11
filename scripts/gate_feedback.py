@@ -67,13 +67,26 @@ def gate_b(report_path):
             "terminology, and official citations.")
 
 
+def length(report_path):
+    d = _load(report_path)
+    word_count = d.get("word_count", "?")
+    ceiling = d.get("ceiling_words", "?")
+    over_by = d.get("over_by_words", 0)
+    return (f"GATE LENGTH: {word_count}w exceeds the ceiling of {ceiling}w by {over_by}w. FIX THIS "
+            "SPECIFICALLY: tighten the longest/most verbose body section(s) by roughly that many "
+            "words -- cut redundant explanation and padding, keep every fact and citation. Do NOT "
+            "drop the FAQ section, the comparison table, the expert recommendation, the disclaimer, "
+            "or any entire H2 section -- trimming prose within a section is the fix, removing a "
+            "whole section is not.")
+
+
 AGENT_04_OWN_VALIDATION_FALLBACK = (
     "Agent 04's own writing/validation failed on the previous attempt -- ensure the article "
     "meets minimum words/FAQs/distinct official sources/case studies/comparison table/expert "
     "recommendation/disclaimer/author bio requirements."
 )
 
-_BUILDERS = {"g_substance": g_substance, "g3": g3, "gate_a": gate_a, "gate_b": gate_b}
+_BUILDERS = {"g_substance": g_substance, "g3": g3, "gate_a": gate_a, "gate_b": gate_b, "length": length}
 
 
 def build_feedback(gate, report_path):
