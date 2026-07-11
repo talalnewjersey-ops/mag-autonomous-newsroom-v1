@@ -6,6 +6,20 @@ Validates Experience, Expertise, Authority, Trust (E-E-A-T)
 for SEO 2026 compliance. Target score: >= 90.
 Output: eeat_report.json
 CLI: python -m agents.agent_06_eeat_validator --input <file> --output <dir> --threshold 90
+
+UNIFIED SCORING (2026-07-11): this used to carry its own, independent EEAT_SIGNALS/
+evaluate_dimension implementation, completely separate from agent_12_quality_
+assurance.py's _audit_eeat/_calculate_eeat_score. The two had already diverged --
+witness run 9 scored the SAME article at 98.3 here (GATE B) and 81.2 in GATE QA,
+a 17-point gap on one supposedly well-defined metric. Root cause (verified against
+the real article, not guessed): agent_12 received the 2026-07-10 EEAT fixes (PR #68
+firsthand-experience recognition, PR #70 illustrative-scenario recognition);
+this file never did. Worse, this file's OWN "author_credentials" signal matched
+generically on words like "licensed" ANYWHERE in the body (e.g. "insurers licensed
+in California" -- describing a THIRD PARTY, never the article's own author),
+inflating authority scores with false positives. Now delegates to
+agents/_eeat_scoring.py, the single EEAT implementation shared with agent_12 --
+both agents score the exact same article identically.
 """
 
 import argparse
@@ -16,237 +30,33 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from agents._eeat_scoring import audit_eeat, calculate_eeat_score, derive_flags_from_content
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [AGENT-06] %(levelname)s %(message)s")
 
-# E-E-A-T dimension weights (must sum to 100)
+# E-E-A-T dimension weights -- kept only for the report's own display/back-compat;
+# agents/_eeat_scoring.py::calculate_eeat_score is the ACTUAL formula used (equal
+# 25% per dimension, matching agent_12 -- see that module's docstring for why).
 EEAT_WEIGHTS = {
     "experience": 25,
-    "expertise": 30,
+    "expertise": 25,
     "authority": 25,
-    "trust": 20,
+    "trust": 25,
 }
-
-# Signals for each dimension
-EEAT_SIGNALS = {
-    "experience": {
-        "first_person_narrative": {
-            "weight": 20,
-            "patterns": [
-                r"(?i)\b(?:I|we|our|my)\s+(?:have|had|used|tried|experienced|found|discovered)",
-                r"(?i)\b(?:in my experience|personally|firsthand|I can confirm)",
-                r"(?i)\b(?:when I|after I|before I|once I)",
-            ],
-            "min_count": 3,
-        },
-        "specific_examples": {
-            "weight": 30,
-            "patterns": [
-                r"(?i)\b(?:for example|for instance|such as|specifically|case study)",
-                r"(?i)\b(?:real-world|real world|in practice|in reality|actual)",
-            ],
-            "min_count": 2,
-        },
-        "detailed_process": {
-            "weight": 25,
-            "patterns": [
-                r"(?i)\bstep\s+\d+|step-by-step|step by step",
-                r"(?i)\b(?:process|procedure|instructions?|how to|tutorial)",
-                r"(?i)\b(?:first|second|third|then|next|finally)\s+(?:you|we|the)",
-            ],
-            "min_count": 3,
-        },
-        "recent_date": {
-            "weight": 25,
-            "patterns": [
-                r"(?i)\b(?:2024|2025|2026)\b",
-                r"(?i)\b(?:last updated|updated|as of|current|latest|recent)\b",
-            ],
-            "min_count": 2,
-        },
-    },
-    "expertise": {
-        "technical_terminology": {
-            "weight": 25,
-            "patterns": [
-                r"(?i)\b(?:SWIFT|SEPA|IBAN|BIC|KYC|AML|FINTRAC|CRA|IRS|FATCA)",
-                r"(?i)\b(?:remittance|forex|wire transfer|ACH|interbank|correspondent banking)",
-                r"(?i)\b(?:TFSA|RRSP|401k|RESP|GIC|T4|W-2|1099)",
-                r"(?i)\b(?:exchange rate|spread|mid-market|conversion fee|FX|hedging)",
-            ],
-            "min_count": 5,
-        },
-        "regulatory_references": {
-            "weight": 30,
-            "patterns": [
-                r"(?i)\b(?:FINTRAC|OSFI|FCAC|CFPB|FinCEN|FDIC|OCC|NCUA)",
-                r"(?i)\b(?:Bank Act|PCMLTFA|Money Services Business|MSB|MTL)",
-                r"(?i)\b(?:regulation|regulatory|compliance|licensed|regulated|registered)",
-            ],
-            "min_count": 3,
-        },
-        "data_and_statistics": {
-            "weight": 25,
-            "patterns": [
-                r"(?i)\b(?:according to|research|study|survey|statistics|data|report|analysis)",
-                r"(?i)\b(?:\d+(?:\.\d+)?\s*(?:percent|%|million|billion|thousand))",
-            ],
-            "min_count": 3,
-        },
-        "external_links_gov": {
-            "weight": 20,
-            "patterns": [
-                r"https?://(?:www\.)?(?:canada\.ca|gc\.ca|irs\.gov|usa\.gov|federalreserve\.gov)",
-                r"https?://(?:www\.)?(?:bankofcanada\.ca|imf\.org|worldbank\.org|oecd\.org)",
-            ],
-            "min_count": 2,
-        },
-    },
-    "authority": {
-        "author_credentials": {
-            "weight": 35,
-            "patterns": [
-                r"(?i)\b(?:by|author|written by|published by|expert|specialist|advisor|consultant)",
-                r"(?i)\b(?:CFA|CPA|CFP|MBA|PhD|CMA|CGA|CA)",
-                r"(?i)\b(?:years of experience|licensed|certified|qualified|accredited)",
-            ],
-            "min_count": 1,
-        },
-        "brand_mentions": {
-            "weight": 20,
-            "patterns": [
-                r"(?i)\b(?:moneyabroadguide|MoneyAbroadGuide)",
-            ],
-            "min_count": 2,
-        },
-        "publication_standards": {
-            "weight": 25,
-            "patterns": [
-                r"(?i)\b(?:editorial|reviewed by|fact-checked|editorial policy|editorial standards)",
-                r"(?i)\b(?:methodology|disclosure|affiliate disclosure|sponsored)",
-            ],
-            "min_count": 1,
-        },
-        "internal_links": {
-            "weight": 20,
-            "patterns": [
-                r"https?://(?:www\.)?moneyabroadguide\.com",
-                r"\[.+?\]\((?:/[^)]+|https?://moneyabroadguide)[^)]*\)",
-            ],
-            "min_count": 3,
-        },
-    },
-    "trust": {
-        "disclaimer_present": {
-            "weight": 30,
-            "patterns": [
-                r"(?i)\b(?:not financial advice|not a financial advisor|consult a professional)",
-                r"(?i)\b(?:disclaimer|disclosure|this is not|general information only)",
-                r"(?i)\b(?:seek professional advice|independent financial advice)",
-            ],
-            "min_count": 1,
-        },
-        "last_updated": {
-            "weight": 25,
-            "patterns": [
-                r"(?i)\b(?:last updated|updated on|published on|reviewed on)",
-                r"(?i)\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}",
-            ],
-            "min_count": 1,
-        },
-        "author_bio": {
-            "weight": 25,
-            "patterns": [
-                r"(?i)\b(?:about the author|author bio|about us|meet the team|written by)",
-                r"(?i)\b(?:author.s note|contributor|editor|journalist)",
-            ],
-            "min_count": 1,
-        },
-        "fact_checked": {
-            "weight": 20,
-            "patterns": [
-                r"(?i)\b(?:fact[- ]?checked|fact checking|verified|accuracy|sources cited)",
-                r"(?i)\b(?:references|bibliography|sources|citations|footnotes)",
-            ],
-            "min_count": 1,
-        },
-    },
-}
-
-
-def evaluate_dimension(dimension, article_text):
-    """Evaluate one E-E-A-T dimension against its signals."""
-    signals = EEAT_SIGNALS[dimension]
-    total_signal_weight = sum(s["weight"] for s in signals.values())
-    earned_weight = 0.0
-    found_signals = []
-    missing_signals = []
-
-    for signal_name, signal_def in signals.items():
-        matches = 0
-        for pattern in signal_def["patterns"]:
-            found = re.findall(pattern, article_text)
-            matches += len(found)
-        min_count = signal_def["min_count"]
-        weight = signal_def["weight"]
-
-        if matches >= min_count:
-            earned_weight += weight
-            found_signals.append({
-                "signal": signal_name,
-                "weight": weight,
-                "matches": matches,
-                "status": "FOUND",
-            })
-        elif matches > 0:
-            partial = weight * (matches / min_count)
-            earned_weight += partial
-            found_signals.append({
-                "signal": signal_name,
-                "weight": round(partial, 2),
-                "matches": matches,
-                "status": "PARTIAL",
-            })
-        else:
-            missing_signals.append({
-                "signal": signal_name,
-                "weight": weight,
-                "matches": 0,
-                "status": "MISSING",
-                "recommendation": get_signal_recommendation(signal_name, dimension),
-            })
-
-    raw_score = (earned_weight / total_signal_weight) * 100 if total_signal_weight > 0 else 0
-    return round(raw_score, 2), found_signals, missing_signals
 
 
 def get_signal_recommendation(signal_name, dimension):
     recs = {
-        "first_person_narrative": "Add personal experience statements (I have, my experience, we found)",
-        "specific_examples": "Add concrete real-world examples and case studies",
-        "technical_terminology": "Use financial terms: APR, IBAN, KYC, RRSP, TFSA, AML, SWIFT",
-        "regulatory_references": "Reference regulations: FINTRAC, CRA, IRS, OSFI",
-        "external_links_gov": "Link to government sites: canada.ca, irs.gov, federalreserve.gov",
-        "disclaimer_present": "Add disclaimer: Not financial advice. Consult a professional.",
-        "last_updated": "Add update date: Last updated: January 2026",
-        "author_bio": "Add author bio section with credentials",
-        "fact_checked": "Add fact-checked notation and source citations",
-        "author_credentials": "Add author credentials: CFA, CPA, CFP or years of experience",
-        "brand_mentions": "Mention MoneyAbroadGuide brand at least twice",
-        "publication_standards": "Add editorial policy or reviewed-by section",
-        "internal_links": "Add internal links to related MoneyAbroadGuide articles",
-        "detailed_process": "Add step-by-step process sections with numbered steps",
-        "recent_date": "Add or verify publication/update date is recent (2024-2026)",
-        "data_and_statistics": "Add current statistics with percentage/number data from credible sources",
+        "experience_signals": "Add concrete real-world examples, case studies, or firsthand-experience language",
+        "expertise_signals": "Use more financial/regulatory terminology and cite official sources",
+        "has_credentials": "Add a real, honest author credential (CPA/CFA/CFP/attorney) -- never fabricate one",
+        "has_author": "Add an author byline",
+        "has_author_bio": "Add an author bio section",
+        "trust_signals": "Add source citations, references, or trust/security language",
+        "has_update_date": "Add a 'Last Updated' date line",
     }
     return recs.get(signal_name, f"Improve {signal_name} in {dimension}")
-
-
-def calculate_total_score(scores):
-    total = 0.0
-    for dimension, weight in EEAT_WEIGHTS.items():
-        total += (scores.get(dimension, 0) / 100) * weight
-    return round(total, 2)
 
 
 def run_eeat_validation(article_path, output_dir, threshold=90):
@@ -265,57 +75,60 @@ def run_eeat_validation(article_path, output_dir, threshold=90):
     char_count = len(article_text)
     logger.info(f"Loaded article: {word_count} words, {char_count} chars")
 
-    # Evaluate all four dimensions
-    scores = {}
-    details = {}
-    for dimension in ["experience", "expertise", "authority", "trust"]:
-        score, found, missing = evaluate_dimension(dimension, article_text)
-        scores[dimension] = score
-        details[dimension] = {
-            "score": score,
-            "found_signals": found,
-            "missing_signals": missing,
-        }
-        logger.info(f"  {dimension.upper()}: {score:.1f}/100 (found={len(found)}, missing={len(missing)})")
+    # UNIFIED (2026-07-11): same call agent_12 makes, so both agents score the
+    # same article identically. has_author/has_author_bio/has_update_date are
+    # derived straight from the text (this CLI has no separate upstream flags
+    # the way agent_12's pipeline data does) -- see derive_flags_from_content's
+    # docstring for why that's reliable for this pipeline's fixed output shape.
+    flags = derive_flags_from_content(article_text)
+    checks = audit_eeat(article_text, **flags)
+    total_score = calculate_eeat_score(checks)
+    scores = {
+        "experience": checks["experience_score"],
+        "expertise": checks["expertise_score"],
+        "authority": checks["authority_score"],
+        "trust": checks["trust_score"],
+    }
+    for dimension, score in scores.items():
+        logger.info(f"  {dimension.upper()}: {score:.1f}/100")
 
-    total_score = calculate_total_score(scores)
     passes = total_score >= threshold
     verdict = "PASS" if passes else "FAIL"
 
-    # Generate recommendations
+    # Recommendations -- one per weak (<70) dimension, using the raw checks
+    # (no more per-signal found/missing breakdown; that structure belonged to
+    # the old per-dimension signal system this file no longer has).
     recommendations = []
-    for dimension in ["experience", "expertise", "authority", "trust"]:
-        score = scores.get(dimension, 0)
-        missing = details[dimension]["missing_signals"]
-        priority = "HIGH" if score < 50 else ("MEDIUM" if score < 70 else "LOW")
-        for m in sorted(missing, key=lambda x: x["weight"], reverse=True)[:2]:
-            recommendations.append({
-                "priority": priority,
-                "dimension": dimension.upper(),
-                "score": round(score, 1),
-                "action": m["recommendation"],
-            })
+    if scores["experience"] < 70:
+        recommendations.append({"priority": "HIGH" if scores["experience"] < 50 else "MEDIUM",
+                                 "dimension": "EXPERIENCE", "score": scores["experience"],
+                                 "action": get_signal_recommendation("experience_signals", "experience")})
+    if scores["expertise"] < 70:
+        recommendations.append({"priority": "HIGH" if scores["expertise"] < 50 else "MEDIUM",
+                                 "dimension": "EXPERTISE", "score": scores["expertise"],
+                                 "action": get_signal_recommendation("expertise_signals", "expertise")})
+    if not checks["has_credentials"]:
+        recommendations.append({"priority": "LOW", "dimension": "AUTHORITY", "score": scores["authority"],
+                                 "action": get_signal_recommendation("has_credentials", "authority")})
+    if scores["trust"] < 70:
+        recommendations.append({"priority": "HIGH" if scores["trust"] < 50 else "MEDIUM",
+                                 "dimension": "TRUST", "score": scores["trust"],
+                                 "action": get_signal_recommendation("trust_signals", "trust")})
 
     # Critical issues
     critical_issues = []
-    trust_missing = [m["signal"] for m in details.get("trust", {}).get("missing_signals", [])]
-    if "author_bio" in trust_missing:
+    if not checks["has_author_bio"]:
         critical_issues.append("CRITICAL: No author bio detected")
-    if "disclaimer_present" in trust_missing:
-        critical_issues.append("CRITICAL: No disclaimer found")
-    if "last_updated" in trust_missing:
+    if not flags["has_update_date"]:
         critical_issues.append("HIGH: No last-updated date")
-    auth_missing = [m["signal"] for m in details.get("authority", {}).get("missing_signals", [])]
-    if "external_links_gov" in auth_missing:
-        critical_issues.append("HIGH: No government source links")
-    if scores.get("expertise", 0) < 30:
+    if scores["expertise"] < 30:
         critical_issues.append("CRITICAL: Very low expertise score")
 
     elapsed = (datetime.now() - start_time).total_seconds()
 
     report = {
         "agent": "agent_06_eeat_validator",
-        "version": "V3",
+        "version": "V4",  # unified scoring (2026-07-11) -- see module docstring
         "timestamp": datetime.now().isoformat(),
         "elapsed_seconds": round(elapsed, 2),
         "article_path": str(article_path),
@@ -325,14 +138,9 @@ def run_eeat_validation(article_path, output_dir, threshold=90):
         "total_eeat_score": total_score,
         "minimum_required": threshold,
         "passes_threshold": passes,
-        "dimension_scores": {
-            "experience": scores.get("experience", 0),
-            "expertise": scores.get("expertise", 0),
-            "authority": scores.get("authority", 0),
-            "trust": scores.get("trust", 0),
-        },
+        "dimension_scores": scores,
         "eeat_weights": EEAT_WEIGHTS,
-        "dimension_details": details,
+        "checks": checks,
         "recommendations": recommendations,
         "critical_issues": critical_issues,
     }
