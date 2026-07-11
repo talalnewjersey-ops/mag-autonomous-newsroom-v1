@@ -59,10 +59,14 @@ def test_retry_prompt_explicitly_allows_merging_a_duplicate():
 
 
 def test_workflow_snapshots_before_every_content_gate_retry():
-    # one snapshot call per gate that can trigger a retry (G-Substance, G3, A, B)
-    assert WORKFLOW.count(
-        'structure_completeness_gate.py --input "${ARTICLE_DIR}/agent_04/article_draft.md" --snapshot'
-    ) == 4
+    # one snapshot call per gate that can trigger a retry (G-Substance, G3, A, B).
+    # 2026-07-11: "${ARTICLE_DIR}/agent_04/article_draft.md" was aliased to a
+    # single $DRAFT shell var (workflow expression-length fix, GH's 21000-char
+    # cap on a run: block -- see AUDIT-LOG.md) -- same call, DRY'd path.
+    assert WORKFLOW.count('structure_completeness_gate.py --input "$DRAFT" --snapshot') == 4
+    # the literal path now appears exactly once -- the $DRAFT= definition itself.
+    assert WORKFLOW.count('"${ARTICLE_DIR}/agent_04/article_draft.md"') == 1
+    assert 'DRAFT="${ARTICLE_DIR}/agent_04/article_draft.md"' in WORKFLOW
 
 
 # ---------------- G3 feedback: merge/remove is now offered as a valid fix ----------------
