@@ -884,19 +884,30 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     # that was ALREADY near its own 4000w+-10% ceiling (4304w, +7.6%) over
     # the +10% tolerance -- costing 15 SEO points (word_count_ok) AND 40
     # content_check points (agent_12's own tier-relative word-count check),
-    # a net score REGRESSION despite the EEAT gain. A single short scenario
-    # (~50-70w) stays inside the remaining headroom on every tier this
-    # pipeline produces (PILLAR/STANDARD/OPPORTUNITY/GOLD all cap under
-    # 4200w) while still moving experience_score. max_tokens is capped
-    # tightly to match, not just the prompt wording.
+    # a net score REGRESSION despite the EEAT gain.
+    # TIGHTENED FURTHER (2026-07-11, real-run finding on draft 48632): even
+    # a single 40-70w-body scenario (fixed costs: H2 3w + disclaimer 14w +
+    # H3 ~10w = ~27w non-negotiable, on top of a 63w body that WAS inside
+    # the 40-70 target) totalled 93w and still pushed a 4344w base article
+    # (itself normal generation variance, not a defect) over 4400 by 34w --
+    # analysis showed the base article's headroom under the tier ceiling
+    # typically runs only ~50-100w, so a ~90w section is structurally too
+    # heavy more often than not. NOT fixed by widening the shared +-10%
+    # tolerance (agent_12_quality_assurance.py's _WORD_COUNT_TOLERANCE) --
+    # that governs every tier/article, not just ones with a scenario, and
+    # nothing justifies loosening it globally just for this one feature.
+    # Fixed instead, scoped to this call only: body target cut to 25-40w
+    # (fixed costs unchanged/non-negotiable -- disclaimer wording is a
+    # compliance requirement, not padding), bringing the typical total back
+    # to ~55-65w, comfortably inside the typical headroom.
     _scenario_raw = await _call_claude(api_key,
-        f"Write '## Illustrative Scenarios' for: {keyword} ({market}). ONE short sub-section only, "
-        f"40-70 words: '### Illustrative Scenario: [role/status], [broad context]' (e.g. "
-        f"'International Student, Engineering Program (Texas)'). STRICT: no first names/invented "
-        f"identities (role/status only); no $/%/number unless already established elsewhere in "
-        f"this article; illustrative example only, never a real testimonial."
+        f"Write ONE short sub-section for: {keyword} ({market}), 25-40 words: '### Illustrative "
+        f"Scenario: [role/status], [broad context]' (e.g. 'International Student, Engineering "
+        f"Program (Texas)'). Start directly with that heading, no other heading before it. STRICT: "
+        f"no first names/invented identities (role/status only); no $/%/number unless already "
+        f"established elsewhere in this article; illustrative example only, never a real testimonial."
         f"{_facts_and_rules}{_dedup_digest}",
-        SYSTEM_PROMPT, max_tokens=200)
+        SYSTEM_PROMPT, max_tokens=150)
     case_studies, _scenario_ok, _scenario_issues = build_scenario_block(_scenario_raw, source_vertical)
     if not _scenario_ok:
         logger.warning(

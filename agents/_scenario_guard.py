@@ -63,6 +63,29 @@ COMMON_FIRST_NAMES = frozenset({
 
 _CAP_WORD_RE = re.compile(r"\b[A-Z][a-z]+\b")
 
+# 2026-07-11 real-run finding (draft 48632): the LLM's raw output sometimes
+# echoes its OWN "## Illustrative Scenarios" H2 (the prompt literally says
+# "Write '## Illustrative Scenarios' for: ...", which invites that), on top
+# of the SAME heading build_scenario_block adds deterministically below --
+# a visible duplicate H2 in the published article, plus a few wasted words
+# against the tier's word-count tolerance. Defensive strip, same philosophy
+# as agent_04's own _dedupe_reserved_end_sections: never trust the LLM to
+# avoid duplicating a heading this module already owns.
+_LEADING_H2_RE = re.compile(r"^\s*##[ \t]+.+?(?:\n+|\Z)")
+
+
+def strip_leading_duplicate_heading(text):
+    """If `text` starts with its own H2 heading, strip that line (and the
+    blank line(s) after it) -- only the FIRST line is ever touched; a
+    legitimate '## ' appearing later in the body is left alone (scenarios
+    should never contain one, but this function's job is narrowly the
+    leading-duplicate case actually observed, not a general H2 stripper)."""
+    stripped = (text or "").lstrip()
+    m = _LEADING_H2_RE.match(stripped)
+    if m:
+        return stripped[m.end():].lstrip()
+    return stripped
+
 
 def find_invented_names(text):
     """Capitalized words matching a common first name in `text`. Best-effort
@@ -106,7 +129,11 @@ def build_scenario_block(scenario_body, vertical):
     """Assemble the full section (deterministic heading + deterministic
     disclaimer + validated LLM body) if `scenario_body` passes validation,
     else "" -- never a partial/edited scenario, only whole-block accept or
-    reject. Returns (block_or_empty_string, is_clean, reasons)."""
+    reject. Returns (block_or_empty_string, is_clean, reasons).
+
+    A leading duplicate H2 in the raw LLM output is stripped FIRST (before
+    validation and before assembly) -- see strip_leading_duplicate_heading."""
+    scenario_body = strip_leading_duplicate_heading(scenario_body)
     is_clean, reasons = validate_scenario_block(scenario_body, vertical)
     if not is_clean or not (scenario_body or "").strip():
         return "", is_clean, reasons
