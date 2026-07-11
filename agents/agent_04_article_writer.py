@@ -283,6 +283,7 @@ async def _call_claude(api_key: str, prompt: str, system: str = None, max_tokens
     # SPRINT 2 (RCA-003): writer now uses Claude Sonnet for quality. Overridable via env.
     if model is None:
         model = os.getenv("ARTICLE_WRITER_MODEL", "claude-sonnet-4-6")
+    import urllib.error
     import urllib.request
     payload_dict = {"model": model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": prompt}]}
     if system:
@@ -291,8 +292,18 @@ async def _call_claude(api_key: str, prompt: str, system: str = None, max_tokens
     req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=payload,
                                  headers={"x-api-key": api_key, "anthropic-version": "2023-06-01",
                                           "content-type": "application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=300) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        # 2026-07-11: a bare HTTPError's str() is just "HTTP Error 400: Bad
+        # Request" -- no way to tell WHY without reading the response body.
+        # Real incident: a 400 during a PILLAR-tier article killed the whole
+        # write with zero diagnosable detail. Same principle as the per-gate
+        # attempt0 report preservation (see tests/test_retry_safety.py) --
+        # observability at the point of failure, not after the fact.
+        body = e.read().decode("utf-8", errors="replace")[:2000]
+        raise RuntimeError(f"Claude API HTTP {e.code} for model={model} max_tokens={max_tokens}: {body}") from e
     return data["content"][0]["text"]
 
 # SPRINT 2 (B / RCA-004): cumulative-context digest.
