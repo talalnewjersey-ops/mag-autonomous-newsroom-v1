@@ -10,6 +10,7 @@ import argparse, asyncio, json, logging, os, re, sys
 from agents._source_pool import select_official_sources, has_curated_pool, resolve_vertical
 from agents._vertical_facts import VERTICAL_FACTS  # Couche 1: verified .gov facts to cite
 from agents._real_internal_links import fetch_real_posts, select_relevant_links, diagnose_relevance, fetch_methodology_links  # POINT 4: live sitemap/REST, never a static dict
+from agents._scenario_guard import build_scenario_block  # lever "a": Illustrative Scenarios, Sprint 8 anti-fabrication guard enforced in code
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -863,12 +864,45 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
         f"Write comparison table section for: {keyword} ({market}). H2 header. 4+ cols 6+ rows. 200-300w context.{_facts_and_rules}{_dedup_digest}",
         SYSTEM_PROMPT, max_tokens=1200)
 
-    # Sprint 8 (anti-fabrication, YMYL no human review): the invented case-study
-    # section is REMOVED. It used to prompt for specific personas and figures with
-    # no sourcing -- a Helpful-Content/AdSense liability. DEBT (phase C): reintroduce
-    # case studies built ONLY from REAL, sourced material (anonymized regulator
-    # examples, public rate schedules).
-    case_studies = ""
+    # Sprint 8 (anti-fabrication, YMYL no human review) DECISION MAINTAINED, NOT
+    # reversed: the old free-form case-study section stays removed -- it prompted
+    # for specific personas and figures with no sourcing, a real Helpful-Content/
+    # AdSense liability. 2026-07-10 (lever "a", 48624 EEAT diagnosis): a STRICT,
+    # different format instead -- "Illustrative Scenarios" -- the exact shape
+    # already validated live on article 48384 during the content audit: 1-2
+    # GENERIC personas by role/status (never a named individual), explicitly
+    # labeled non-testimonial, grounded only in numbers already established
+    # elsewhere in this article. Belt-and-suspenders: even if the LLM follows
+    # the prompt imperfectly, build_scenario_block() (agents/_scenario_guard.py)
+    # deterministically checks the actual output for an invented first name or
+    # an uncovered numeric claim and DROPS the whole block on either -- never
+    # trusts the prompt alone (same philosophy as _dedupe_reserved_end_sections
+    # above). A dropped/failed scenario is silent-acceptable (case_studies="",
+    # identical to the Sprint 8 floor), never a hard failure.
+    # DELIBERATELY SHORT (2026-07-10, real-run finding on draft 48624): a
+    # verbose 2-scenario version (~150w) pushed an OPPORTUNITY-tier article
+    # that was ALREADY near its own 4000w+-10% ceiling (4304w, +7.6%) over
+    # the +10% tolerance -- costing 15 SEO points (word_count_ok) AND 40
+    # content_check points (agent_12's own tier-relative word-count check),
+    # a net score REGRESSION despite the EEAT gain. A single short scenario
+    # (~50-70w) stays inside the remaining headroom on every tier this
+    # pipeline produces (PILLAR/STANDARD/OPPORTUNITY/GOLD all cap under
+    # 4200w) while still moving experience_score. max_tokens is capped
+    # tightly to match, not just the prompt wording.
+    _scenario_raw = await _call_claude(api_key,
+        f"Write '## Illustrative Scenarios' for: {keyword} ({market}). ONE short sub-section only, "
+        f"40-70 words: '### Illustrative Scenario: [role/status], [broad context]' (e.g. "
+        f"'International Student, Engineering Program (Texas)'). STRICT: no first names/invented "
+        f"identities (role/status only); no $/%/number unless already established elsewhere in "
+        f"this article; illustrative example only, never a real testimonial."
+        f"{_facts_and_rules}{_dedup_digest}",
+        SYSTEM_PROMPT, max_tokens=200)
+    case_studies, _scenario_ok, _scenario_issues = build_scenario_block(_scenario_raw, source_vertical)
+    if not _scenario_ok:
+        logger.warning(
+            f"[AGENT-04] Illustrative Scenarios REJECTED (anti-fabrication guard): "
+            f"{_scenario_issues} -- omitting the section entirely, never publishing a partial fix."
+        )
 
     expert_section = await _call_claude(api_key,
         f"Write Expert Recommendation section for: {keyword} ({market}). H2. Top pick + runner-up. 300-400w. {_expert_links_instruction}{_facts_and_rules}{_dedup_digest}",
