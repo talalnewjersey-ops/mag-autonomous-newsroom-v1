@@ -1,11 +1,13 @@
-# Support ticket: HTTP 403 on moneyabroadguide.com from GitHub Actions CI (Hostinger hCDN/WAF)
+# Support ticket: intermittent HTTP 403 on moneyabroadguide.com from GitHub Actions CI (Hostinger hCDN)
 
 ## Domain
 moneyabroadguide.com
 
 ## Summary
 
-Our GitHub Actions CI pipeline is being blocked with **HTTP 403** on every request to moneyabroadguide.com — both **read** (public REST API GET requests) and **write** (authenticated media upload / post creation) — while the same site works normally for regular visitor traffic. The response is not a WordPress error; it is an **HTML interstitial/challenge page** served by your edge (`server: hcdn`), which strongly suggests your WAF/CDN layer is blocking our CI's outbound IP range, not WordPress itself rejecting the request.
+Our GitHub Actions CI pipeline hits **HTTP 403** on the large majority of requests to moneyabroadguide.com during full production runs — both **read** (public REST API GET requests) and **write** (authenticated media upload / post creation) — while the same site works normally for regular visitor traffic. The response is not a WordPress error; it is an **HTML interstitial page** served by your edge (`server: hcdn`).
+
+**Important update from our own investigation**: we checked hPanel and the CDN "Security Level" is already set to "Essentially off" with no IPs blocked — so this is **not** a manually-configured, always-on IP block. We also just ran a lightweight, single-shot diagnostic (3 requests: unauthenticated GET, authenticated GET, authenticated POST creating a real draft) from an actual GitHub Actions runner, at 2026-07-11 14:45-14:46 UTC, and **all 3 succeeded** (200, 200, 201) — including successfully creating and us deleting a real draft post. So the block is **not a blanket, always-on block on GitHub Actions' IP ranges either** — this appears to be an **intermittent or volume/pattern-dependent** protection layer that isn't reflected in the account-level "CDN Security Level" toggle. See the "Light diagnostic vs. full production run" comparison below — this is the key data point we need your help interpreting from your side (edge/WAF logs), since we can't see what triggers it from ours.
 
 ## Evidence: this is an edge/WAF response, not a WordPress application error
 
@@ -41,7 +43,7 @@ This is an interstitial page (`refresh: 30s`, `noindex,nofollow`) — a normal W
 
 ## Captured request-IDs / ray-IDs (this occurrence)
 
-All in the format `<hash>-phx-edge{N}` — note **multiple distinct edge nodes** (edge6, edge8, edge9) all returning the same block, suggesting this is applied consistently across your Phoenix (phx) edge pool, not one misbehaving node.
+All in the format `<hash>-phx-edge{N}` — spread across edge6, edge8, edge9. As the comparison below shows, these SAME edge nodes also served our successful diagnostic minutes later, so this isn't one misbehaving node either; whatever triggers the block is evidently per-request/per-session, not tied to a specific edge server.
 
 | Timestamp (UTC) | Endpoint | x-hcdn-request-id |
 |---|---|---|
@@ -59,6 +61,21 @@ All in the format `<hash>-phx-edge{N}` — note **multiple distinct edge nodes**
 
 Also observed via a separate client in both affected runs (`agent_17_cannibalization`, using the `requests` library, not the client that was just fixed to capture headers): repeated `403 Client Error: Forbidden` on `GET /wp-json/wp/v2/posts?status=publish` and `?status=draft`, at 10:15:08/10:15:10 UTC (run `29149027820`) and 13:49:21/13:53:36/14:00:50 UTC (run `29154971226`, this occurrence) — this client does not currently capture headers, so no request-id is available for these specific hits, but the timing and endpoint match the pattern above exactly.
 
+## Light diagnostic vs. full production run: the key contrast
+
+| | Light diagnostic | Full production run |
+|---|---|---|
+| When | 2026-07-11 14:45-14:46 UTC | 2026-07-11 13:49-14:08 UTC (and earlier, 10:14-10:37 UTC) |
+| Requests | 3 total (1 GET unauth, 1 GET auth, 1 POST auth) in ~20 seconds | ~15-20+ requests (GET posts/pages x2 per article, GET homepage, POST media x5 + POST post creation for at least one article) spread across ~20 minutes |
+| Result | **100% success** (200, 200, 201 — draft created and cleaned up) | **Near-100% failure** — every GET on posts/pages hit 403; every image upload and the one post-creation attempt that got that far also hit 403 |
+| Edge nodes hit | phx-edge5, phx-edge6, phx-edge8, phx-edge9 | phx-edge6, phx-edge8, phx-edge9 |
+
+The overlapping edge-node set on both sides rules out "one bad edge node" as the explanation — the SAME edge pool serves both a clean success and a near-total failure depending on which run it's part of. This is why we suspect a **request-volume or request-pattern-based** trigger (e.g., an automatic rate-limit/bot-abuse heuristic tied to request frequency or count from the same source over a rolling window) rather than a static rule — since hPanel's manual "Security Level" toggle is off and doesn't explain this pattern.
+
+## REST API namespaces registered (for ruling out a WordPress security plugin)
+
+The diagnostic's successful `GET /wp-json/` call returned this site's registered REST namespaces: `oembed/1.0`, `code-snippets/v1`, `litespeed/v1`, `litespeed/v3`, `redirection/v1`. No `wordfence/v1`, no `ithemes-security/v1`, no other security-plugin-registered namespace is present — combined with every blocked response also carrying `server: hcdn` / `platform: hostinger` / `panel: hpanel` (the same markers present on successful responses), this points to the block happening at **your hCDN edge**, not inside WordPress or a security plugin at the origin. We were unable to query `/wp-json/wp/v2/plugins` directly to get a full plugin list (it correctly requires elevated auth we didn't attempt), but the namespace list plus the consistent `hcdn`-branded interstitial on every failure is reasonably strong evidence this isn't a WordPress-side plugin decision.
+
 ## Known gaps in our own evidence (for transparency)
 
 - **GitHub Actions runner source IP**: not currently captured by our pipeline. GitHub-hosted runners use dynamic/ephemeral IPs drawn from Microsoft Azure's published ranges (`https://api.github.com/meta`, `actions` key) — we do not pin or log the specific IP per run today. If Hostinger's WAF logs can be searched by timestamp + `x-hcdn-request-id` instead of source IP, that should be sufficient to locate the exact block decision; otherwise we can add an IP-logging step to a future run if it would help your investigation.
@@ -69,8 +86,9 @@ Also observed via a separate client in both affected runs (`agent_17_cannibaliza
 
 ## What we're asking
 
-1. Please check your WAF/hCDN edge logs for the request-IDs above (or the time range 2026-07-11 13:49-14:09 UTC) and confirm whether GitHub Actions CI traffic to this domain is being blocked by a rule (bot protection, rate limiting, geo/ASN block, etc.).
-2. If confirmed, please advise on the correct way to allowlist this legitimate automated traffic (a dedicated API user-agent allowlist, an ASN/IP-range allowlist for GitHub Actions, a WAF rule exception for the `/wp-json/` path with valid Application Password auth, or another mechanism you'd recommend).
-3. This has been recurring across multiple CI runs on 2026-07-11 (not a one-off blip) and is currently blocking our editorial pipeline's normal WordPress draft-creation and image-upload workflow entirely.
+1. Please check your hCDN edge logs for the specific request-IDs above (or the time ranges 2026-07-11 10:14-10:37 UTC and 13:49-14:09 UTC) and tell us what triggered the block on those requests specifically — since the account's "CDN Security Level" is already off and a lighter same-day diagnostic from the same class of source succeeded cleanly, we suspect an automatic rate-limiting or abuse-pattern heuristic that operates independently of that toggle, but we'd like your confirmation rather than guessing further from our side.
+2. If it is a rate/volume-based heuristic: what's the threshold (requests per minute/hour, or a burst pattern), and is there a way to allowlist or raise the threshold for our authenticated Application-Password traffic (identifiable by the `Authorization: Basic` header on the write-path requests) or for a specific User-Agent we control (`NEXUS-14-agent04/1.0` on reads, `NEXUS-14/3.0` on writes)?
+3. If it's something else entirely (not rate-based) — happy to hear what your logs show; we don't have visibility into your edge from our side beyond what's captured above.
+4. This has been recurring on 2026-07-11 across two full production runs, roughly 3 hours apart, both almost entirely blocked, while a lightweight same-day diagnostic succeeded — so it's tied to something about the full run's request pattern/volume, not a one-off fluke.
 
 Happy to provide the full raw CI logs for any of the runs referenced above if useful.
