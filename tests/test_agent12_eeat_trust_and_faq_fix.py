@@ -311,3 +311,31 @@ def test_unrelated_generic_experience_word_alone_is_not_gamed():
     a = _agent()
     eeat = _run(a._audit_eeat({"article_content": "This guide covers the insurance experience for newcomers."}))
     assert eeat["experience_signals"] == 0
+
+
+# ---------------- lever "a": scorer already recognizes the Illustrative Scenarios format ----------------
+# 2026-07-10: no agent_12 code change needed for scenario recognition -- the
+# ORIGINAL (pre-lever-b) experience_patterns already matched "scenario" and
+# "case stud(y|ies)" (pattern 2: real-world|case study|example|scenario).
+# Reintroducing the validated 48384 format (agents/_scenario_guard.py) is
+# therefore picked up automatically. This test proves it end-to-end using
+# the real guard's own assembly function, not a hand-typed approximation.
+
+from agents._scenario_guard import build_scenario_block as _build_scenario_block
+
+
+def test_assembled_illustrative_scenario_block_raises_experience_score():
+    clean_body = (
+        "### Illustrative Scenario 1: International Student, Engineering Program (Texas)\n\n"
+        "The student arrived with no US driving history and provided a translated foreign "
+        "license and proof of enrollment when applying for coverage."
+    )
+    block, is_clean, _ = _build_scenario_block(clean_body, "us_auto")
+    assert is_clean is True
+
+    a = _agent()
+    without_scenario = _run(a._audit_eeat({"article_content": "Some unrelated article body."}))
+    with_scenario = _run(a._audit_eeat({"article_content": "Some unrelated article body.\n\n" + block}))
+
+    assert with_scenario["experience_signals"] > without_scenario["experience_signals"]
+    assert with_scenario["experience_score"] > without_scenario["experience_score"]
