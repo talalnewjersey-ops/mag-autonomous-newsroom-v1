@@ -334,6 +334,7 @@ class QualityAssuranceAgent(BaseAgent):
             has_author=data.get("has_author", False),
             has_author_bio=data.get("has_author_bio", False),
             has_update_date=data.get("has_update_date"),
+            word_count=data.get("word_count"),
         )
 
     async def _audit_faq(self, data: Dict) -> Dict:
