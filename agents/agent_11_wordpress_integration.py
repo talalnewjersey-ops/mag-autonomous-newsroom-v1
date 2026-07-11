@@ -799,9 +799,18 @@ def main():
 
         log.info(f"WP result: post_id={post_id} featured_media={featured_id} words={wp_word_count} chars={wp_content_chars} images={image_count}")
 
-        # Use the values the run actually produced -- agent_04 no longer emits a
-        # `title:` frontmatter (Sprint 8), so the pre-flight regex `title` is empty.
+        # Use the values the run actually produced -- agent_04 no longer emits
+        # `title:`/`primary_keyword:` frontmatter (Sprint 8), so the pre-flight
+        # regexes above never match and both stay "". run()'s own wp_report
+        # already carries the real values (sourced from article_metadata.json /
+        # agent_03's outline via _load_article_data()) -- reuse them the same
+        # way `title` already does, instead of re-deriving from the dead regex.
         title = result.get("title") or title
+        keyword = result.get("keyword") or keyword
+        seo_title = result.get("seo_title") or title
+        meta_description = result.get("meta_description") or (
+            f"Guide to {keyword} for expats." if keyword else title
+        )
         word_count = result.get("word_count", word_count)
         content_chars = result.get("content_chars", content_chars)
 
@@ -828,7 +837,7 @@ def main():
         "draft_url": post_url, "post_status": "draft", "draft_created": True,
         "word_count": word_count, "content_chars": content_chars,
         "uploaded_images": uploaded_images, "image_count": image_count, "featured_image_id": featured_id,
-        "seo_title": title, "meta_description": f"Guide to {keyword} for expats.",
+        "seo_title": seo_title, "meta_description": meta_description,
         "hardcoded_fallback_used": False,
     }
     output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
