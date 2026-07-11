@@ -15,14 +15,22 @@
 name: "NEXUS-14 PRODUCTION v4.0 -- Reliability-First"
 
 on:
-  # SAFETY HOLD (until sprint-9-publish-invariant is merged): scheduled auto-runs
-  # are PAUSED so no cron can create a QA-failed draft or mis-promote a topic to
-  # "published" (the Sprint 6 reconcile currently keys on agent_11's post_id, which
-  # is written BEFORE the agent_12 QA / agent_13 editor gates). workflow_dispatch
-  # stays enabled for controlled, manual verification runs only.
-  # schedule:
-  #   - cron: "0 6 * * *"
-  #   - cron: "0 13 * * *"
+  # RODAGE DRAFT-ONLY (2026-07-11): scheduled auto-runs reactivated. The
+  # original SAFETY HOLD's precondition (sprint-9-publish-invariant) was
+  # merged and re-proven in real conditions on 2026-07-10 (AUDIT-LOG.md,
+  # control_publish_invariant.yml run 29128544472) -- the Sprint 6 reconcile
+  # now promotes a topic to "published" only on true post-QA success, never
+  # on agent_11's post_id alone. DRAFT_ONLY still defaults to true for ANY
+  # run without an explicit override (see the Batch Loop step below,
+  # unchanged) -- a scheduled run has no workflow_dispatch inputs at all, so
+  # it always falls into that safe default. No cron can auto-publish during
+  # this rodage phase. Criterion to flip draft_only's default to false: a
+  # satisfactory >=95 QA pass rate sustained over ~1 week of these
+  # draft-only runs, with the STANDARD/PILLAR GATE LENGTH gap and the
+  # meta_description bug fixed in parallel (see AUDIT-LOG.md).
+  schedule:
+    - cron: "0 6 * * *"
+    - cron: "0 13 * * *"
   workflow_dispatch:
     inputs:
       mode:
@@ -45,6 +53,11 @@ on:
         default: ""
       draft_only:
         description: "Draft-only (safety default): skip PRODUCED.json so no topic can be promoted to published — WordPress drafts are still created, just never marked producible. Set false only for a real publish run."
+        required: false
+        default: true
+        type: boolean
+      force_opportunity_tier:
+        description: "Rodage safety (default on): force every article to OPPORTUNITY tier, skipping the STANDARD/PILLAR revenue-score promotion. STANDARD/PILLAR have failed GATE LENGTH even after retry on every witness run this session so far — forcing OPPORTUNITY avoids burning ~2x the API calls per article for zero output while crons are freshly reactivated. Set false only once STANDARD/PILLAR's GATE LENGTH calibration is fixed."
         required: false
         default: true
         type: boolean
@@ -82,13 +95,16 @@ jobs:
             echo "max_articles=${{ github.event.inputs.max_articles }}" >> $GITHUB_OUTPUT
           elif [ "$HOUR" = "06" ]; then
             echo "mode=batch_1" >> $GITHUB_OUTPUT
-            echo "max_articles=3" >> $GITHUB_OUTPUT
+            # RODAGE (2026-07-11): 1 article/slot -- controlled budget,
+            # human-inspectable draft volume, lighter bursts to Hostinger.
+            # MAX_ARTICLES_PER_DAY stays 6 below (a ceiling, not a target).
+            echo "max_articles=1" >> $GITHUB_OUTPUT
           elif [ "$HOUR" = "13" ]; then
             echo "mode=batch_2" >> $GITHUB_OUTPUT
-            echo "max_articles=3" >> $GITHUB_OUTPUT
+            echo "max_articles=1" >> $GITHUB_OUTPUT
           else
             echo "mode=batch_1" >> $GITHUB_OUTPUT
-            echo "max_articles=3" >> $GITHUB_OUTPUT
+            echo "max_articles=1" >> $GITHUB_OUTPUT
           fi
 
   production-batch:
@@ -127,6 +143,7 @@ jobs:
           WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
           TOPIC_OVERRIDE: ${{ github.event.inputs.topic }}
           DRAFT_ONLY: ${{ github.event.inputs.draft_only }}
+          FORCE_OPPORTUNITY_TIER: ${{ github.event.inputs.force_opportunity_tier }}
         run: |
           ARTICLES_PRODUCED=0
           ARTICLES_FAILED=0
@@ -207,6 +224,15 @@ jobs:
             ARTICLE_TYPE="STANDARD"
             if python3 -c "import sys; sys.exit(0 if float('${SCORE}') > 85 else 1)" 2>/dev/null; then ARTICLE_TYPE="PILLAR"; fi
             if python3 -c "import sys; sys.exit(0 if float('${SCORE}') < 70 else 1)" 2>/dev/null; then ARTICLE_TYPE="OPPORTUNITY"; fi
+            # RODAGE SAFETY (2026-07-11): STANDARD/PILLAR have failed GATE
+            # LENGTH even after retry on every witness run this session so
+            # far (see AUDIT-LOG.md) -- each failure burns a full generation
+            # attempt PLUS a full retry attempt (~2x the API calls of a
+            # single successful article) for zero usable output. Same
+            # safe-default pattern as DRAFT_ONLY: anything but the literal
+            # "false" forces OPPORTUNITY, so a scheduled run (no inputs at
+            # all) is forced-OPPORTUNITY too until deliberately turned off.
+            if [ "$FORCE_OPPORTUNITY_TIER" != "false" ]; then ARTICLE_TYPE="OPPORTUNITY"; fi
             echo "[${ARTICLE_NUM}] Article tier: ${ARTICLE_TYPE}"
 
             # Phase 3: Content Planning [BLOCKING]
