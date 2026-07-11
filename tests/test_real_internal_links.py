@@ -216,3 +216,62 @@ def test_rest_api_down_yields_zero_internal_links_end_to_end(monkeypatch):
     real_posts = ril.fetch_real_posts()           # [] -- fail-soft
     rel = ril.select_relevant_links("Best Newcomer Bank Accounts in Canada", real_posts, n=3)
     assert real_posts == [] and rel == []          # article gets NO internal links, no crash
+
+
+# ---------------- fetch_methodology_links (2026-07-10, site-level EEAT signal) ----------------
+# Same fail-soft, live-only, never-hardcode contract as fetch_real_posts above --
+# a real, published site page (Fact-Checking Process, How We Test) is only
+# ever linked if the WP REST API confirms it live RIGHT NOW.
+
+def _pages_json(items):
+    return json.dumps([
+        {"slug": s, "link": f"https://moneyabroadguide.com/{s}/", "title": {"rendered": t}}
+        for s, t in items
+    ])
+
+
+def test_fetch_methodology_links_success(monkeypatch):
+    body = _pages_json([("fact-checking-process", "Fact-Checking Process"),
+                         ("how-we-test", "How We Test")])
+
+    def fake_urlopen(req, timeout=None):
+        assert "wp-json/wp/v2/pages" in req.full_url
+        assert "fact-checking-process" in req.full_url and "how-we-test" in req.full_url
+        return _FakeHTTPResponse(200, body)
+    monkeypatch.setattr(ril.urllib.request, "urlopen", fake_urlopen)
+
+    links = ril.fetch_methodology_links()
+    assert links == [
+        {"title": "Fact-Checking Process", "url": "https://moneyabroadguide.com/fact-checking-process/"},
+        {"title": "How We Test", "url": "https://moneyabroadguide.com/how-we-test/"},
+    ]
+
+
+def test_fetch_methodology_links_network_error_returns_empty_not_raise(monkeypatch):
+    def fake_urlopen(req, timeout=None):
+        raise urllib.error.URLError("no route to host")
+    monkeypatch.setattr(ril.urllib.request, "urlopen", fake_urlopen)
+
+    assert ril.fetch_methodology_links() == []
+
+
+def test_fetch_methodology_links_non_200_returns_empty_not_raise(monkeypatch):
+    def fake_urlopen(req, timeout=None):
+        return _FakeHTTPResponse(503, "")
+    monkeypatch.setattr(ril.urllib.request, "urlopen", fake_urlopen)
+
+    assert ril.fetch_methodology_links() == []
+
+
+def test_fetch_methodology_links_a_renamed_or_unpublished_page_is_simply_absent(monkeypatch):
+    # e.g. "how-we-test" gets renamed/unpublished -- the API returns only the
+    # slug that's still live. Never invented, never a stale guess.
+    body = _pages_json([("fact-checking-process", "Fact-Checking Process")])
+
+    def fake_urlopen(req, timeout=None):
+        return _FakeHTTPResponse(200, body)
+    monkeypatch.setattr(ril.urllib.request, "urlopen", fake_urlopen)
+
+    links = ril.fetch_methodology_links()
+    assert len(links) == 1
+    assert links[0]["url"] == "https://moneyabroadguide.com/fact-checking-process/"

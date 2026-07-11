@@ -31,9 +31,18 @@ import urllib.request
 logger = logging.getLogger(__name__)
 
 POSTS_ENDPOINT = "https://moneyabroadguide.com/wp-json/wp/v2/posts"
+PAGES_ENDPOINT = "https://moneyabroadguide.com/wp-json/wp/v2/pages"
 _TIMEOUT_SECONDS = 10
 _PER_PAGE = 100
 _MAX_PAGES = 5  # hard cap (<=500 posts): headroom for site growth, never unbounded
+# 2026-07-10: the site's own published methodology pages (Fact-Checking
+# Process, How We Test) -- confirmed live via the WP REST API at the time
+# this was written. Only the SLUGS are fixed here (stable, foundational
+# site pages, not rotating article content); the actual URL is still
+# fetched LIVE at write time, never hardcoded -- same POINT-4 rule as
+# fetch_real_posts() above, so a future slug/rename can never silently
+# produce a dead link the way the old static INTERNAL_LINKS dict did.
+_METHODOLOGY_SLUGS = ("fact-checking-process", "how-we-test")
 
 _STOP = {
     "the", "a", "an", "and", "or", "but", "of", "to", "in", "for", "on", "with",
@@ -79,6 +88,39 @@ def fetch_real_posts(endpoint=POSTS_ENDPOINT, timeout=_TIMEOUT_SECONDS, max_page
         if len(batch) < _PER_PAGE:
             break
     return posts
+
+
+def fetch_methodology_links(endpoint=PAGES_ENDPOINT, slugs=_METHODOLOGY_SLUGS, timeout=_TIMEOUT_SECONDS):
+    """Return [{"title": str, "url": str}, ...] for the site's own published
+    methodology pages, confirmed LIVE via the WP REST API right now -- or []
+    on ANY failure (unreachable, non-200, malformed JSON, a slug no longer
+    published). Never invents a URL, never falls back to a hardcoded link
+    (same rule as fetch_real_posts): a genuinely missing/renamed page simply
+    means zero methodology links for this run, not a stale guess."""
+    slug_param = ",".join(slugs)
+    url = f"{endpoint}?slug={slug_param}&_fields=slug,link,title&status=publish"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "NEXUS-14-agent04/1.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if resp.status != 200:
+                logger.warning(f"[AGENT-04] SKIP methodology links: WP REST API returned "
+                               f"{resp.status} ({url})")
+                return []
+            body = resp.read().decode("utf-8", errors="replace")
+        batch = json.loads(body)
+    except Exception as e:
+        logger.warning(f"[AGENT-04] SKIP methodology links: WP REST API unreachable ({endpoint}): {e}")
+        return []
+    if not isinstance(batch, list):
+        return []
+    links = []
+    for item in batch:
+        raw_title = item.get("title", "")
+        title = raw_title.get("rendered", "") if isinstance(raw_title, dict) else raw_title
+        link = item.get("link", "")
+        if title and link:
+            links.append({"title": title, "url": link})
+    return links
 
 
 def _tokens(text):
