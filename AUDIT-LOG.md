@@ -173,3 +173,97 @@ Ces décisions ont déjà été tranchées sur le prototype. Ne pas les re-déba
 - **Crons** : **toujours désactivés**. Sprint 9 ET Sprint 10 sont maintenant prouvés en
   réel (WordPress + anti-hallucination) — la réactivation reste une décision à prendre
   ensemble, pas encore faite à ce stade de la session.
+
+### 2026-07-10/11 — Session (suite) : redémarrage étagé — marker leak, diagnostic QA, score réel 84.0 → 95.5
+
+Méthode demandée par l'utilisateur : ÉTAPE 1 (fix rapide si simple) → ÉTAPE 2 (1 run de
+production réel, 1 article, mode draft) → ÉTAPE 3 (réactivation crons SI l'article est propre).
+
+- **ÉTAPE 1 — PR #66 (mergée `0d6decb`)** : fix `test_no_internal_marker_leak.py` (2/8 tests
+  en échec, fichier non suivi jusque-là). `agent_04_article_writer.py` construisait la ligne
+  de fin avec `**Tier**: OPPORTUNITY | NEXUS-14 V5.0` — marqueurs internes fuités dans le HTML
+  publié. Fix en une ligne : `f"> **Last Updated**: {_updated}"` seul. 8/8 tests passent.
+- **ÉTAPE 2 — run de production réel, 1 article, mode draft** (`production_v2.yml` run
+  `29129933048`, `mode=batch_1 max_articles=1`) : GATE C a créé un vrai draft WordPress
+  (`post_id=48624`, sujet "car insurance for foreign drivers and international students" —
+  même sujet que le fix #64) mais **GATE QA a bloqué** (`overall_score=84.0 < 85`, titre
+  auto-tagué `[QA-FAILED]`, jamais publié — comportement correct de l'invariant Sprint 9).
+  - Image vérifiée visuellement (téléchargée + inspectée) : on-topic, confirme le fix #64 en
+    conditions réelles.
+  - Contenu réel scanné via l'API WP : **zéro marqueur interne** (Tier/NEXUS-14/version) —
+    confirme le fix #66 en conditions réelles.
+  - Score QA (84.0) sous la barre de 95 fixée par l'utilisateur → **crons non réactivés**,
+    diagnostic du score QA lancé à la place.
+- **Diagnostic du score QA (`overall = seo×0.4 + eeat×0.4 + content×0.2`)** — décomposé
+  critère par critère sur le draft réel 48624, en distinguant à chaque fois : bug de scoreur
+  (case 2, fixable) vs décision structurelle/éditoriale (case 3) :
+  - `trust_score` plafonné à 90/100 au lieu de 100 : `has_update_date` lu par `_audit_eeat`
+    mais **jamais écrit nulle part** dans tout `agent_12_quality_assurance.py` — bug pur.
+  - `question_count` FAQ toujours à 0 malgré 10 vraies questions : le lookahead de fin de
+    section `(?=## |$)` matchait à l'intérieur même d'un titre `### ` (H3) — `"##"` est une
+    sous-chaîne de `"###"`. Bug pur, aucun impact sur le score (jamais branché sur un gate),
+    mais rapport QA faux.
+  - `content_check.score` plafonné à 60/100 : les seuils `>=5000`/`>=7000` mots étaient fixes,
+    alors que `agent_04` plafonne CHAQUE tier à ≤4200w (PILLAR) ou ≤4000w (STANDARD/
+    OPPORTUNITY/GOLD) — ces 40 points étaient mathématiquement impossibles pour tout article
+    produit par ce pipeline, exactement le même bug déjà corrigé côté score SEO le
+    2026-07-06 (`_TIER_TARGET_WORDS`) mais jamais répliqué ici. Bug de cohérence, fixable.
+  - `experience_score` plafonné à 30/100 : les études de cas (principal vecteur de signaux
+    "Experience") ont été **volontairement supprimées sur tout le site** au Sprint 8
+    (anti-fabrication — personas/chiffres inventés, vrai risque YMYL/AdSense),
+    `case_studies=""` inconditionnel. Décision structurelle, PAS un bug — nécessite un
+    arbitrage produit, pas un fix de code.
+- **PR #67 (mergée `73af639`)** : fix `has_update_date` + regex FAQ + `content_check`
+  tier-relatif (réutilise `_TIER_TARGET_WORDS`/`_WORD_COUNT_TOLERANCE` déjà utilisés par le
+  score SEO). Re-scoré le draft 48624 EN RÉEL (contexte CLI répliqué exactement depuis les
+  fichiers réels du run : `article_metadata.json`, `article_outline.json`,
+  `wordpress_report.json`), sans régénération : **84.0 → 93.0**.
+- **Levier "b" — PR #68 (mergée `cf3c089`)** : (1) `experience_patterns` reconnaît un
+  vocabulaire de vécu déjà VRAI et déjà présent dans la bio auteur déterministe
+  (`_AUTHOR_BIO_MD`) — "firsthand experience", "built his own ... from scratch" — bio
+  elle-même non modifiée, seulement reconnue. (2) Nouveau paragraphe déterministe liant les
+  pages méthodologie déjà publiées du site (`fact-checking-process`, `how-we-test`) — URL
+  récupérée EN DIRECT via `agents/_real_internal_links.py::fetch_methodology_links()` (même
+  contrat fail-soft/jamais-de-lien-en-dur que `fetch_real_posts`, POINT 4 2026-07-05).
+  Re-scoré en réel : **93.0 → 94.0**.
+  - ⚠️ Latence notée : le fetch live des pages méthodologie a pris 9.0-9.3s lors des tests,
+    proche du timeout par défaut de 10s (même constat que la latence Hostinger observée sur
+    `wp_diagnostic.yml`). Fail-soft (jamais de crash, jamais de lien inventé), mais le lien
+    pourrait être absent sur une fraction non négligeable des runs réels. Non bloquant,
+    signalé pour une session future.
+- **Levier "a" — PR #70 (mergée `42d4395`)** : réintroduction des études de cas sous forme
+  stricte "Illustrative Scenarios" (format déjà validé en réel sur l'article 48384 pendant
+  l'audit de contenu) — **décision Sprint 8 MAINTENUE, pas inversée**. Garde-fou anti-
+  fabrication gravé dans le code (`agents/_scenario_guard.py`, nouveau) :
+  - rejette tout scénario contenant un **prénom inventé** (liste diversifiée volontairement —
+    l'incident réel utilisait "Priya"/"Carlos", une liste anglo-only l'aurait raté) ;
+  - rejette tout scénario contenant un **chiffre non couvert** — réutilise EXACTEMENT le
+    prédicat LEVIER C d'agent_05 (`agents/_fact_coverage.py::classify_claims`), pas un
+    mécanisme parallèle ;
+  - test verrou explicite (`test_the_exact_reported_violation_shape_is_rejected`) : un
+    scénario façon "Sarah saved $3,240" DOIT être rejeté — si ce test passe un jour avec
+    `is_clean=True`, la décision Sprint 8 a régressé silencieusement. Démontré en direct
+    (hors pytest) avant le merge : `is_clean=False`, `reasons=["invented name(s): ['Sarah']",
+    "1 uncovered numeric claim(s)"]`, bloc publié = `''`.
+  - **Découverte en testant, pas devinée** : une première version verbeuse (2 scénarios,
+    ~150 mots) a fait RÉGRESSER le score — l'article 48624 était déjà à 4304/4000 mots
+    (+7.6%) sur son tier OPPORTUNITY, et l'ajout dépassait la tolérance ±10% du levier "b"
+    (coût : 15 pts SEO + 40 pts content_check, perte nette malgré le gain EEAT). Corrigé :
+    1 seul scénario court (40-70 mots, `max_tokens=200`), verrouillé par
+    `test_scenario_call_is_short_deliberately_capped`.
+  - Aucun changement de scoreur nécessaire : `experience_patterns` matchait déjà
+    `scenario`/`case stud(y|ies)` avant ce lot.
+  - Re-scoré en réel (contexte CLI répliqué, guard réel, sans régénération) : **94.0 → 95.5**
+    — **franchit la barre des 95** fixée par l'utilisateur.
+- **Trajectoire complète du score QA sur le draft témoin 48624** : 84.0 (run réel initial) →
+  93.0 (PR #67) → 94.0 (PR #68, levier b) → **95.5 (PR #70, levier a)**.
+- **PR #69** : ouverte comme PR empilée sur la branche de #68, auto-fermée par GitHub quand
+  cette branche a été supprimée au merge de #68 (comportement normal de GitHub, aucune perte
+  — la branche `feat/lever-a-illustrative-scenarios` était intacte). Rouverte proprement
+  contre `main` sous le numéro **#70**, CI verte, mergée.
+- **Crons** : **toujours désactivés**. Le score QA du draft témoin dépasse maintenant la
+  barre des 95 (avec le levier "a" honnête, sans réactiver la fabrication) — la décision de
+  réactivation reste à prendre ensemble, pas encore actée à la fin de cette session. Prochaine
+  étape logique : relancer un run de production réel (ÉTAPE 2 refaite) pour confirmer que le
+  gain se reproduit sur un article fraîchement généré (pas seulement re-scoré), avant
+  réactivation.
