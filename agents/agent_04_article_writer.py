@@ -64,6 +64,41 @@ OPPORTUNITY_MIN_SOURCES = 3
 OPPORTUNITY_MIN_INTERNAL_LINKS = 4
 OPPORTUNITY_MIN_CASE_STUDIES = 0  # Sprint 8: see PILLAR_MIN_CASE_STUDIES note
 
+# BODY-SECTION TARGET CALIBRATION (2026-07-11, PR #81): #79/#80 only ever acted
+# AFTER generation, on a retry -- these are the ATTEMPT 0 body-section word
+# targets themselves, recalibrated from real witness-run data so the NOMINAL
+# case has a real chance of passing GATE LENGTH without needing a retry at all.
+#
+# Real attempt-0 totals vs. this tier's declared target_words, before this fix
+# (max_sections x (old base + 75) plus intro/comparison/FAQ/expert/closing/bio):
+#   OPPORTUNITY (target 4000, base 400): witness run 6bis=4709 (+17.7%), run 7=4401 (+10.0%) -- avg 4555, +13.9%
+#   STANDARD    (target 4000, base 500): witness run 5=5232 (+30.8%), 6bis=5492 (+37.3%), run 7=5572 (+39.3%) -- avg 5432, +35.8%
+#   PILLAR      (target 4200, base 600): witness run 6bis=6641 (+58.1%), run 7=6422 (+52.9%) -- avg 6532, +55.5%
+# (see AUDIT-LOG.md 2026-07-11 entries for the individual run IDs/articles)
+#
+# The cut is capped at HALF of each tier's headroom down to the 280w/section
+# floor (the same floor _write_article_standalone's retry-cut logic already
+# uses below) -- deliberately NOT closing the whole gap at attempt 0. Closing
+# it entirely here would leave zero room for GATE LENGTH's retry to cut
+# further (sec_target_base - 280 would be 0), turning a real fallback into a
+# no-op exactly when a tier still overshoots after calibration. Predicted new
+# attempt-0 totals (old avg minus applied_cut x max_sections): OPPORTUNITY
+# ~4399w (right at the 4400w ceiling -- expected to pass without a retry),
+# STANDARD ~4992w (still over the 4400w ceiling -- expected to still need one
+# retry, but with real headroom left for it: 110w/section still available),
+# PILLAR ~5732w (still over the 4620w ceiling -- the hardest tier; even with
+# calibration + a floor-clamped retry, full convergence is not guaranteed
+# every run -- a known, documented residual limitation, not swept under the
+# rug; see tests/test_body_section_calibration.py).
+#
+# This is a data-driven estimate from 2-3 samples per tier, not a guarantee --
+# validate against the next witness run and re-calibrate if real behavior
+# diverges meaningfully from the prediction above.
+BODY_SECTION_FLOOR_WORDS = 280
+OPPORTUNITY_SEC_TARGET_BASE = 348  # was 400 (-52w/section)
+STANDARD_SEC_TARGET_BASE = 390     # was 500 (-110w/section, half of the 220w headroom to the floor)
+PILLAR_SEC_TARGET_BASE = 440       # was 600 (-160w/section, half of the 320w headroom to the floor)
+
 GOLD_MIN_WORDS = STANDARD_MIN_WORDS
 GOLD_TARGET_WORDS = STANDARD_TARGET_WORDS
 GOLD_MAX_WORDS = STANDARD_MAX_WORDS
@@ -810,10 +845,12 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     # still fail GATE LENGTH a second time, which correctly ends the article rather
     # than force through a hollow rewrite (see tests/test_length_retry_convergence.py).
     max_sections = 5 if tier["tier"] == "PILLAR" else (4 if tier["tier"] == "STANDARD" else 3)
-    sec_target_base = 600 if tier["tier"] == "PILLAR" else (500 if tier["tier"] == "STANDARD" else 400)
+    sec_target_base = (PILLAR_SEC_TARGET_BASE if tier["tier"] == "PILLAR"
+                        else STANDARD_SEC_TARGET_BASE if tier["tier"] == "STANDARD"
+                        else OPPORTUNITY_SEC_TARGET_BASE)
     _length_overage = _parse_length_overage(retry_feedback)
     if _length_overage:
-        _cut_per_section = min(sec_target_base - 280, -(-_length_overage // max_sections))  # ceil division
+        _cut_per_section = min(sec_target_base - BODY_SECTION_FLOOR_WORDS, -(-_length_overage // max_sections))  # ceil division
         sec_target = sec_target_base - _cut_per_section
         logger.info(
             f"[AGENT-04] GATE LENGTH retry: overage={_length_overage}w over {max_sections} section(s) "
