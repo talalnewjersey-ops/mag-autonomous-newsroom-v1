@@ -1,0 +1,37 @@
+name: Delete One WordPress Post (DESTRUCTIVE -- trashes by default)
+
+on:
+  workflow_dispatch:
+    inputs:
+      post_id:
+        description: "WordPress post ID to delete"
+        required: true
+      confirm_post_id:
+        description: "Re-type the SAME post ID to confirm (fat-finger guard)"
+        required: true
+      force:
+        description: "Bypass trash and delete permanently (irreversible)"
+        required: false
+        default: "false"
+
+# DESTRUCTIVE: moves the given post to trash (recoverable) unless force=true.
+# Requires post_id and confirm_post_id to match exactly, or the run aborts
+# before making any request.
+jobs:
+  delete-post:
+    name: "Delete post"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Delete post via WP REST API
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          POST_ID: ${{ github.event.inputs.post_id }}
+          CONFIRM_POST_ID: ${{ github.event.inputs.confirm_post_id }}
+          FORCE: ${{ github.event.inputs.force }}
+        run: python3 scripts/delete_wp_post.py
