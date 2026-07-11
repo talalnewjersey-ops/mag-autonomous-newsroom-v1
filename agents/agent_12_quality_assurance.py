@@ -210,15 +210,12 @@ class QualityAssuranceAgent(BaseAgent):
                     break
         
         if content:
-            # Word count (only set if not already provided by context)
-            data.setdefault("word_count", len(content.split()))
-            
             # Title extraction -- support Agent 04 Markdown H1 (# Title) format.
             if not data.get("title"):
                 title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
                 if title_match:
                     data["title"] = title_match.group(1).strip()
-            
+
             # FAQ detection (only set if not already provided by context)
             if "has_faq" not in data:
                 data["has_faq"] = bool(
@@ -231,21 +228,38 @@ class QualityAssuranceAgent(BaseAgent):
             # (confirmed on real draft 48624). Mirrors has_faq's pattern above.
             if "has_update_date" not in data:
                 data["has_update_date"] = bool(re.search(r'Last Updated', content, re.IGNORECASE))
-        
+
         # Load metadata
         metadata_path = "output/agent_04/article_metadata.json"
         if os.path.exists(metadata_path):
             with open(metadata_path) as f:
                 metadata = json.load(f)
             data.update(metadata)
-        
+
         # Load WP report
         wp_path = "output/agent_11/wordpress_report.json"
         if os.path.exists(wp_path):
             with open(wp_path) as f:
                 wp_data = json.load(f)
             data.update(wp_data)
-        
+
+        # WORD COUNT -- ALWAYS recomputed fresh from `content` LAST, after every
+        # merge above, deliberately overriding anything metadata/WP-report/caller
+        # set (2026-07-11 fix, AUDIT-LOG.md: draft 48640/run 29137518698). This
+        # used to be `data.setdefault("word_count", ...)` BEFORE the metadata
+        # merge, so article_metadata.json's word_count -- written ONCE by
+        # agent_04 right after generation, never refreshed by the soften/polish/
+        # normalize/scenario steps that run afterward and change the draft's
+        # real length -- silently clobbered the correct value. Real case:
+        # metadata said 4526w, the actual final content was 4350w (both within
+        # tier tolerance) -- but _audit_seo used the stale 4526, wrongly failing
+        # word_count_ok and capping seo_score at 85 instead of 100. `content` IS
+        # the article actually being scored -- it is the single source of truth
+        # for its own word count, full stop, not a convenience field that can
+        # drift out of sync with what agent_12 is auditing.
+        if content:
+            data["word_count"] = len(content.split())
+
         return data
     
     async def _audit_seo(self, data: Dict) -> Dict:
