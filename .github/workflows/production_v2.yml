@@ -43,6 +43,11 @@ on:
         description: "Manual topic override (leave empty for automatic Agent 01 selection)"
         required: false
         default: ""
+      draft_only:
+        description: "Draft-only (safety default): skip PRODUCED.json so no topic can be promoted to published — WordPress drafts are still created, just never marked producible. Set false only for a real publish run."
+        required: false
+        default: true
+        type: boolean
 
 env:
   PYTHON_VERSION: "3.11"
@@ -121,9 +126,21 @@ jobs:
           WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
           WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
           TOPIC_OVERRIDE: ${{ github.event.inputs.topic }}
+          DRAFT_ONLY: ${{ github.event.inputs.draft_only }}
         run: |
           ARTICLES_PRODUCED=0
           ARTICLES_FAILED=0
+
+          # Safety default: anything but the explicit literal "false" means draft-only.
+          # This also covers scheduled runs (no workflow_dispatch inputs at all, so
+          # DRAFT_ONLY is empty) -- a cron re-enabled without an explicit override
+          # stays draft-only until someone deliberately turns it off.
+          if [ "$DRAFT_ONLY" = "false" ]; then
+            DRAFT_ONLY="false"
+          else
+            DRAFT_ONLY="true"
+          fi
+          echo "DRAFT_ONLY mode: ${DRAFT_ONLY}"
 
           MAX_ARTICLES="${{ github.event.inputs.max_articles || needs.detect.outputs.max_articles || 3 }}"
 
@@ -414,8 +431,12 @@ jobs:
               --output "${ARTICLE_DIR}/production_gate_result.json" && {
               ARTICLES_PRODUCED=$((ARTICLES_PRODUCED+1))
               POST_ID=$(python3 -c "import json; r=json.load(open('${ARTICLE_DIR}/agent_11/wordpress_validation_report.json')); print(r.get('post_id','unknown'))" 2>/dev/null || echo "unknown")
-              # SPRINT 9 publish-invariant: terminal marker written ONLY after QA+editor+gate all pass.
-              python3 -c "import json,sys; json.dump({'post_id': '${POST_ID}', 'article': ${ARTICLE_NUM}, 'produced': True}, open('${ARTICLE_DIR}/PRODUCED.json','w'))"
+              if [ "$DRAFT_ONLY" = "true" ]; then
+                echo "DRAFT-ONLY MODE: skipping PRODUCED.json for article ${ARTICLE_NUM} -- WordPress draft ${POST_ID} stays a draft, topic will roll back to candidate"
+              else
+                # SPRINT 9 publish-invariant: terminal marker written ONLY after QA+editor+gate all pass.
+                python3 -c "import json,sys; json.dump({'post_id': '${POST_ID}', 'article': ${ARTICLE_NUM}, 'produced': True}, open('${ARTICLE_DIR}/PRODUCED.json','w'))"
+              fi
               echo "SUCCESS: Article ${ARTICLE_NUM} -- WordPress Draft ID: ${POST_ID}"
             } || {
               ARTICLES_FAILED=$((ARTICLES_FAILED+1))
