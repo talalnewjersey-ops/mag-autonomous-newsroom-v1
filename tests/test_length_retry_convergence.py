@@ -206,7 +206,7 @@ def test_length_gate_retry_reaches_every_generation_call_including_intro():
     assert sec_target_1 < sec_target_0
 
     max_sections = len(body_prompts_1)
-    expected_cut = min(sec_target_0 - 280, -(-report0["over_by_words"] // max_sections))
+    expected_cut = min(sec_target_0 - agent_04.BODY_SECTION_FLOOR_WORDS, -(-report0["over_by_words"] // max_sections))
     assert sec_target_0 - sec_target_1 == expected_cut, (
         "the cut must match the code's own formula exactly, not just be 'smaller'"
     )
@@ -220,32 +220,41 @@ def test_length_gate_retry_reaches_every_generation_call_including_intro():
     )
 
 
-# ---------------------------------------------------------------- convergence: +30% over target
+# ---------------------------------------------------------------- convergence, post-#81 calibration
+#
+# PR #81 recalibrated each tier's ATTEMPT-0 sec_target_base down (see
+# agents/agent_04_article_writer.py's BODY_SECTION_FLOOR_WORDS/*_SEC_TARGET_BASE
+# comment for the real-data derivation), capped at HALF the headroom down to the
+# 280w floor -- deliberately leaving the OTHER half for a retry to still use. That
+# means a retry now starts from a LOWER base than before #81, so it has LESS room
+# left to cut: the same "+30% over target" stress scenario that used to converge
+# for STANDARD (base 500) no longer does at the recalibrated base (390) -- it now
+# hits the floor, same as OPPORTUNITY always did. These tests reference the REAL
+# module constants (never hardcoded literals) so they can't silently drift out of
+# sync with a future recalibration the way the pre-#81 version of this file did.
 
-def test_thirty_percent_overage_standard_tier_converges_in_the_single_retry():
-    """STANDARD tier, +30% over TARGET (the codebase's own convention for expressing
-    overage -- see scripts/length_gate.py's docstring: "5232 words against a 4000w
-    target -- +30.8%"). production_v2.yml allows exactly ONE retry
-    ("for RETRY_ATTEMPT in 0 1") -- there is no attempt 2 to lean on, so this proves
-    the single retry is enough for this tier/overage combination."""
+def test_moderate_overage_standard_tier_converges_in_the_single_retry():
+    """A moderate overage that fits within STANDARD's POST-#81 cut capacity
+    (max_sections x (sec_target_base - floor)) converges in the one retry
+    production_v2.yml allows."""
     agent_04 = _load_agent04()
     _patch_network(agent_04)
     tier = agent_04._get_tier_config("STANDARD")
 
-    target = tier["target_words"]  # 4000
-    simulated_word_count_attempt0 = round(target * 1.30)  # 5200 -- the scenario the user asked for
+    max_sections = 4
+    sec_target_base = agent_04.STANDARD_SEC_TARGET_BASE
+    floor = agent_04.BODY_SECTION_FLOOR_WORDS
+    capacity = (sec_target_base - floor) * max_sections
+    assert capacity == 440, "this test's overage is chosen relative to this capacity -- update both together"
+    overage = 400  # comfortably inside capacity, unlike the old (pre-#81) 800w stress scenario
+    simulated_word_count_attempt0 = 4400 + overage  # ceiling + overage
     report, retry_feedback = _make_length_retry_feedback(simulated_word_count_attempt0, "STANDARD")
     assert report["ceiling_words"] == 4400
-    assert report["over_by_words"] == 800  # 5200 - 4400
+    assert report["over_by_words"] == overage
 
-    # Sanity-check the exact cut the code will compute for this overage (4 sections):
-    # cut_per_section = ceil(800/4) = 200, capped at (500-280)=220 -> not clamped -> 300w/section.
-    max_sections = 4
-    sec_target_base = 500
-    expected_cut = min(sec_target_base - 280, -(-report["over_by_words"] // max_sections))
-    assert expected_cut == 200
+    expected_cut = min(sec_target_base - floor, -(-overage // max_sections))
+    assert expected_cut < sec_target_base - floor, "test setup should stay UNCLAMPED -- see the floor-clamped test below for that case"
     expected_sec_target = sec_target_base - expected_cut
-    assert expected_sec_target == 300
 
     article1, prompts1 = _run_writer(agent_04, tier, retry_feedback=retry_feedback, body_section_bias="upper")
     body_prompts_1 = _body_section_prompts(prompts1)
@@ -254,52 +263,49 @@ def test_thirty_percent_overage_standard_tier_converges_in_the_single_retry():
     word_count1 = len(article1.split())
     assert word_count1 <= report["ceiling_words"], (
         f"expected the single retry to converge under the {report['ceiling_words']}w ceiling "
-        f"for a +30%-over-target STANDARD overage, got {word_count1}w"
+        f"for a {overage}w STANDARD overage (within post-#81 cut capacity), got {word_count1}w"
     )
 
 
-def test_opportunity_tier_cut_is_floor_clamped_for_a_thirty_percent_overage():
-    """Same +30%-over-target overage, but OPPORTUNITY tier's section budget (400w,
-    only 3 sections) is already close to the 280w safety floor: ceil(800/3)=267w/
-    section would be needed to fully offset the overage from body sections alone,
-    but the floor caps the cut at 120w/section (280w target, the floor exactly) --
-    a REAL, documented limitation of a proportional-to-overage cut, not a
-    regression. The floor exists on purpose: it stops a retry from gutting a
-    section into thin, incomplete content just to hit a word-count number.
-
-    This test asserts the CODE'S OWN FORMULA is floor-clamped correctly and that
-    the clamped value is what actually reaches the prompt (wiring proof) --
-    it does NOT assert whether the full article converges under the ceiling,
-    because that additionally depends on the sizes of the OTHER (non-body-section)
-    parts of the article (FAQ, comparison, expert, closing), which a deterministic
-    word-count mock cannot represent with real-LLM fidelity. In production, if a
-    retry's actual result still exceeds the ceiling, GATE LENGTH fails a second
-    time and the article is dropped cleanly (ARTICLES_FAILED+1, continue 2 --
-    unchanged, see tests/test_retry_safety.py::test_workflow_regression_is_treated_as_full_failure_not_a_fallback
+def test_large_overage_is_floor_clamped_on_every_tier_after_calibration():
+    """A large overage (the same +30%-over-target magnitude used pre-#81) now
+    floor-clamps on EVERY tier, not just OPPORTUNITY -- because #81 intentionally
+    spent half of each tier's floor headroom on attempt-0 calibration, leaving
+    less for the retry to use. A REAL, documented trade-off, not a regression:
+    the floor still exists to stop a retry from gutting a section into thin,
+    incomplete content. This does NOT assert full-article convergence (that
+    also depends on non-body-section sizes a deterministic mock can't represent
+    with real-LLM fidelity) -- only that the code's own formula clamps correctly
+    and that the clamped value is what reaches the prompt (wiring proof). If a
+    retry's actual result still exceeds the ceiling in production, GATE LENGTH
+    fails a second time and the article is dropped cleanly (ARTICLES_FAILED+1,
+    continue 2 -- unchanged, see
+    tests/test_retry_safety.py::test_workflow_regression_is_treated_as_full_failure_not_a_fallback
     and tests/test_retry_feedback.py::test_workflow_logs_explicitly_on_retry_and_on_exhaustion)."""
     agent_04 = _load_agent04()
     _patch_network(agent_04)
-    tier = agent_04._get_tier_config("OPPORTUNITY")
+    floor = agent_04.BODY_SECTION_FLOOR_WORDS
 
-    target = tier["target_words"]  # 4000
-    simulated_word_count_attempt0 = round(target * 1.30)  # 5200
-    report, retry_feedback = _make_length_retry_feedback(simulated_word_count_attempt0, "OPPORTUNITY")
-    assert report["ceiling_words"] == 4400
-    assert report["over_by_words"] == 800
+    cases = [
+        ("OPPORTUNITY", 3, agent_04.OPPORTUNITY_SEC_TARGET_BASE),
+        ("STANDARD", 4, agent_04.STANDARD_SEC_TARGET_BASE),
+        ("PILLAR", 5, agent_04.PILLAR_SEC_TARGET_BASE),
+    ]
+    for tier_name, max_sections, sec_target_base in cases:
+        tier = agent_04._get_tier_config(tier_name)
+        target = tier["target_words"]
+        simulated_word_count_attempt0 = round(target * 1.30)  # the same stress magnitude #80's tests used
+        report, retry_feedback = _make_length_retry_feedback(simulated_word_count_attempt0, tier_name)
 
-    # Unclamped cut would be ceil(800/3) = 267w/section -- more than this tier's
-    # (400-280)=120w headroom allows, so the floor is the binding constraint.
-    max_sections = 3
-    sec_target_base = 400
-    unclamped_cut = -(-report["over_by_words"] // max_sections)
-    assert unclamped_cut == 267
-    expected_cut = min(sec_target_base - 280, unclamped_cut)
-    assert expected_cut == 120, "the floor clamp must be the binding constraint in this scenario"
-    expected_sec_target = sec_target_base - expected_cut
-    assert expected_sec_target == 280  # hits the floor exactly
+        headroom = sec_target_base - floor
+        unclamped_cut = -(-report["over_by_words"] // max_sections)
+        assert unclamped_cut > headroom, (
+            f"{tier_name}: test setup assumption broken -- this overage should exceed the tier's "
+            f"headroom ({headroom}w) so the floor is the binding constraint; adjust the scenario."
+        )
+        expected_sec_target = sec_target_base - headroom  # == floor, by construction
+        assert expected_sec_target == floor
 
-    _article1, prompts1 = _run_writer(agent_04, tier, retry_feedback=retry_feedback, body_section_bias="upper")
-    body_prompts_1 = _body_section_prompts(prompts1)
-    # the floor-clamped value -- not the naive (unachievable) full cut -- is what
-    # actually reached the section-generation prompt.
-    assert _parse_sec_target(body_prompts_1[0]) == expected_sec_target
+        _article1, prompts1 = _run_writer(agent_04, tier, retry_feedback=retry_feedback, body_section_bias="upper")
+        body_prompts_1 = _body_section_prompts(prompts1)
+        assert _parse_sec_target(body_prompts_1[0]) == expected_sec_target, tier_name

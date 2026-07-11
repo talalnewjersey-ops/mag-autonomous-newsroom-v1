@@ -253,6 +253,14 @@ jobs:
               --input "$DRAFT" \
               --report "${ARTICLE_DIR}/agent_04/polish_report.json" || true
 
+            # MICRO-TRIM [non-blocking] (2026-07-11, #81): mechanical fix for a tiny (<=2%)
+            # GATE LENGTH overage -- zero extra API cost vs. a full retry (see script docstring).
+            echo "[${ARTICLE_NUM}] Phase 4.441: Micro-Trim [non-blocking]"
+            python scripts/micro_trim.py \
+              --input "$DRAFT" \
+              --article-type "${ARTICLE_TYPE}" \
+              --report "${ARTICLE_DIR}/agent_04/micro_trim_report.json" || true
+
             # GATE LENGTH [BLOCKING] (2026-07-11): symmetric ceiling counterpart to agent_04's
             # floor-only word-count expansion. agent_12's own tier-relative check catches an
             # overshoot too, but sits OUTSIDE this retry loop (GATE QA/EDITOR are single-shot) --
