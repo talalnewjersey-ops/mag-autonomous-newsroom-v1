@@ -14,11 +14,21 @@ import os
 import sys
 import urllib.error
 
+import pytest
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from agents import _real_internal_links as ril
+
+
+@pytest.fixture(autouse=True)
+def _no_real_sleeps(monkeypatch):
+    # every test here exercises retry/pacing LOGIC (call counts, log lines),
+    # never real timing -- keep the suite fast regardless of
+    # RETRY_DELAYS_SECONDS/INTER_CALL_SPACING_SECONDS' real-world values.
+    monkeypatch.setattr(ril.time, "sleep", lambda seconds: None)
 
 
 class _FakeHTTPResponse:
@@ -148,6 +158,106 @@ def test_fetch_real_posts_403_logs_the_request_id(monkeypatch, caplog):
         assert ril.fetch_real_posts() == []
     assert "run7-abc123" in caplog.text
     assert "rest_forbidden" in caplog.text
+
+
+# ---------------- CHALLENGE-403 RETRY (2026-07-11): distinguishing the Hostinger ----------------
+# hCDN "please wait" interstitial (its OWN <meta http-equiv="refresh" content="30">
+# literally says retry in 30s) from a hard, genuine rest_forbidden 403 (never retried).
+
+_CHALLENGE_BODY = (
+    b'<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
+    b'<meta name="robots" content="noindex,nofollow">'
+    b'<meta http-equiv="refresh" content="30">'
+    b'<link rel="preconnect" href="https://fonts.googleapis.com"></head></html>'
+)
+_HARD_403_BODY = b'{"code":"rest_forbidden","message":"Sorry, you are not allowed to do that."}'
+
+
+def test_challenge_403_retries_and_eventually_succeeds(monkeypatch):
+    calls = []
+
+    def fake_urlopen(req, timeout=None):
+        calls.append(req.full_url)
+        if len(calls) < 3:
+            raise _http_error(body=_CHALLENGE_BODY)
+        return _FakeHTTPResponse(200, json.dumps([
+            {"slug": "a", "link": "https://moneyabroadguide.com/a/", "title": {"rendered": "A Post"}}
+        ]))
+    monkeypatch.setattr(ril.urllib.request, "urlopen", fake_urlopen)
+
+    sleeps = []
+    monkeypatch.setattr(ril.time, "sleep", lambda s: sleeps.append(s))
+
+    posts = ril.fetch_real_posts(max_pages=1)
+    assert posts == [{"title": "A Post", "url": "https://moneyabroadguide.com/a/"}]
+    assert len(calls) == 3  # 2 challenge hits + 1 success
+    # pacing (2.5s) before attempt 1, then the two challenge backoff delays (35, 70)
+    assert sleeps == [ril.INTER_CALL_SPACING_SECONDS, 35, 70]
+
+
+def test_challenge_403_exhausts_retries_then_fails_cleanly(monkeypatch, caplog):
+    calls = []
+
+    def fake_urlopen(req, timeout=None):
+        calls.append(req.full_url)
+        raise _http_error(body=_CHALLENGE_BODY)
+    monkeypatch.setattr(ril.urllib.request, "urlopen", fake_urlopen)
+
+    sleeps = []
+    monkeypatch.setattr(ril.time, "sleep", lambda s: sleeps.append(s))
+
+    with caplog.at_level("WARNING"):
+        assert ril.fetch_real_posts() == []
+    assert len(calls) == 4  # 1 initial + 3 retries, all exhausted
+    assert sleeps == [ril.INTER_CALL_SPACING_SECONDS, 35, 70, 140]
+    assert "challenge" in caplog.text.lower()
+
+
+def test_hard_403_is_never_retried(monkeypatch):
+    calls = []
+
+    def fake_urlopen(req, timeout=None):
+        calls.append(req.full_url)
+        raise _http_error(body=_HARD_403_BODY)
+    monkeypatch.setattr(ril.urllib.request, "urlopen", fake_urlopen)
+
+    sleeps = []
+    monkeypatch.setattr(ril.time, "sleep", lambda s: sleeps.append(s))
+
+    assert ril.fetch_real_posts() == []
+    assert len(calls) == 1  # no retry at all for a hard/genuine 403
+    assert sleeps == [ril.INTER_CALL_SPACING_SECONDS]  # only the pacing delay, no backoff
+
+
+def test_pacing_delay_applied_even_on_a_clean_success(monkeypatch):
+    def fake_urlopen(req, timeout=None):
+        return _FakeHTTPResponse(200, "[]")
+    monkeypatch.setattr(ril.urllib.request, "urlopen", fake_urlopen)
+
+    sleeps = []
+    monkeypatch.setattr(ril.time, "sleep", lambda s: sleeps.append(s))
+
+    ril.fetch_real_posts(max_pages=1)
+    assert sleeps == [ril.INTER_CALL_SPACING_SECONDS]
+
+
+def test_methodology_links_also_get_challenge_retry(monkeypatch):
+    calls = []
+
+    def fake_urlopen(req, timeout=None):
+        calls.append(req.full_url)
+        if len(calls) < 2:
+            raise _http_error(body=_CHALLENGE_BODY)
+        return _FakeHTTPResponse(200, json.dumps([
+            {"slug": "how-we-test", "link": "https://moneyabroadguide.com/how-we-test/",
+             "title": {"rendered": "How We Test"}}
+        ]))
+    monkeypatch.setattr(ril.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(ril.time, "sleep", lambda s: None)
+
+    links = ril.fetch_methodology_links()
+    assert len(calls) == 2
+    assert links == [{"title": "How We Test", "url": "https://moneyabroadguide.com/how-we-test/"}]
 
 
 def test_fetch_methodology_links_403_logs_the_request_id(monkeypatch, caplog):

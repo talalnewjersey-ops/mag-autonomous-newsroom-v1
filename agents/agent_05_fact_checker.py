@@ -15,10 +15,13 @@ from pathlib import Path
 import aiohttp
 
 from agents.base_agent import BaseAgent
-from agents._sources import _classify_url  # shared official-source allow-list (single source of truth)
+from agents._sources import _classify_url, _INTERNAL_HOST  # shared official-source allow-list (single source of truth)
 from agents._claims import _NUM_RE, _ATTR_RE, _URL_IN  # shared claim regexes (also used by Couche 2 soften)
 from agents._fact_coverage import classify_claims  # LEVIER C: value-matched fact coverage
 from agents._source_pool import resolve_gate_vertical
+from agents._wp_challenge import (
+    RETRY_DELAYS_SECONDS, INTER_CALL_SPACING_SECONDS, call_with_challenge_retry_async,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -307,41 +310,73 @@ class FactCheckerAgent(BaseAgent):
             # invented/erroneous URL); a transport error/timeout after retries
             # (reason="transport") is soft (the page may exist; never blocks prod).
             last_err = None
+            domain = re.sub(r"https?://(www\.)?", "", url).split("/")[0]
+            # OBSERVED (2026-07-11, PR express): our OWN domain (self-referencing
+            # methodology/homepage links checked like any other URL) can hit the
+            # Hostinger hCDN challenge-403 interstitial -- see
+            # docs/hostinger-403-ticket.md. An EXTERNAL source's own 403 (e.g. a
+            # .gov site bot-blocking datacenter requests) is unrelated and must
+            # classify immediately below, never wait-and-retry -- so the pacing/
+            # challenge-retry treatment applies ONLY to our own domain.
+            is_own_domain = domain == _INTERNAL_HOST or domain.endswith("." + _INTERNAL_HOST)
             for attempt in range(3):  # 1 try + 2 retries for transient transport errors
                 try:
-                    async with self.session.head(url, allow_redirects=True,
-                                                 timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                        status = resp.status
-                        # Some servers reject HEAD (405/501) or bot-block it (403)
-                        # but serve GET: fall back before treating it as broken.
-                        if status in (403, 405, 501):
-                            async with self.session.get(url, allow_redirects=True,
-                                                         timeout=aiohttp.ClientTimeout(total=10)) as gresp:
-                                status = gresp.status
-                                resp = gresp
-                        domain = re.sub(r"https?://(www\.)?", "", url).split("/")[0]
-                        is_trusted = any(d in domain for d in TRUSTED_DOMAINS)
-                        is_official = _classify_url(url) == "official"
-                        entry = {"url": url, "status_code": status, "trusted": is_trusted}
-                        if status == 200:
-                            results["live"].append(entry)
-                        elif status in (301, 302, 307, 308):
-                            results["redirected"].append({**entry, "final_url": str(resp.url)})
-                        elif status == 403 and is_official:
-                            # GENERIC bot-block pattern (not a per-domain list): a 403
-                            # on an ALLOW-LISTED (.gov/.gc.ca/canada.ca) domain, even
-                            # after the HEAD->GET fallback with a real browser UA,
-                            # overwhelmingly means the SITE is blocking automated/
-                            # datacenter requests -- not that the page is dead. A
-                            # genuinely nonexistent government page returns 404, not
-                            # 403. Classified separately from a real http failure so
-                            # it never counts as a hard (hallucination-signalling)
-                            # break -- see broken_official_hard/_soft below.
-                            results["broken"].append({**entry, "reason": "bot_blocked"})
-                        else:
-                            results["broken"].append({**entry, "reason": "http"})
-                        if not is_trusted:
-                            results["untrusted"].append(entry)
+                    async def _do_request():
+                        # Only read the body on a 403 for OUR OWN domain (needed for
+                        # the challenge-signature check below) -- an external site's
+                        # 403 never needs its body read, unchanged from before (and
+                        # some response stand-ins/mocks don't implement .text() at
+                        # all, matching the prior contract exactly).
+                        async with self.session.head(url, allow_redirects=True,
+                                                     timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                            status, final_url, body = resp.status, str(resp.url), ""
+                            # Some servers reject HEAD (405/501) or bot-block it (403)
+                            # but serve GET: fall back before treating it as broken.
+                            if status in (403, 405, 501):
+                                async with self.session.get(url, allow_redirects=True,
+                                                             timeout=aiohttp.ClientTimeout(total=10)) as gresp:
+                                    status, final_url = gresp.status, str(gresp.url)
+                                    if status == 403 and is_own_domain:
+                                        body = await gresp.text()
+                            elif status == 403 and is_own_domain:
+                                body = await resp.text()
+                            # (status_code, body_text, result) -- the shared contract
+                            # call_with_challenge_retry_async expects (body_text is
+                            # the SECOND element, checked for the challenge signature).
+                            return status, body, final_url
+
+                    if is_own_domain:
+                        await asyncio.sleep(INTER_CALL_SPACING_SECONDS)  # light preventive pacing
+                        status, _body, final_url = await call_with_challenge_retry_async(
+                            _do_request, asyncio.sleep,
+                            log_fn=lambda n, d: logger.warning(
+                                f"[AGENT-05] WP challenge 403 on {url}, retry {n}/{len(RETRY_DELAYS_SECONDS)} in {d}s"),
+                        )
+                    else:
+                        status, _body, final_url = await _do_request()
+
+                    is_trusted = any(d in domain for d in TRUSTED_DOMAINS)
+                    is_official = _classify_url(url) == "official"
+                    entry = {"url": url, "status_code": status, "trusted": is_trusted}
+                    if status == 200:
+                        results["live"].append(entry)
+                    elif status in (301, 302, 307, 308):
+                        results["redirected"].append({**entry, "final_url": final_url})
+                    elif status == 403 and is_official:
+                        # GENERIC bot-block pattern (not a per-domain list): a 403
+                        # on an ALLOW-LISTED (.gov/.gc.ca/canada.ca) domain, even
+                        # after the HEAD->GET fallback with a real browser UA,
+                        # overwhelmingly means the SITE is blocking automated/
+                        # datacenter requests -- not that the page is dead. A
+                        # genuinely nonexistent government page returns 404, not
+                        # 403. Classified separately from a real http failure so
+                        # it never counts as a hard (hallucination-signalling)
+                        # break -- see broken_official_hard/_soft below.
+                        results["broken"].append({**entry, "reason": "bot_blocked"})
+                    else:
+                        results["broken"].append({**entry, "reason": "http"})
+                    if not is_trusted:
+                        results["untrusted"].append(entry)
                     last_err = None
                     break  # success (got an HTTP response) -> no more retries
                 except Exception as e:

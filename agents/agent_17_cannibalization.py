@@ -11,7 +11,7 @@ Etape 1 - Observation Mode (additive):
   * would_block / decision / blocking are still measured.
 """
 
-import json, logging, os, re, sys
+import json, logging, os, re, sys, time
 from datetime import datetime
 from pathlib import Path
 from difflib import SequenceMatcher
@@ -19,6 +19,10 @@ from difflib import SequenceMatcher
 import anthropic
 import requests
 from requests.auth import HTTPBasicAuth
+
+from agents._wp_challenge import (
+    RETRY_DELAYS_SECONDS, INTER_CALL_SPACING_SECONDS, call_with_challenge_retry,
+)
 
 # Etape 1 Observation Mode: local search-intent heuristic (no API, no cost)
 try:
@@ -52,6 +56,28 @@ DECISIONS = {
     "REJECT": "REJECT_DUPLICATE",
 }
 
+def _get_with_challenge_retry(url, auth, params, timeout):
+    """requests.get() wrapped with the Hostinger hCDN challenge-403 backoff
+    retry (2026-07-11, PR express -- see agents/_wp_challenge.py) plus a
+    light, fixed pacing delay before every call. Returns the requests.Response
+    for whatever status the server actually sent (the caller's own
+    resp.raise_for_status() still fires exactly as before if it's still non-
+    2xx after retries); a transport-level failure (ConnectionError, timeout,
+    ...) propagates out of requests.get() itself, uncaught here -- unchanged
+    fail-soft behavior at the call site."""
+    def _attempt():
+        resp = requests.get(url, auth=auth, params=params, timeout=timeout)
+        return resp.status_code, resp.text, resp
+
+    time.sleep(INTER_CALL_SPACING_SECONDS)  # light preventive pacing before every WP call
+    _status, _body, resp = call_with_challenge_retry(
+        _attempt, time.sleep,
+        log_fn=lambda n, d: logger.warning(
+            f"[AGENT-17] WP challenge 403 detected, retry {n}/{len(RETRY_DELAYS_SECONDS)} in {d}s"),
+    )
+    return resp
+
+
 def fetch_wordpress_articles(status="any", per_page=100):
     if not WP_URL:
         logger.warning("WORDPRESS_URL not set - skipping WP scan")
@@ -59,9 +85,10 @@ def fetch_wordpress_articles(status="any", per_page=100):
     articles, page, auth = [], 1, HTTPBasicAuth(WP_USER, WP_PASS)
     while True:
         try:
-            resp = requests.get(f"{WP_URL}/wp-json/wp/v2/posts", auth=auth,
-                params={"status": status, "per_page": per_page, "page": page,
-                        "fields": "id,slug,title,date,modified,status,link"}, timeout=30)
+            resp = _get_with_challenge_retry(
+                f"{WP_URL}/wp-json/wp/v2/posts", auth,
+                {"status": status, "per_page": per_page, "page": page,
+                 "fields": "id,slug,title,date,modified,status,link"}, 30)
             resp.raise_for_status()
             data = resp.json()
             if not data:
