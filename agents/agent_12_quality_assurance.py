@@ -39,6 +39,31 @@ _WORD_COUNT_TOLERANCE = 0.10  # +-10% of the tier's own target
 _KEYWORD_STUFFING_DENSITY_PCT = 2.5  # widely-cited SEO stuffing threshold; natural
                                       # long-tail keyword prose lands well under 1%
 
+# PUBLICATION GATE (2026-07-11, AUDIT-LOG.md): the single number that actually
+# decides GATE QA pass/fail for every real production run (this class's own
+# run(), consumed by main()'s sys.exit(0 if status=="PASS" else 1) below --
+# that exit code is what production_v2.yml's retry/fail logic reacts to). Was
+# hardcoded to 85 -- drifted from .github/NEXUS14-PRIORITY.md's own documented
+# "Minimum publication score: 95/100 -- hard gate, no exceptions" (Non-
+# Negotiable Rules #3) for an unknown amount of time before this was caught.
+# Real case that surfaced the drift: run 29137518698 (draft 48640) scored
+# overall_score=90.5, cleared the code's 85 but not the documented 95 -- the
+# topic was promoted/"published" (Sprint 9's invariant correctly gates on
+# THIS constant, not a bug there) despite failing the actual enterprise
+# standard. Aligning the code to the document, not the other way around.
+#
+# NOTE (separate, NOT fixed here -- flagged for a future decision): main()'s
+# CLI accepts --seo-threshold/--eeat-threshold (wired into config["seo_
+# threshold"]/config["eeat_threshold"]) that LOOK like they configure this
+# gate but are never read anywhere -- this class reads self.config exactly
+# once, for "hallucination" only. Those two flags are dead/cosmetic; this
+# constant is the only real gate. Also distinct: GATE B (agent_06_eeat_
+# validator, a separate script) has its OWN 85 threshold via the shared
+# EEAT_SCORE_THRESHOLD env var in production_v2.yml -- that one is real and
+# functional, but is a different gate from this one; raising it too is a
+# separate decision, out of scope here.
+PUBLICATION_QUALITY_GATE = 95
+
 
 class QualityAssuranceAgent(BaseAgent):
     """
@@ -128,12 +153,13 @@ class QualityAssuranceAgent(BaseAgent):
                 "critical_issues": self._identify_critical_issues(seo_check, eeat_check, faq_check, image_check, link_check),
                 "recommendations": self._generate_recommendations(seo_check, eeat_check, image_check),
                 
-                # SPRINT 10: hallucination transparency + single explicit PASS gate (85)
+                # SPRINT 10: hallucination transparency + single explicit PASS gate
+                # (PUBLICATION_QUALITY_GATE, see module-level constant above)
                 "form_overall_score": form_overall,
                 "hallucination_penalty": _halluc_penalty,
                 "unsourced_stat_count": _hc.get("unsourced_stat_count", 0),
                 "unbacked_attribution_count": _hc.get("unbacked_attribution_count", 0),
-                "status": "PASS" if overall_score >= 85 else "NEEDS_REVIEW"
+                "status": "PASS" if overall_score >= PUBLICATION_QUALITY_GATE else "NEEDS_REVIEW"
             }
             
             # PATH-DUPLICATION FIX (2026-07-06, same bug class as agent_11): main()
@@ -500,8 +526,8 @@ def hallucination_penalty(unsourced_stat_count: int, unbacked_attribution_count:
     """SPRINT 10 barème: points subtracted from the QA overall score.
       -8 per unsourced numeric stat, -15 per unbacked named attribution, capped at 40.
     Calibrated on 48418 (4+ unsourced stats -> >= -32). Even a form-perfect article
-    (max 100) minus the -40 cap = 60, well below the 85 PASS gate, so no realistic
-    hallucination mix can escape. Unbacked attributions are ALSO hard-blocked at
+    (max 100) minus the -40 cap = 60, well below the PUBLICATION_QUALITY_GATE (95),
+    so no realistic hallucination mix can escape. Unbacked attributions are ALSO hard-blocked at
     GATE A (agent_05); the -15 here is defense-in-depth."""
     return min(cap, 8 * max(0, unsourced_stat_count) + 15 * max(0, unbacked_attribution_count))
 
