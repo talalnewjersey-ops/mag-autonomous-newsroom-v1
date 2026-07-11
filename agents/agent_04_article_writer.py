@@ -313,6 +313,31 @@ EEAT REQUIREMENTS (Google E-E-A-T compliance — achieve score 90+/100):
 - TRUST: Reference official regulatory oversight and mention licensed/regulated providers.
 OUTPUT: Raw Markdown only — articles must score 85+ on EEAT validation."""
 
+# EXPERIENCE DENSITY ENRICHMENT (2026-07-11, follow-up to PR #85's density
+# recalibration): real measurement on witness run 9's article 1 (see
+# AUDIT-LOG.md) found its 3 body sections -- ~65% of the article's total
+# words -- carried only 1 of the article's 10 Experience-pattern matches;
+# the other 2 body sections had ZERO. The 4.0/1000w calibration anchor
+# (agents/_eeat_scoring.py) is reachable only through the 3 freely-scalable
+# pattern groups (attribution phrasing; example/scenario; analytical
+# compared/analyzed language) -- so every body section, not just the ones
+# where it happens to occur naturally, now gets an explicit instruction to
+# include one of each. Does NOT reopen Sprint 8's anti-fabrication decision:
+# no new figures, no named individuals -- same generic-role framing as the
+# Illustrative Scenario rule already used elsewhere in this article.
+_EXPERIENCE_SIGNAL_INSTRUCTION = (
+    "\nATTRIBUTION & ILLUSTRATION (E-E-A-T -- weave into the word target above, do not "
+    "pad): when this section states a sourced fact or figure, prefer explicit attribution "
+    "phrasing -- \"According to [Source],\" or \"Based on [Source] data,\" -- over a bare "
+    "inline link, for that SAME sourced claim (never for an unsourced one). Illustrate at "
+    "least one key point with a brief, concrete example (\"For example, ...\") grounded ONLY "
+    "in figures already established elsewhere in this article or in the sources above -- "
+    "generic role framing only (e.g. \"a newcomer\", \"a small business owner\"), NEVER a "
+    "named individual or a new invented figure. Never claim this site personally tested a "
+    "product; analytical language (\"compared to\", \"when weighed against\") describing an "
+    "analysis of published data is fine."
+)
+
 async def _call_claude(api_key: str, prompt: str, system: str = None, max_tokens: int = 5000,
                        model: str = None) -> str:
     # SPRINT 2 (RCA-003): writer now uses Claude Sonnet for quality. Overridable via env.
@@ -934,7 +959,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
             )
         try:
             sec_text = await _call_claude(api_key,
-                f"Write section ## {i+1}. {h2} for: {title} | {keyword}\n{sec_target}-{sec_target+150}w. Concise. No padding. BODY ONLY: no compliance disclaimer, no author bio, no brand slogan, no 'not financial advice' notice, no internal-link CTA in this section — those are written elsewhere exactly once.{digest_block}{_repetition_guard_block}{section_sources_block}{_retry_block}",
+                f"Write section ## {i+1}. {h2} for: {title} | {keyword}\n{sec_target}-{sec_target+150}w. Concise. No padding. BODY ONLY: no compliance disclaimer, no author bio, no brand slogan, no 'not financial advice' notice, no internal-link CTA in this section — those are written elsewhere exactly once.{digest_block}{_repetition_guard_block}{section_sources_block}{_EXPERIENCE_SIGNAL_INSTRUCTION}{_retry_block}",
                 SYSTEM_PROMPT, max_tokens=1800)
             written_sections.append(sec_text)
             await asyncio.sleep(0.2)
