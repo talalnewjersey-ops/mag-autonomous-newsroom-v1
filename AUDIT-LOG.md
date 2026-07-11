@@ -267,3 +267,42 @@ production réel, 1 article, mode draft) → ÉTAPE 3 (réactivation crons SI l'
   étape logique : relancer un run de production réel (ÉTAPE 2 refaite) pour confirmer que le
   gain se reproduit sur un article fraîchement généré (pas seulement re-scoré), avant
   réactivation.
+
+### 2026-07-11 — Session (suite) : PR #71 à #79, 5 runs témoins, seuil aligné sur 95, mode draft-only réel
+
+**PR #64 à #79 — une ligne chacune (statut réel vérifié via `gh pr view`, pas supposé) :**
+- **#64** (`07e08cc`, mergée) — images off-topic : sujet réel injecté, code LLM mort retiré.
+- **#65** (`b5c8f21`, mergée) — `control_qa_hallucination.yml` routé vers une vraie verticale + warning sur `us_default`.
+- **#66** (`0d6decb`, mergée) — fuite de marqueur interne `Tier/NEXUS-14 V5.0` dans le HTML publié, corrigée.
+- **#67** (`73af639`, mergée) — `has_update_date` câblé + regex FAQ + `content_check` tier-relatif (84.0→93.0 sur 48624).
+- **#68** (`cf3c089`, mergée) — levier "b" : signaux EEAT honnêtes déjà vrais (bio + liens méthodologie) reconnus (93.0→94.0).
+- **#69** (CLOSED, jamais mergée) — PR empilée sur la branche de #68, auto-fermée par GitHub à la suppression de cette branche (aucune perte, contenu identique rouvert proprement sous #70).
+- **#70** (`42d4395`, mergée) — levier "a" : Illustrative Scenarios, garde-fou anti-fabrication `_scenario_guard.py` (94.0→95.5).
+- **#71** (`1383139`, mergée) — dédoublonnage du H2 de scénario écho + budget de mots resserré (finding réel, draft 48632).
+- **#72** (`bbc446f`, mergée) — le mécanisme de retry ne pousse plus systématiquement la longueur à la hausse (ratchet à sens unique corrigé).
+- **#73** (`a3cddc6`, mergée) — `production_v2.yml` réduit sous la limite GitHub de 21000 caractères d'expression `run:`.
+- **#74** (`b5839ed`, mergée) — `word_count` recalculé frais depuis le contenu final chez agent_12, ne fait plus confiance aux métadonnées périmées.
+- **#75** (`a198c69`, mergée) — seuil réel de GATE QA aligné sur 95/100 (`PUBLICATION_QUALITY_GATE`), conforme à `NEXUS14-PRIORITY.md` (était 85, codé en dur).
+- **#76** (`0d752c6`, mergée) — mode `draft_only` réel sur `production_v2.yml` (`workflow_dispatch`, défaut `true`) : aucun run manuel ne peut plus promouvoir un topic en `published`.
+- **#77** (`6271253`, mergée) — corps de la réponse HTTP loggé en cas d'erreur Claude côté agent_04 (observabilité, le bug 400 lui-même reste non résolu — voir plus bas).
+- **#78** (`1d3ed8a`, mergée) — outillage `scripts/delete_wp_post.py` + workflow dédié (trash par défaut, garde-fou fat-finger) pour nettoyer les drafts témoins orphelins.
+- **#79** (`a84152c`, mergée) — GATE LENGTH : plafond symétrique au floor-only actuel d'agent_04, même tolérance ±10% qu'agent_12, dans la même boucle de retry que G-Substance/G3/A/B.
+
+**5 runs témoins et leurs verdicts** (topic = `us-car-insurance-foreign-drivers-students` sauf mention contraire) :
+- **Run 1** (`29129933048`, 2026-07-10 23:25, 1 article, ancien seuil 85) → draft WP **48624**, `overall_score=84.0` → **GATE QA FAIL**. Re-scoré ensuite sans régénération au fil de #67/#68/#70 : 84.0→93.0→94.0→**95.5** (démontre le gain du scoreur, pas encore reproduit sur une génération fraîche à ce stade).
+- **Run 2** — tentative antérieure référencée dans l'investigation Sprint 9 comme échouée avant WordPress (gate de contenu G-Substance/G3/A/B non franchi, donc aucun draft WP créé). Détails non re-vérifiés dans cette session — pas de score ni d'artefact à citer.
+- **Run 3** → draft WP **48632** (2026-07-11 01:15, tagué `[QA-FAILED]` par `mark_qa_failed.py`, donc `overall_score` sous le seuil alors en vigueur = 85). A directement motivé le fix #71 (H2 de scénario écho dupliqué + budget de mots).
+- **Run 4** (`29137518698`, 2026-07-11 03:17, ancien seuil 85) → draft WP **48640**, `overall_score=90.5` → **GATE QA PASS** (85 franchi), topic promu `published` dans le registre. Décision éditoriale ultérieure (barre utilisateur = 95, ce run était censé être draft-only) : dépublié, topic remis `candidate`, `post_id`/`published_at` effacés (commit `5d1799f`). Invariant Sprint 9 vérifié tenu (aucune violation — le code a fait exactement ce que son seuil de l'époque autorisait).
+- **Run 5** (`29141394156`, 2026-07-11 05:33-05:52, 3 articles, `draft_only=true` — premier run sous le nouveau régime #75/#76) → **0/3 produits**, aucune promotion, registre inchangé (26 candidate + 2 published) :
+  - Article 1 (même topic que 48640) : **GATE C FAIL**, dédoublonnage par titre normalisé contre le brouillon orphelin 48640 encore présent sur WordPress.
+  - Article 2 (`us-send-money-to-india`) : draft WP **48652** créé (resté draft), `overall_score=82.5` (SEO 85, EEAT 91.2, Content 60) → **GATE QA FAIL**. Cause du Content=60 : 5232 mots vs cible tier 4000 (+30.8%), dépassement en génération de BASE, pas en retry.
+  - Article 3 (`us-best-credit-cards-no-ssn`, PILLAR) : **agent_04 a planté deux fois** (`HTTP Error 400: Bad Request`, attempt 0 et 1) avant même d'atteindre WordPress.
+
+**Bug agent_04 HTTP 400 — non résolu, désormais observable** : cause racine inconnue. Piste "outline-fallback → prompt malformé" investiguée (agent_03 était tombé en fallback pour ce même article juste avant) puis écartée faute de mécanisme de code reliant les deux — aucun appel `_call_claude` du chemin PILLAR ne lit les champs d'outline (`h3`/`data`) qui diffèrent entre un outline réel et le fallback. Fix livré (#77) : le corps de la réponse HTTP est maintenant lu et logué (tronqué à 2000 caractères) au lieu d'être perdu — la PROCHAINE occurrence sera diagnosticable directement dans les logs, celle-ci ne l'a pas été.
+
+**Nettoyage drafts témoins orphelins** : `agent_11`'s dedup (`_duplicate_of`) bloque un topic dès qu'un post WP existant — draft ou publié, n'importe quel statut — matche son titre normalisé exactement. Audit complet (`list-drafts.yml`) : 4 drafts trouvés (48624, 48632, 48640, 48652), dont 3 déjà auto-neutralisés par le tag `[QA-FAILED]` de `mark_qa_failed.py` (le préfixe casse le match de titre — 48624, 48632, 48652 ne bloquent PAS leur topic). Seul **48640** (jamais taggé, seul run à avoir réellement passé QA sous l'ancien seuil) bloquait réellement son topic. **Supprimé** (`delete-wp-post.yml`, `force=false` → corbeille, récupérable) le 2026-07-11 06:13 ; confirmé `actual_status=trash` par relecture directe post-suppression. 48624/48632/48652 laissés en l'état (inoffensifs, tag QA-FAILED déjà présent).
+
+**GATE LENGTH (#79)** : plafond symétrique ajouté à la boucle de retry existante (`target_words × 1.10`, même tolérance qu'agent_12) — un dépassement comme celui de l'article 2 du run 5 obtient désormais une chance de retry avec feedback ciblé avant d'atteindre GATE QA (non-retriable). Cas limite signalé, non traité : un dépassement bien plus large pourrait nécessiter un retry raccourcissant de plus de 20 %, ce qui déclencherait le garde-fou anti-régression de `structure_completeness_gate.py` — pas élargi préventivement.
+
+- **Crons** : **toujours désactivés**. Seuil de publication réel maintenant aligné sur 95 (#75), mode draft-only réel disponible (#76), plafond de longueur symétrique en place (#79), bug 400 observable mais non résolu (#77 logging seulement).
+- **Prochaine étape** : **run témoin 6, `draft_only=true`**, pour confirmer que l'ensemble (#74-#79) tient sur une génération fraîche. Si le run 6 est propre : diff de `production_v2.yml` pour passer l'input `draft_only` à `false` par défaut (réactivation effective des crons), à montrer avant merge — pas encore fait.
