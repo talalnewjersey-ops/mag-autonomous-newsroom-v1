@@ -9,7 +9,7 @@ GLOBAL RULE: Maximum quality per dollar. Search intent satisfaction > article le
 import argparse, asyncio, json, logging, os, re, sys
 from agents._source_pool import select_official_sources, has_curated_pool, resolve_vertical
 from agents._vertical_facts import VERTICAL_FACTS  # Couche 1: verified .gov facts to cite
-from agents._real_internal_links import fetch_real_posts, select_relevant_links, diagnose_relevance  # POINT 4: live sitemap/REST, never a static dict
+from agents._real_internal_links import fetch_real_posts, select_relevant_links, diagnose_relevance, fetch_methodology_links  # POINT 4: live sitemap/REST, never a static dict
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -377,6 +377,25 @@ _AUTHOR_BIO_MD = (
     "source-based guides — citing regulators including the FCAC, FINTRAC, OSFI, CRA, IRS, and CDIC — "
     "to help newcomers navigate financial systems with confidence."
 )
+
+
+def _build_methodology_links_md():
+    """2026-07-10 (site-level EEAT signal, real not fabricated): links to the
+    site's own published methodology pages -- how-we-test / fact-checking-
+    process. Zero fabrication risk (no claims about THIS article, just real,
+    already-published site pages) and zero LLM cost -- deterministic, same
+    pattern as _AUTHOR_BIO_MD. Unlike _AUTHOR_BIO_MD's permanent homepage-root
+    link, these are deep page paths -- POINT 4 (2026-07-05) forbids hardcoding
+    those in source (the old static INTERNAL_LINKS dict drifted to 86% dead),
+    so the URL is fetched LIVE via fetch_methodology_links() at write time.
+    Returns "" if the pages aren't confirmed live right now -- never invents
+    a URL; caller must skip an empty result rather than insert an empty line."""
+    links = fetch_methodology_links()
+    if not links:
+        return ""
+    joined = " and our ".join(f"[{l['title']}]({l['url']})" for l in links)
+    return f"*Learn more about our {joined} when researching this guide.*"
+
 
 _RESERVED_AUTHOR_HEADING_RE = re.compile(r"(?i)^#{1,3}\s*about\s+(?:the\s+author|talal)\b")
 _RESERVED_DISCLAIMER_HEADING_RE = re.compile(r"(?i)^#{1,3}\s*(?:compliance\s+)?disclaimer\b")
@@ -907,8 +926,9 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     # NEXUS-14 V5.0" -- internal pipeline artifacts (tier name, engine
     # version) the reader was never meant to see, straight into published
     # HTML. The reader only ever sees the update date now.
-    body = "\n\n".join([body, _AUTHOR_BIO_MD,
-                          f"> **Last Updated**: {_updated}"])
+    _methodology_links_md = _build_methodology_links_md()
+    body = "\n\n".join([s for s in [body, _AUTHOR_BIO_MD, _methodology_links_md,
+                                     f"> **Last Updated**: {_updated}"] if s])
 
     # Sprint 8: emit NO YAML frontmatter and NO body-level title heading. Frontmatter
     # fields used to render as visible <p> paragraphs (RCA-007) and a body title

@@ -293,7 +293,17 @@ class QualityAssuranceAgent(BaseAgent):
         experience_patterns = [
             r'(?:based on|according to|our experience|we found|in practice)',
             r'(?:real-world|case study|example|scenario)',
-            r'(?:tested|reviewed|analyzed|compared)'
+            r'(?:tested|reviewed|analyzed|compared)',
+            # 2026-07-10: recognizes genuine firsthand-experience language
+            # already present in the deterministic author bio (agent_04_
+            # article_writer.py _AUTHOR_BIO_MD) -- "he draws on that
+            # firsthand experience", "built his own credit history and
+            # banking relationships from scratch". Not a new signal source
+            # or a bio rewrite -- the bio's true content was simply
+            # invisible to this scorer before. Scoped tight (not a bare
+            # "experience") so it can't be gamed by unrelated prose.
+            r'firsthand experience',
+            r'built (?:his|her|their|our) own .{0,60}from scratch',
         ]
         experience_count = sum(len(re.findall(p, content, re.IGNORECASE)) for p in experience_patterns)
         checks["experience_signals"] = experience_count

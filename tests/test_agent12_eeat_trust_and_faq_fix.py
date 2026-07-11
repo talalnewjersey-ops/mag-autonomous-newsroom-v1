@@ -260,3 +260,54 @@ def test_real_draft_48624_combined_fixes_raise_content_and_eeat_together():
     content_check = _run(a._audit_content_quality(data))
     assert content_check["score"] == 100
     assert data["has_update_date"] is True  # the trust bonus fired (exact delta covered above)
+
+
+# ---------------- experience_patterns: recognize the EXISTING bio's honest signals ----------------
+# 2026-07-10 (lever "b" of the 48624 diagnosis, constraint: recognize only
+# what's ALREADY true in _AUTHOR_BIO_MD -- never rewrite the bio to inject
+# keywords). The bio genuinely says "he draws on that firsthand experience"
+# and "built his own credit history and banking relationships from scratch"
+# -- real, human-approved, first-hand-experience language the old 3 patterns
+# never matched (they only matched the literal "our experience").
+
+REAL_BIO_TEXT = (
+    "Talal Eddaouahiri is the founder of MoneyAbroadGuide.com. Originally from Morocco, "
+    "he settled in the U.S. in 2015 and built his own credit history and banking relationships "
+    "from scratch in both countries. His background is in retail banking and customer relations, "
+    "and he draws on that firsthand experience to write independent, source-based guides."
+)
+
+
+def test_firsthand_experience_phrase_is_now_recognized():
+    a = _agent()
+    eeat = _run(a._audit_eeat({"article_content": "He draws on that firsthand experience."}))
+    assert eeat["experience_signals"] >= 1
+
+
+def test_built_own_from_scratch_phrase_is_now_recognized():
+    a = _agent()
+    eeat = _run(a._audit_eeat({
+        "article_content": "He built his own credit history and banking relationships from scratch."}))
+    assert eeat["experience_signals"] >= 1
+
+
+def test_real_author_bio_text_gains_signals_it_did_not_have_before():
+    a = _agent()
+    old_patterns_only = [
+        r'(?:based on|according to|our experience|we found|in practice)',
+        r'(?:real-world|case study|example|scenario)',
+        r'(?:tested|reviewed|analyzed|compared)',
+    ]
+    import re
+    old_count = sum(len(re.findall(p, REAL_BIO_TEXT, re.IGNORECASE)) for p in old_patterns_only)
+    new_eeat = _run(a._audit_eeat({"article_content": REAL_BIO_TEXT}))
+    assert new_eeat["experience_signals"] > old_count  # genuinely gained signals, not double-counted noise
+
+
+def test_unrelated_generic_experience_word_alone_is_not_gamed():
+    # the new patterns are scoped tight (not a bare "experience") -- prose
+    # merely containing the word "experience" without the exact honest
+    # phrasing must NOT match either new pattern.
+    a = _agent()
+    eeat = _run(a._audit_eeat({"article_content": "This guide covers the insurance experience for newcomers."}))
+    assert eeat["experience_signals"] == 0
