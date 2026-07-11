@@ -33,9 +33,17 @@ def g3(report_path):
     d = _load(report_path)
     phrases = [p.get("phrase", "") for p in d.get("duplicate_phrases", []) if p.get("blocking")][:3]
     detail = "; ".join(phrases) if phrases else "repetition detected across body sections"
+    # 2026-07-11 RECALIBRATED (AUDIT-LOG.md real-run finding): the old wording
+    # only offered "reword it differently", which combined with agent_04's
+    # retry prompt (previously forbidding any shortening) reliably grew the
+    # article instead of fixing the duplicate. Removing/merging a duplicate is
+    # the more natural fix for THIS gate and is now offered as an equally
+    # valid option.
     return (f"GATE G3 (anti-repetition): near-verbatim phrase(s) repeated across different body "
-            f"sections: {detail}. Write each section's point in genuinely DIFFERENT wording -- "
-            "do not restate the same sentence/subsection twice.")
+            f"sections: {detail}. Fix by EITHER rewording one occurrence in genuinely DIFFERENT "
+            "wording, OR removing/merging the duplicate entirely if it adds no new information -- "
+            "a shorter section that no longer repeats itself is a valid, preferred fix, not a "
+            "regression.")
 
 
 def gate_a(report_path):

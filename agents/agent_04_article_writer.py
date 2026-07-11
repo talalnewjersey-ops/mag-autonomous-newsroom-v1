@@ -734,16 +734,35 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     # blind regeneration -- on a real run this caused the FAQ section to vanish
     # entirely (13->8 H2s) while fixing an unrelated sourcing issue. The
     # instruction now explicitly demands a TARGETED fix that preserves
-    # everything else (structure, section count, FAQ, length) -- a full
+    # everything else (structure, section count, FAQ) -- a full
     # structural-completeness check against the REJECTED draft is also enforced
     # in production_v2.yml after this retry (see _structure_snapshot below).
+    # RECALIBRATED (2026-07-11, real-run finding: draft 48640/run 29134940191,
+    # AUDIT-LOG.md): the ORIGINAL wording additionally forbade shortening
+    # ANYTHING at all, on the theory that any reduction anywhere was itself a
+    # regression -- combined with scripts/structure_completeness_gate.py's
+    # word-count floor (>20% drop
+    # only, NO ceiling: "more words is always fine"), this made every retry a
+    # one-way ratchet toward MORE words, never fewer. Confirmed directly (not
+    # inferred) via the retry's own pre_retry_snapshot.json: a G3
+    # (anti-repetition) retry took a 4412w rejected draft to a 4486w accepted
+    # one -- the fix for a DUPLICATE passage made the article LONGER, pushing
+    # it over the tier's own +-10% word-count ceiling. The real 2026-07-06
+    # incident this guarded against was losing a WHOLE SECTION (FAQ gone
+    # entirely), not general length -- the fix below narrows the protection to
+    # that actual incident, and explicitly allows trimming/merging the
+    # SPECIFIC flagged duplicate (the structure gate itself already tolerates
+    # this: word_count within 20% of the snapshot, h2_count preserved, FAQ
+    # preserved -- only the prompt wording was overly broad).
     _retry_block = (
-        f"\nPREVIOUS ATTEMPT REJECTED -- FIX THIS SPECIFICALLY, CHANGE NOTHING ELSE: {retry_feedback}\n"
-        "Make the SMALLEST possible change that resolves this. Do NOT drop, shorten, or "
-        "restructure any other section -- the FAQ section, all H2/H3 headings, the "
-        "comparison table, the expert recommendation, and the overall length must all "
-        "still be present and comparable to a normal full-length article. A fix that "
-        "removes content elsewhere is WORSE than the original and will be rejected.\n"
+        f"\nPREVIOUS ATTEMPT REJECTED -- FIX THIS SPECIFICALLY: {retry_feedback}\n"
+        "Make the SMALLEST possible change that resolves this. Do NOT drop or restructure any "
+        "section UNTOUCHED by this feedback -- the FAQ section, all H2/H3 headings, the "
+        "comparison table, and the expert recommendation must all still be present afterward. "
+        "If the feedback flags a REPEATED/duplicate passage, the correct fix is to MERGE or "
+        "SHORTEN that passage -- removing a duplicate is a valid fix, not a regression, even if "
+        "the article ends up somewhat shorter. Only dropping an entire section is worse than "
+        "the original.\n"
         if retry_feedback else ""
     )
     _facts_and_rules = _retry_block + _anti_fab + _dedup_wording + _facts_block

@@ -209,6 +209,15 @@ jobs:
             # aren't fixed by re-writing the same article text. Bounded: exactly
             # 2 attempts (0 and 1), never more -- a 2nd failure skips + logs
             # exactly as before, no infinite loop.
+            # REPORT PRESERVATION (2026-07-11, AUDIT-LOG.md): each blocking gate's
+            # OWN report (g_substance/g3/fact_check/eeat) is copied to an
+            # "_attempt0"-suffixed file right when it triggers a retry -- the
+            # unsuffixed file gets overwritten by attempt 1, so without this the
+            # attempt-0 failure (which triggered the retry) leaves no direct trace
+            # in the uploaded artifact, only the coarse pre_retry_snapshot.json
+            # (h2_count/has_faq/word_count). This gives the next investigation of
+            # this kind the actual flagged content (e.g. G3's duplicate_phrases),
+            # not just an inference from the word-count delta.
             for RETRY_ATTEMPT in 0 1; do
             # Phase 4: Article Writing [BLOCKING]
             echo "[${ARTICLE_NUM}] Phase 4: Article Writing (TIER: ${ARTICLE_TYPE}) [retry attempt ${RETRY_ATTEMPT}]"
@@ -260,6 +269,7 @@ jobs:
                 echo "GATE G-SUBSTANCE FAIL (attempt 1/2) for article ${ARTICLE_NUM} -- retrying once with gate feedback"
                 GATE_FEEDBACK=$(python3 scripts/gate_feedback.py --gate g_substance --report "${ARTICLE_DIR}/agent_04/g_substance_report.json" 2>/dev/null)
                 python3 scripts/structure_completeness_gate.py --input "${ARTICLE_DIR}/agent_04/article_draft.md" --snapshot "${ARTICLE_DIR}/agent_04/pre_retry_snapshot.json" || true
+                cp "${ARTICLE_DIR}/agent_04/g_substance_report.json" "${ARTICLE_DIR}/agent_04/g_substance_report_attempt0.json" || true
                 continue
               fi
               echo "GATE G-SUBSTANCE FAIL (attempt 2/2, retry exhausted): hollow article ${ARTICLE_NUM} (never reaches WordPress)"
@@ -289,6 +299,7 @@ jobs:
                 echo "GATE G3 FAIL (attempt 1/2) for article ${ARTICLE_NUM} -- retrying once with gate feedback"
                 GATE_FEEDBACK=$(python3 scripts/gate_feedback.py --gate g3 --report "${ARTICLE_DIR}/agent_04/g3_report.json" 2>/dev/null)
                 python3 scripts/structure_completeness_gate.py --input "${ARTICLE_DIR}/agent_04/article_draft.md" --snapshot "${ARTICLE_DIR}/agent_04/pre_retry_snapshot.json" || true
+                cp "${ARTICLE_DIR}/agent_04/g3_report.json" "${ARTICLE_DIR}/agent_04/g3_report_attempt0.json" || true
                 continue
               fi
               echo "GATE G3 FAIL (attempt 2/2, retry exhausted): repetition detected in article ${ARTICLE_NUM}"
@@ -305,6 +316,7 @@ jobs:
                 echo "GATE A FAIL (attempt 1/2) for article ${ARTICLE_NUM} -- retrying once with gate feedback"
                 GATE_FEEDBACK=$(python3 scripts/gate_feedback.py --gate gate_a --report "${ARTICLE_DIR}/agent_05/fact_check_report.json" 2>/dev/null)
                 python3 scripts/structure_completeness_gate.py --input "${ARTICLE_DIR}/agent_04/article_draft.md" --snapshot "${ARTICLE_DIR}/agent_04/pre_retry_snapshot.json" || true
+                cp "${ARTICLE_DIR}/agent_05/fact_check_report.json" "${ARTICLE_DIR}/agent_05/fact_check_report_attempt0.json" || true
                 continue
               fi
               echo "GATE A FAIL (attempt 2/2, retry exhausted): Fact checker blocked article ${ARTICLE_NUM}"
@@ -321,6 +333,7 @@ jobs:
                 echo "GATE B FAIL (attempt 1/2) for article ${ARTICLE_NUM} -- retrying once with gate feedback"
                 GATE_FEEDBACK=$(python3 scripts/gate_feedback.py --gate gate_b --report "${ARTICLE_DIR}/agent_06/eeat_report.json" 2>/dev/null)
                 python3 scripts/structure_completeness_gate.py --input "${ARTICLE_DIR}/agent_04/article_draft.md" --snapshot "${ARTICLE_DIR}/agent_04/pre_retry_snapshot.json" || true
+                cp "${ARTICLE_DIR}/agent_06/eeat_report.json" "${ARTICLE_DIR}/agent_06/eeat_report_attempt0.json" || true
                 continue
               fi
               echo "GATE B FAIL (attempt 2/2, retry exhausted): EEAT blocked article ${ARTICLE_NUM}"
