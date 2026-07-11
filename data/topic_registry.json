@@ -26,10 +26,10 @@
       "category": "assurance auto",
       "monetization_score": 5,
       "traffic_score": 5,
-      "status": "candidate",
-      "published_at": null,
-      "post_id": null,
-      "selected_at": null
+      "status": "published",
+      "published_at": "2026-07-11T03:17:12.251829Z",
+      "post_id": "48640",
+      "selected_at": "2026-07-11T03:09:17.785600Z"
     },
     {
       "id": "us-best-banks-immigrants-no-ssn",
