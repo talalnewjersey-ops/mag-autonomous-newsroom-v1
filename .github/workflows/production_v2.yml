@@ -224,14 +224,7 @@ jobs:
             ARTICLE_TYPE="STANDARD"
             if python3 -c "import sys; sys.exit(0 if float('${SCORE}') > 85 else 1)" 2>/dev/null; then ARTICLE_TYPE="PILLAR"; fi
             if python3 -c "import sys; sys.exit(0 if float('${SCORE}') < 70 else 1)" 2>/dev/null; then ARTICLE_TYPE="OPPORTUNITY"; fi
-            # RODAGE SAFETY (2026-07-11): STANDARD/PILLAR have failed GATE
-            # LENGTH even after retry on every witness run this session so
-            # far (see AUDIT-LOG.md) -- each failure burns a full generation
-            # attempt PLUS a full retry attempt (~2x the API calls of a
-            # single successful article) for zero usable output. Same
-            # safe-default pattern as DRAFT_ONLY: anything but the literal
-            # "false" forces OPPORTUNITY, so a scheduled run (no inputs at
-            # all) is forced-OPPORTUNITY too until deliberately turned off.
+            # RODAGE SAFETY (2026-07-11): STANDARD/PILLAR fail GATE LENGTH after retry (AUDIT-LOG.md) -- force OPPORTUNITY during rodage, same safe-default as DRAFT_ONLY.
             if [ "$FORCE_OPPORTUNITY_TIER" != "false" ]; then ARTICLE_TYPE="OPPORTUNITY"; fi
             echo "[${ARTICLE_NUM}] Article tier: ${ARTICLE_TYPE}"
 
