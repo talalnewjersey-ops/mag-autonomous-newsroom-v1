@@ -17,6 +17,11 @@ if ROOT not in sys.path:
 
 SRC = open(os.path.join(ROOT, "agents/agent_04_article_writer.py"), encoding="utf-8").read()
 WORKFLOW = open(os.path.join(ROOT, ".github/workflows/production_v2.yml"), encoding="utf-8").read()
+# 2026-07-12: the batch loop's bash logic was extracted out of this YAML
+# into its own script -- see tests/test_production_batch_loop.py for the
+# extraction itself. Tests below that check bash CONTENT (not YAML wiring)
+# now read the script instead.
+BATCH_LOOP_SCRIPT = open(os.path.join(ROOT, "scripts", "production_batch_loop.sh"), encoding="utf-8").read()
 
 
 def test_retry_feedback_cli_arg_defined():
@@ -60,29 +65,29 @@ def test_retry_block_empty_when_no_feedback_given():
 # ---------------------------------------------------------------- workflow-side guards
 
 def test_workflow_has_single_retry_loop_around_content_gates():
-    assert "for RETRY_ATTEMPT in 0 1; do" in WORKFLOW
+    assert "for RETRY_ATTEMPT in 0 1; do" in BATCH_LOOP_SCRIPT
 
 
 def test_workflow_passes_retry_feedback_flag_to_agent04():
-    assert "--retry-feedback" in WORKFLOW
+    assert "--retry-feedback" in BATCH_LOOP_SCRIPT
 
 
 def test_workflow_retry_is_bounded_not_infinite():
     # exactly the 2-attempt range (0 1) -- not a while-true, not unbounded.
-    assert re.search(r"for RETRY_ATTEMPT in 0 1; do", WORKFLOW)
-    assert "for RETRY_ATTEMPT in 0 1 2" not in WORKFLOW  # guards against silent scope creep
+    assert re.search(r"for RETRY_ATTEMPT in 0 1; do", BATCH_LOOP_SCRIPT)
+    assert "for RETRY_ATTEMPT in 0 1 2" not in BATCH_LOOP_SCRIPT  # guards against silent scope creep
 
 
 def test_workflow_logs_explicitly_on_retry_and_on_exhaustion():
-    assert "retrying once with gate feedback" in WORKFLOW
-    assert "retry exhausted" in WORKFLOW
+    assert "retrying once with gate feedback" in BATCH_LOOP_SCRIPT
+    assert "retry exhausted" in BATCH_LOOP_SCRIPT
 
 
 def test_workflow_only_content_gates_are_wrapped_not_post_content_gates():
     # GATE C (WordPress) / QA / Editor stay single-attempt -- images/publishing/
     # SEO-scoring aren't fixed by re-writing the same article text.
-    retry_loop_start = WORKFLOW.index("for RETRY_ATTEMPT in 0 1; do")
-    retry_loop_region = WORKFLOW[retry_loop_start:retry_loop_start + 6000]
+    retry_loop_start = BATCH_LOOP_SCRIPT.index("for RETRY_ATTEMPT in 0 1; do")
+    retry_loop_region = BATCH_LOOP_SCRIPT[retry_loop_start:retry_loop_start + 6000]
     assert "GATE C FAIL" not in retry_loop_region
     assert "GATE QA FAIL" not in retry_loop_region
     assert "GATE EDITOR FAIL" not in retry_loop_region

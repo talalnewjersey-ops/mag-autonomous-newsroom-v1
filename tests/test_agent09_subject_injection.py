@@ -165,6 +165,9 @@ def test_cli_exposes_metadata_argument():
 
 
 def test_production_workflow_passes_metadata_path():
-    workflow = open(os.path.join(ROOT, ".github/workflows/production_v2.yml"), encoding="utf-8").read()
-    assert "--metadata" in workflow
-    assert "article_metadata.json" in workflow
+    # 2026-07-12: the batch loop's agent invocations (including this one)
+    # were extracted out of production_v2.yml into their own script -- see
+    # tests/test_production_batch_loop.py for the extraction itself.
+    batch_loop = open(os.path.join(ROOT, "scripts", "production_batch_loop.sh"), encoding="utf-8").read()
+    assert "--metadata" in batch_loop
+    assert "article_metadata.json" in batch_loop

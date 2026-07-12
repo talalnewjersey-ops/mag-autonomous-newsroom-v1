@@ -151,23 +151,37 @@ def test_cli_always_exits_zero_even_when_overage_is_too_large_to_trim():
 
 
 # ---------------------------------------------------------------- workflow expression-length guard
-# PR #73 fixed a real incident where this exact step's `run:` block exceeded GitHub's
-# 21000-char limit on a single expression. Wiring micro_trim.py into it (this PR)
-# left only ~650 chars of margin -- a regression guard so the NEXT addition gets an
-# early, clear test failure instead of a surprise CI break mid-run.
+# PR #73 fixed a real incident where the "Batch Loop" step's `run:` block exceeded
+# GitHub's 21000-char limit on a single expression. Wiring micro_trim.py into it
+# (that PR) left only ~650 chars of margin -- and on 2026-07-11 a single verbose
+# comment used up that margin and MORE, pushing the block to 20950 chars. GitHub
+# silently rejected the entire workflow file as invalid and skipped that day's
+# 06:00 UTC scheduled run (see AUDIT-LOG.md) -- a second real outage from the same
+# limit. Fixed for good on 2026-07-12 by extracting the "Batch Loop" step's script
+# to scripts/production_batch_loop.sh (see tests/test_production_batch_loop.py) --
+# this test now demands a LARGE margin (>=50% of the 21000-char limit) on EVERY
+# run: block in the file, not a close shave on one step, so this class of outage
+# structurally cannot recur.
 
-def test_batch_loop_run_block_stays_under_the_github_expression_length_limit():
+def test_every_run_block_stays_well_under_the_github_expression_length_limit():
     import yaml
+    GITHUB_LIMIT = 21000
+    MAX_ALLOWED = GITHUB_LIMIT // 2  # >=50% margin, per incident #2 (2026-07-11/12)
     with open(os.path.join(ROOT, ".github/workflows/production_v2.yml"), encoding="utf-8") as f:
         doc = yaml.safe_load(f)
+    checked_any = False
     for job in doc["jobs"].values():
         for step in job.get("steps", []):
-            if step.get("name") == "Batch Loop -- 3 Articles Sequential":
-                length = len(step["run"])
-                assert length < 20800, (
-                    f"'Batch Loop' run: block is {length} chars, within {21000 - length} of "
-                    "GitHub's 21000-char hard limit (see PR #73) -- shrink comments/logging "
-                    "before adding more, don't just let this creep up to a surprise CI failure"
-                )
-                return
-    assert False, "could not find the 'Batch Loop -- 3 Articles Sequential' step to check"
+            run_block = step.get("run")
+            if not run_block:
+                continue
+            checked_any = True
+            length = len(run_block)
+            assert length <= MAX_ALLOWED, (
+                f"step '{step.get('name', '<unnamed>')}' run: block is {length} chars, "
+                f"over the {MAX_ALLOWED}-char (50% margin) budget -- GitHub's real hard "
+                f"limit is {GITHUB_LIMIT} chars and this exact limit has already caused "
+                "two outages (PR #73, 2026-07-11/12) -- extract to an external script "
+                "instead of letting a single step's inline block creep back up"
+            )
+    assert checked_any, "no run: blocks found -- workflow parsing likely broke"

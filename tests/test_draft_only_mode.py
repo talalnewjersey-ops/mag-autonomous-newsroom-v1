@@ -18,6 +18,11 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKFLOW = open(os.path.join(ROOT, ".github/workflows/production_v2.yml"), encoding="utf-8").read()
+# 2026-07-12: the batch loop's bash logic (including DRAFT_ONLY's resolution
+# and use) was extracted out of this YAML into its own script -- see
+# tests/test_production_batch_loop.py for the extraction itself. Tests below
+# that check bash CONTENT (not YAML wiring) now read the script instead.
+BATCH_LOOP_SCRIPT = open(os.path.join(ROOT, "scripts", "production_batch_loop.sh"), encoding="utf-8").read()
 
 
 def test_draft_only_input_exists_and_defaults_to_true():
@@ -33,16 +38,21 @@ def test_draft_only_env_wired_from_the_dispatch_input():
 
 def test_only_the_explicit_literal_false_turns_off_draft_only():
     # covers scheduled runs too: no workflow_dispatch inputs at all means
-    # DRAFT_ONLY is empty, which must NOT be treated as "false".
-    idx = WORKFLOW.index('if [ "$DRAFT_ONLY" = "false" ]; then')
-    window = WORKFLOW[idx:idx + 150]
-    assert 'DRAFT_ONLY="false"' in window
-    assert 'DRAFT_ONLY="true"' in window
+    # DRAFT_ONLY is empty, which must NOT be treated as "false". Extracted
+    # 2026-07-12 into resolve_draft_only() -- the actual behavior (empty/
+    # garbage -> "true", only "false" -> "false") is exercised for real in
+    # tests/test_production_batch_loop.py; this locks the source shape.
+    assert "resolve_draft_only() {" in BATCH_LOOP_SCRIPT
+    idx = BATCH_LOOP_SCRIPT.index('if [ "$1" = "false" ]; then')
+    window = BATCH_LOOP_SCRIPT[idx:idx + 150]
+    assert 'echo "false"' in window
+    assert 'echo "true"' in window
+    assert 'DRAFT_ONLY=$(resolve_draft_only "$DRAFT_ONLY")' in BATCH_LOOP_SCRIPT
 
 
 def test_produced_json_write_is_skipped_in_draft_only_mode():
-    idx = WORKFLOW.index("PRODUCED.json for article")
-    window = WORKFLOW[max(0, idx - 400):idx + 400]
+    idx = BATCH_LOOP_SCRIPT.index("PRODUCED.json for article")
+    window = BATCH_LOOP_SCRIPT[max(0, idx - 400):idx + 400]
     assert 'if [ "$DRAFT_ONLY" = "true" ]; then' in window
     assert "SPRINT 9 publish-invariant: terminal marker written ONLY after QA+editor+gate all pass." in window
     assert "json.dump({'post_id': '${POST_ID}', 'article': ${ARTICLE_NUM}, 'produced': True}" in window
@@ -51,9 +61,9 @@ def test_produced_json_write_is_skipped_in_draft_only_mode():
 def test_articles_produced_counter_still_increments_regardless_of_draft_only():
     # draft-only must not make a genuinely successful article look like a
     # failure -- it only withholds the registry-promotion marker.
-    gate_idx = WORKFLOW.index('--output "${ARTICLE_DIR}/production_gate_result.json" && {')
-    draft_only_idx = WORKFLOW.index('if [ "$DRAFT_ONLY" = "true" ]; then', gate_idx)
-    counter_idx = WORKFLOW.index("ARTICLES_PRODUCED=$((ARTICLES_PRODUCED+1))", gate_idx)
+    gate_idx = BATCH_LOOP_SCRIPT.index('--output "${ARTICLE_DIR}/production_gate_result.json" && {')
+    draft_only_idx = BATCH_LOOP_SCRIPT.index('if [ "$DRAFT_ONLY" = "true" ]; then', gate_idx)
+    counter_idx = BATCH_LOOP_SCRIPT.index("ARTICLES_PRODUCED=$((ARTICLES_PRODUCED+1))", gate_idx)
     assert gate_idx < counter_idx < draft_only_idx
 
 
