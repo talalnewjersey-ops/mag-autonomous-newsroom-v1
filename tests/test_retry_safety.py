@@ -36,6 +36,11 @@ import structure_completeness_gate as scg  # noqa: E402
 
 SRC = open(os.path.join(ROOT, "agents/agent_04_article_writer.py"), encoding="utf-8").read()
 WORKFLOW = open(os.path.join(ROOT, ".github/workflows/production_v2.yml"), encoding="utf-8").read()
+# 2026-07-12: the batch loop's bash logic was extracted out of this YAML
+# into its own script -- see tests/test_production_batch_loop.py for the
+# extraction itself. Tests below that check bash CONTENT (not YAML wiring)
+# now read the script instead.
+BATCH_LOOP_SCRIPT = open(os.path.join(ROOT, "scripts", "production_batch_loop.sh"), encoding="utf-8").read()
 
 
 def test_retry_prompt_demands_targeted_fix_not_blind_regeneration():
@@ -66,10 +71,10 @@ def test_workflow_snapshots_before_every_content_gate_retry():
     # 2026-07-11 (later same day): GATE LENGTH added as a 5th retry-triggering
     # gate (symmetric ceiling counterpart to agent_04's floor-only word-count
     # expansion) -- see tests/test_length_gate.py.
-    assert WORKFLOW.count('structure_completeness_gate.py --input "$DRAFT" --snapshot') == 5
+    assert BATCH_LOOP_SCRIPT.count('structure_completeness_gate.py --input "$DRAFT" --snapshot') == 5
     # the literal path now appears exactly once -- the $DRAFT= definition itself.
-    assert WORKFLOW.count('"${ARTICLE_DIR}/agent_04/article_draft.md"') == 1
-    assert 'DRAFT="${ARTICLE_DIR}/agent_04/article_draft.md"' in WORKFLOW
+    assert BATCH_LOOP_SCRIPT.count('"${ARTICLE_DIR}/agent_04/article_draft.md"') == 1
+    assert 'DRAFT="${ARTICLE_DIR}/agent_04/article_draft.md"' in BATCH_LOOP_SCRIPT
 
 
 # ---------------- G3 feedback: merge/remove is now offered as a valid fix ----------------
@@ -122,21 +127,21 @@ def test_g3_retry_growing_instead_of_shrinking_still_passes_too():
 
 
 def test_workflow_compares_only_after_a_retry_succeeded():
-    assert 'if [ "$RETRY_ATTEMPT" -eq 1 ] && [ -f "${ARTICLE_DIR}/agent_04/pre_retry_snapshot.json" ]' in WORKFLOW
-    assert "--compare" in WORKFLOW
+    assert 'if [ "$RETRY_ATTEMPT" -eq 1 ] && [ -f "${ARTICLE_DIR}/agent_04/pre_retry_snapshot.json" ]' in BATCH_LOOP_SCRIPT
+    assert "--compare" in BATCH_LOOP_SCRIPT
 
 
 def test_workflow_regression_is_treated_as_full_failure_not_a_fallback():
     # must count as failed + move to next article (continue 2) -- never breaks
     # through to WordPress with either version.
-    idx = WORKFLOW.index("GATE RETRY-COMPLETENESS FAIL")
-    window = WORKFLOW[idx:idx + 200]
+    idx = BATCH_LOOP_SCRIPT.index("GATE RETRY-COMPLETENESS FAIL")
+    window = BATCH_LOOP_SCRIPT[idx:idx + 200]
     assert "ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue 2" in window
 
 
 def test_completeness_check_happens_before_break_not_after():
-    compare_idx = WORKFLOW.index("Retry structural-completeness check")
-    break_idx = WORKFLOW.index("\n            break\n            done")
+    compare_idx = BATCH_LOOP_SCRIPT.index("Retry structural-completeness check")
+    break_idx = BATCH_LOOP_SCRIPT.index("\n  break\n  done")
     assert compare_idx < break_idx
 
 
@@ -148,19 +153,19 @@ def test_completeness_check_happens_before_break_not_after():
 # duplicate_phrases). One preserved copy per gate that can trigger a retry.
 
 def test_workflow_preserves_g_substance_report_per_attempt():
-    assert 'cp "${ARTICLE_DIR}/agent_04/g_substance_report.json" "${ARTICLE_DIR}/agent_04/g_substance_report_attempt0.json"' in WORKFLOW
+    assert 'cp "${ARTICLE_DIR}/agent_04/g_substance_report.json" "${ARTICLE_DIR}/agent_04/g_substance_report_attempt0.json"' in BATCH_LOOP_SCRIPT
 
 
 def test_workflow_preserves_g3_report_per_attempt():
-    assert 'cp "${ARTICLE_DIR}/agent_04/g3_report.json" "${ARTICLE_DIR}/agent_04/g3_report_attempt0.json"' in WORKFLOW
+    assert 'cp "${ARTICLE_DIR}/agent_04/g3_report.json" "${ARTICLE_DIR}/agent_04/g3_report_attempt0.json"' in BATCH_LOOP_SCRIPT
 
 
 def test_workflow_preserves_fact_check_report_per_attempt():
-    assert 'cp "${ARTICLE_DIR}/agent_05/fact_check_report.json" "${ARTICLE_DIR}/agent_05/fact_check_report_attempt0.json"' in WORKFLOW
+    assert 'cp "${ARTICLE_DIR}/agent_05/fact_check_report.json" "${ARTICLE_DIR}/agent_05/fact_check_report_attempt0.json"' in BATCH_LOOP_SCRIPT
 
 
 def test_workflow_preserves_eeat_report_per_attempt():
-    assert 'cp "${ARTICLE_DIR}/agent_06/eeat_report.json" "${ARTICLE_DIR}/agent_06/eeat_report_attempt0.json"' in WORKFLOW
+    assert 'cp "${ARTICLE_DIR}/agent_06/eeat_report.json" "${ARTICLE_DIR}/agent_06/eeat_report_attempt0.json"' in BATCH_LOOP_SCRIPT
 
 
 def test_all_four_report_preservation_copies_are_fail_soft():
@@ -171,7 +176,7 @@ def test_all_four_report_preservation_copies_are_fail_soft():
         'cp "${ARTICLE_DIR}/agent_05/fact_check_report.json" "${ARTICLE_DIR}/agent_05/fact_check_report_attempt0.json" || true',
         'cp "${ARTICLE_DIR}/agent_06/eeat_report.json" "${ARTICLE_DIR}/agent_06/eeat_report_attempt0.json" || true',
     ]:
-        assert line in WORKFLOW
+        assert line in BATCH_LOOP_SCRIPT
 
 
 def test_report_preservation_copy_happens_before_continue():
@@ -183,9 +188,9 @@ def test_report_preservation_copy_happens_before_continue():
         ("fact_check_report.json", 'cp "${ARTICLE_DIR}/agent_05/fact_check_report.json"', "GATE A FAIL (attempt 1/2)"),
         ("eeat_report.json", 'cp "${ARTICLE_DIR}/agent_06/eeat_report.json"', "GATE B FAIL (attempt 1/2)"),
     ]:
-        fail_idx = WORKFLOW.index(gate_label)
-        cp_idx = WORKFLOW.index(cp_snippet, fail_idx)
-        continue_idx = WORKFLOW.index("\n                continue", cp_idx)
+        fail_idx = BATCH_LOOP_SCRIPT.index(gate_label)
+        cp_idx = BATCH_LOOP_SCRIPT.index(cp_snippet, fail_idx)
+        continue_idx = BATCH_LOOP_SCRIPT.index("\n      continue", cp_idx)
         assert fail_idx < cp_idx < continue_idx, report_var
 
 

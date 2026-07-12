@@ -23,6 +23,11 @@ import gate_feedback  # noqa: E402
 import structure_completeness_gate as scg  # noqa: E402
 
 WORKFLOW = open(os.path.join(ROOT, ".github/workflows/production_v2.yml"), encoding="utf-8").read()
+# 2026-07-12: the batch loop's bash logic was extracted out of this YAML
+# into its own script -- see tests/test_production_batch_loop.py for the
+# extraction itself. Tests below that check bash CONTENT (not YAML wiring)
+# now read the script instead.
+BATCH_LOOP_SCRIPT = open(os.path.join(ROOT, "scripts", "production_batch_loop.sh"), encoding="utf-8").read()
 
 
 # ---------------- evaluate(): tier-relative ceiling, same tolerance as agent_12 ----------------
@@ -119,16 +124,16 @@ def test_length_feedback_names_the_overshoot_and_protects_structure():
 # ---------------- workflow wiring ----------------
 
 def test_workflow_wires_length_gate_inside_the_retry_loop_before_g_substance():
-    length_idx = WORKFLOW.index("Phase 4.442: Length Gate")
-    g_substance_idx = WORKFLOW.index("Phase 4.45: G-Substance Gate")
-    loop_start = WORKFLOW.index("for RETRY_ATTEMPT in 0 1; do")
-    loop_end = WORKFLOW.index("\n            break\n            done")
+    length_idx = BATCH_LOOP_SCRIPT.index("Phase 4.442: Length Gate")
+    g_substance_idx = BATCH_LOOP_SCRIPT.index("Phase 4.45: G-Substance Gate")
+    loop_start = BATCH_LOOP_SCRIPT.index("for RETRY_ATTEMPT in 0 1; do")
+    loop_end = BATCH_LOOP_SCRIPT.index("\n  break\n  done")
     assert loop_start < length_idx < g_substance_idx < loop_end
 
 
 def test_workflow_length_gate_retries_once_then_fails_hard():
-    idx = WORKFLOW.index("Phase 4.442: Length Gate")
-    window = WORKFLOW[idx:idx + 1200]
+    idx = BATCH_LOOP_SCRIPT.index("Phase 4.442: Length Gate")
+    window = BATCH_LOOP_SCRIPT[idx:idx + 1200]
     assert 'GATE LENGTH FAIL (attempt 1/2)' in window
     assert 'GATE LENGTH FAIL (attempt 2/2, retry exhausted)' in window
     assert 'ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue 2' in window
@@ -136,13 +141,13 @@ def test_workflow_length_gate_retries_once_then_fails_hard():
 
 
 def test_workflow_snapshots_before_length_gate_retry_like_the_other_gates():
-    idx = WORKFLOW.index("Phase 4.442: Length Gate")
-    window = WORKFLOW[idx:idx + 1200]
+    idx = BATCH_LOOP_SCRIPT.index("Phase 4.442: Length Gate")
+    window = BATCH_LOOP_SCRIPT[idx:idx + 1200]
     assert 'structure_completeness_gate.py --input "$DRAFT" --snapshot' in window
 
 
 def test_workflow_preserves_length_report_per_attempt():
-    assert 'cp "${ARTICLE_DIR}/agent_04/length_report.json" "${ARTICLE_DIR}/agent_04/length_report_attempt0.json" || true' in WORKFLOW
+    assert 'cp "${ARTICLE_DIR}/agent_04/length_report.json" "${ARTICLE_DIR}/agent_04/length_report_attempt0.json" || true' in BATCH_LOOP_SCRIPT
 
 
 # ---------------- interaction with the retry structural-completeness check ----------------
