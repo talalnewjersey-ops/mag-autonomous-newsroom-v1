@@ -1,0 +1,44 @@
+name: Backup WordPress Page (read-only, commits JSON backup to repo)
+
+on:
+  workflow_dispatch:
+    inputs:
+      page_id:
+        description: "WordPress page ID to back up"
+        required: true
+      output_path:
+        description: "Path (in this repo) to write the backup JSON to"
+        required: true
+
+# READ-ONLY against WordPress (never writes to WP). Commits the fetched
+# backup JSON to this repo so it survives independent of WordPress.
+permissions:
+  contents: write
+
+jobs:
+  backup-page:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Backup page
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          PAGE_ID: ${{ github.event.inputs.page_id }}
+          OUTPUT_PATH: ${{ github.event.inputs.output_path }}
+        run: python3 scripts/backup_wp_page.py
+      - name: Commit backup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "nexus14-bot"
+          git config user.email "nexus14-bot@users.noreply.github.com"
+          git add "${{ github.event.inputs.output_path }}"
+          git commit -m "Backup WordPress page ${{ github.event.inputs.page_id }} before Elementor disable"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
