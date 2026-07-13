@@ -102,10 +102,11 @@
       "category": "banques",
       "monetization_score": 5,
       "traffic_score": 4,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null,
-      "selected_at": null
+      "post_id": 48733,
+      "selected_at": null,
+      "drafted_at": "2026-07-13T14:47:11.959395Z"
     },
     {
       "id": "ca-car-insurance-newcomers",
