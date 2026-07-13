@@ -13,9 +13,9 @@
       "category": "cartes",
       "monetization_score": 5,
       "traffic_score": 5,
-      "status": "candidate",
-      "published_at": null,
-      "post_id": null,
+      "status": "published",
+      "published_at": "2026-07-13T14:02:14.556505Z",
+      "post_id": 48709,
       "selected_at": null
     },
     {
@@ -26,9 +26,9 @@
       "category": "assurance auto",
       "monetization_score": 5,
       "traffic_score": 5,
-      "status": "candidate",
-      "published_at": null,
-      "post_id": null,
+      "status": "published",
+      "published_at": "2026-07-13T14:02:14.556505Z",
+      "post_id": 48682,
       "selected_at": null
     },
     {
@@ -51,10 +51,11 @@
       "category": "transferts",
       "monetization_score": 5,
       "traffic_score": 5,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null,
-      "selected_at": null
+      "post_id": 48702,
+      "selected_at": null,
+      "drafted_at": "2026-07-13T14:02:14.556505Z"
     },
     {
       "id": "us-send-money-to-mexico",

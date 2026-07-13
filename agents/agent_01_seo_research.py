@@ -450,17 +450,25 @@ Return ONLY a valid JSON array with fields: keyword, market, search_volume, keyw
     def _select_from_registry(self, count: int) -> List[Dict]:
         """Pick up to `count` topics by the fixed priority rule:
         monetization_score (desc) > traffic_score (desc) > variety (least-used
-        category, then id for determinism). NEVER selects a published/in_progress
-        topic, nor a candidate too similar to an already-used title. Variety is a
-        pure tie-breaker: monetization always dominates (no compensation)."""
+        category, then id for determinism). NEVER selects a published/in_progress/
+        drafted topic, nor a candidate too similar to an already-used title. Variety
+        is a pure tie-breaker: monetization always dominates (no compensation).
+
+        `drafted` (2026-07-13): a topic that already has a real WordPress post (draft
+        or published) from a prior run must never be re-picked -- agent_11's own
+        Sprint 9 dedup-by-title check would just reject the second attempt at GATE C
+        anyway, burning a full run for zero output (see AUDIT-LOG.md, run 29239130296:
+        re-selected "car insurance for foreign drivers", already published as post
+        48682, GATE C FAIL on dedup). `published` already got this exclusion;
+        `drafted` needed the same treatment."""
         registry = self._load_registry()
         if not registry:
             return []
         topics = registry.get("topics", [])
-        used = [t for t in topics if t.get("status") in ("published", "in_progress")]
+        used = [t for t in topics if t.get("status") in ("published", "in_progress", "drafted")]
         used_titles = [t.get("title", "") for t in used]
         pool = [t for t in topics
-                if t.get("status") not in ("published", "in_progress")
+                if t.get("status") not in ("published", "in_progress", "drafted")
                 and not self._is_near_duplicate(t.get("title", ""), used_titles)]
         cat_usage = Counter(t.get("category") for t in used)
         chosen: List[Dict] = []
@@ -530,38 +538,74 @@ Return ONLY a valid JSON array with fields: keyword, market, search_volume, keyw
                 return True
         return False
 
+    def _mark_drafted(self, registry: Dict, topic_id: str, post_id) -> bool:
+        """Mark a topic as drafted: agent_11 (GATE C) created a real WordPress post
+        for it, but it was never promoted to published (draft_only mode, or a
+        QA/editor rejection after GATE C succeeded). 2026-07-13 fix: without this,
+        such a topic rolled all the way back to candidate and got re-picked by a
+        later run, which then ALWAYS fails GATE C on agent_11's own Sprint 9
+        dedup-by-title check (a WP post already exists for that title) -- burning a
+        full run for zero output every time it recurs (see AUDIT-LOG.md, run
+        29239130296). Never downgrades an already-published topic; idempotent if
+        already drafted with the same post_id."""
+        for t in registry.get("topics", []):
+            if t.get("id") == topic_id:
+                if t.get("status") == "published":
+                    return False
+                if t.get("status") == "drafted" and t.get("post_id") == post_id:
+                    return False
+                t["status"] = "drafted"
+                t["post_id"] = post_id
+                t["drafted_at"] = datetime.utcnow().isoformat() + "Z"
+                return True
+        return False
+
     def reconcile_registry(self, output_dir: str = "output") -> Dict[str, List[str]]:
         """Terminal registry reconciliation — run ONCE at end-of-batch (if: always()).
 
         Lifecycle: candidate --(selection, IN MEMORY)--> in_progress -->
-        {published | candidate}. `in_progress` is a purely transient claim used to
-        de-duplicate topics within one batch and must NEVER reach git. This method
-        derives the terminal state from run artifacts and guarantees the invariant
-        "no in_progress is ever committed":
+        {published | drafted | candidate}. `in_progress` is a purely transient claim
+        used to de-duplicate topics within one batch and must NEVER reach git. This
+        method derives the terminal state from run artifacts and guarantees the
+        invariant "no in_progress is ever committed":
           * a topic whose article was TRULY PRODUCED -- i.e. passed ALL blocking
             gates (QA agent_12 + editor agent_13 + production_gate), signalled by the
             terminal marker output/article_*/PRODUCED.json -> published (post_id +
             published_at). NOT agent_11's wordpress_report.json, whose post_id exists
             BEFORE the QA/editor gates (that promoted QA-failed drafts, e.g. 48418);
-          * every other in_progress topic is rolled back to candidate, so a run that
-            failed at ANY step never burns its topic — it stays re-pickable.
+          * `drafted` (2026-07-13 fix): a topic that reached GATE C -- agent_11
+            actually created a real WordPress post (`draft_created: true` + a real
+            post_id) -- but was NEVER promoted to published (draft_only mode
+            deliberately skips PRODUCED.json, or a QA/editor rejection after GATE C
+            succeeded) -> drafted (post_id + drafted_at), NOT candidate. Rolling it
+            back to candidate let it get re-picked by a later run, which then
+            ALWAYS fails GATE C on agent_11's own Sprint 9 dedup-by-title check (a
+            WP post already exists for that exact title) -- burning a full run for
+            zero output every time the topic recurred (real incident: run
+            29239130296, "car insurance for foreign drivers" re-selected after
+            already being drafted/published as post 48682 -- see AUDIT-LOG.md);
+          * every other in_progress topic (never reached GATE C -- failed at
+            LENGTH/G-Substance/G3/A/B, or GATE C itself failed with no post
+            created) is rolled back to candidate, so a run that never created a
+            real WordPress post never burns its topic — it stays re-pickable.
         Manual --topic overrides (non-registry ids) are ignored; already-published
-        topics are never touched.
+        topics are never touched by either promotion.
         """
         registry = self._load_registry()
         if not registry:
             logger.warning("reconcile: registry missing, nothing to do")
-            return {"published": [], "rolled_back": []}
+            return {"published": [], "drafted": [], "rolled_back": []}
         ids_in_registry = {t.get("id") for t in registry.get("topics", [])}
         published: List[str] = []
+        drafted: List[str] = []
         out = Path(output_dir)
         for art_dir in sorted(out.glob("article_*")):
             topics_file = art_dir / "agent_01" / "topics.json"
             # SPRINT 9 publish-invariant: PRODUCED.json is written by the workflow
             # ONLY after QA + editor + production_gate all pass. A run that created a
-            # draft but failed QA leaves NO PRODUCED.json -> no promotion -> the sweep
-            # below rolls its topic back to candidate.
+            # draft but failed QA (or ran draft_only) leaves NO PRODUCED.json.
             produced_file = art_dir / "PRODUCED.json"
+            wp_report_file = art_dir / "agent_11" / "wordpress_report.json"
             if not topics_file.exists():
                 continue
             try:
@@ -575,12 +619,28 @@ Return ONLY a valid JSON array with fields: keyword, market, search_volume, keyw
                     post_id = json.loads(produced_file.read_text(encoding="utf-8")).get("post_id")
                 except Exception as e:
                     logger.warning(f"reconcile: unreadable {produced_file}: {e}")
-            if not post_id:
-                continue  # not truly produced (QA/editor/gate failed or no marker) -> sweep rolls back
+            if post_id:
+                for st in selected:
+                    tid = st.get("id")
+                    if tid in ids_in_registry and self._mark_published(registry, tid, post_id):
+                        published.append(tid)
+                continue  # promoted to published -- no need to also check drafted
+            # Not truly produced -- but did GATE C still create a real WordPress post
+            # (draft_only mode, or a post-GATE-C QA/editor rejection)?
+            wp_post_id = None
+            if wp_report_file.exists():
+                try:
+                    wp_report = json.loads(wp_report_file.read_text(encoding="utf-8"))
+                    if wp_report.get("draft_created") and wp_report.get("post_id"):
+                        wp_post_id = wp_report.get("post_id")
+                except Exception as e:
+                    logger.warning(f"reconcile: unreadable {wp_report_file}: {e}")
+            if not wp_post_id:
+                continue  # never reached GATE C -> sweep rolls back to candidate
             for st in selected:
                 tid = st.get("id")
-                if tid in ids_in_registry and self._mark_published(registry, tid, post_id):
-                    published.append(tid)
+                if tid in ids_in_registry and self._mark_drafted(registry, tid, wp_post_id):
+                    drafted.append(tid)
         # SWEEP: no in_progress may ever be committed
         rolled_back: List[str] = []
         for t in registry.get("topics", []):
@@ -589,8 +649,8 @@ Return ONLY a valid JSON array with fields: keyword, market, search_volume, keyw
                 t["selected_at"] = None
                 rolled_back.append(t.get("id"))
         self._save_registry(registry)
-        logger.info(f"reconcile: published={published} rolled_back={rolled_back}")
-        return {"published": published, "rolled_back": rolled_back}
+        logger.info(f"reconcile: published={published} drafted={drafted} rolled_back={rolled_back}")
+        return {"published": published, "drafted": drafted, "rolled_back": rolled_back}
 
     def _parse_serp_result(self, query: str, data: Dict) -> Optional[Dict]:
         return {
@@ -663,7 +723,7 @@ def main():
     if args.reconcile:
         agent = SEOResearchAgent(config={})
         res = agent.reconcile_registry(output_dir=args.output_dir)
-        print(f"[Agent 01] Reconcile complete — published={res['published']} rolled_back={res['rolled_back']}")
+        print(f"[Agent 01] Reconcile complete — published={res['published']} drafted={res['drafted']} rolled_back={res['rolled_back']}")
         return
     topic_override = args.topic or os.getenv("TOPIC_OVERRIDE", "")
     dry_run = args.dry_run or os.getenv("TOPIC_ENGINE_DRY_RUN", "").lower() in ("1", "true", "yes")
