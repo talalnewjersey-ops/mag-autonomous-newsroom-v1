@@ -129,10 +129,11 @@
       "category": "transferts",
       "monetization_score": 5,
       "traffic_score": 4,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null,
-      "selected_at": null
+      "post_id": 48740,
+      "selected_at": null,
+      "drafted_at": "2026-07-13T15:46:58.407926Z"
     },
     {
       "id": "ca-best-credit-cards-newcomers",
