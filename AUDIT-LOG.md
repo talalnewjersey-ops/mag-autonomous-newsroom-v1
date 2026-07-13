@@ -574,3 +574,27 @@ Run `workflow_dispatch` sans aucun `-f` (donc `mode=batch_1`, `max_articles=3` -
 - **Tests** : 6 nouveaux cas dans `tests/test_sprint6_registry_lifecycle.py` (marquage drafted, exclusion de la sélection, jamais de rétrogradation d'un published, idempotence, un GATE C échoué sans post créé continue de rollback vers candidate -- pas de faux positif sur le cas dédoublonnage réel). Suite complète : **677 tests passent, aucune régression**.
 - **Bilan mis à jour** : le taux de ≥95 cumulé reste à 60 % (3/5, inchangé -- ce run planifié n'a jamais atteint QA). Le vrai gain de cette session : le fix `needs.detect` est maintenant prouvé en conditions réelles, ET le pool de 26 sujets candidats ne va plus s'auto-saboter en re-sélectionnant des sujets déjà draftés/publiés.
 - **Crons** : actifs, phase de rodage. Prochain créneau à surveiller pour confirmer qu'un sujet frais (non affecté par le dédoublonnage) atteint GATE QA sur un vrai déclenchement `schedule`.
+
+### 2026-07-13 — Session (suite) : run manuel urgent (soumission AdSense) -- 1/3 à 100/100, sujets vierges confirmés, découverte d'une race condition git dans la réconciliation + vérification Contact/About/Privacy Policy pour la review AdSense
+
+Contexte utilisateur : soumission Google AdSense en review, besoin d'alimenter le site immédiatement. Run manuel `draft_only=true`, `max_articles=3`, sélecteur vérifié AVANT lancement (3 premiers picks tous `candidate` vierges, aucun chevauchement avec les 4 sujets déjà drafted/published).
+
+- **Run `29257561638`** : **1 article sur 3 réussi, à 100,0/100** :
+
+  | Sujet | post_id | Score QA | URL preview | Statut |
+  |---|---|---|---|---|
+  | `ca-best-newcomer-bank-accounts` | **48733** | **100,0/100** (SEO 100, EEAT 100,0) | https://moneyabroadguide.com/?p=48733 | ✅ ≥95, `APPROVE`/`READY_TO_PUBLISH` |
+  | `us-health-insurance-f1-j1-students` | -- | -- | -- | GATE G3 (répétition), retry épuisé |
+  | `ca-car-insurance-newcomers` | -- | -- | -- | GATE G-Substance, retry épuisé |
+
+- **🔴 Découverte : race condition git dans l'étape "Reconcile topic registry"** : le reconcile CALCULÉ par le workflow était correct (`published=[] drafted=['ca-best-newcomer-bank-accounts'] rolled_back=[...]`), mais son `git push` a été **rejeté** ("fetch first") car `main` avait avancé (mon propre commit du diagnostic `list-pages.yml`) pendant les ~24 min du run. L'étape ne fait pas de `git pull --rebase` avant de pousser -- tout run suffisamment long qui chevauche un autre push perd silencieusement sa réconciliation (le commit existe dans le checkout éphémère du runner, jamais poussé). **Corrigé manuellement cette fois** (commit `f646454` : `ca-best-newcomer-bank-accounts` -> `drafted`, post_id 48733) pour ne pas perdre l'information et éviter de retomber dans le bug dédoublonnage que PR #89 vient de corriger. **Fix structurel (ajouter `git pull --rebase origin ${GITHUB_REF_NAME}` avant le push dans `production_v2.yml`) PAS ENCORE fait -- à traiter en session future**, signalé pour ne pas se reproduire silencieusement.
+- **Bonus repéré dans les logs** : `agent_13_chief_editor` échoue systématiquement à s'instancier (`ChiefEditorAgent.__init__() missing 1 required positional argument: 'email_service'`), rattrapé par un fallback heuristique silencieux -- fonctionne (verdict `APPROVE` correct sur l'article 1), mais une vraie exception masquée à chaque run, jamais creusée. Signalé, pas traité.
+- **Vérification critique AdSense (parallèle au run)** : nouveau diagnostic en lecture seule `list-pages.yml`/`scripts/list_wp_pages.py` (23 pages interrogées via l'API WordPress réelle) :
+  - **Privacy Policy** : EXISTE, publiée, `/privacy-policy/` (id=3).
+  - **Contact** : EXISTE, publiée, `/contact/` (id=1241).
+  - **About** : EXISTE, publiée, `/about/` (id=7108), + pages complémentaires "Our Team" (46320) et bio fondateur (46477).
+  - Bonus : Terms and Conditions, Affiliate Disclosure, Editorial Policy, Disclaimer, Corrections Policy, Fact-Checking Process, How We Test, Review Process, Accessibility Statement -- toutes publiées. Socle de pages de confiance complet.
+  - **Conclusion Bloc 3, point 4 ("Privacy & Cookie Policy" -> #)** : **ce n'est PAS un contenu manquant** -- la page existe réellement et est publiée. Le seul problème est que le lien du footer pointe vers `#` au lieu de `/privacy-policy/` -- un fix de lien, pas une création de contenu. Bon signal pour la review AdSense.
+  - eBook (page 46505) confirmé publié, contenu réel (45171 caractères), URL propre `/ebook-build-your-credit-score-usa/` -- le format `?page_id=46505` cité dans Bloc 3 est probablement un lien isolé quelque part à corriger, pas un problème de contenu.
+  - **Bloc 3, points 1/2/5 (footers empilés/Powered by Astra, menu rendu 2×/plugin Astra Header Fix, grammaire newsletter) : NON re-vérifiés** cette session -- nécessitent une inspection DOM/visuelle du thème live, pas encore refaite.
+- **Crons** : toujours actifs, phase de rodage inchangée. Sélecteur de sujets confirmé fonctionnel (fix #89) : aucun sujet déjà drafted/published re-sélectionné sur ce run.
