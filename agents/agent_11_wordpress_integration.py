@@ -76,8 +76,17 @@ class WordPressIntegrationAgent(BaseAgent):
                 raise ValueError(f"PRE-PUBLISH GATE FAIL: title is empty or default (got: '{title}')")
             if content_chars < 5000:
                 raise ValueError(f"PRE-PUBLISH GATE FAIL: content too short — {content_chars} chars < 5000 minimum")
-            if content_words < 4000:
-                raise ValueError(f"PRE-PUBLISH GATE FAIL: word count too low — {content_words} words < 4000 minimum")
+            # 2026-07-13 fix: was a flat 4000, tier-blind -- every tier's real floor
+            # (agent_04_article_writer.py: OPPORTUNITY/STANDARD=3500, PILLAR=3800) is
+            # BELOW that, so a legitimately-passing OPPORTUNITY/STANDARD article could
+            # clear GATE LENGTH and still be rejected here for nothing (real incident:
+            # 3893w article, run 29259884738, see AUDIT-LOG.md). Floored at the lowest
+            # real tier minimum (3500) instead of threading tier info through main()
+            # under time pressure -- GATE LENGTH already enforces the tier-specific
+            # target/ceiling upstream, so this is a final safety net against empty/
+            # garbage drafts, not a second tier check.
+            if content_words < 3500:
+                raise ValueError(f"PRE-PUBLISH GATE FAIL: word count too low — {content_words} words < 3500 minimum")
 
             logger.info(f"PRE-PUBLISH GATE PASS: title='{title}' chars={content_chars} words={content_words}")
 
@@ -676,7 +685,7 @@ def _gate_c_recheck(post_id, title, content_chars, word_count):
         errors.append("EMPTY_TITLE")
     if content_chars < 5000:
         errors.append(f"CONTENT_TOO_SHORT:{content_chars}_chars")
-    if word_count < 4000:
+    if word_count < 3500:  # 2026-07-13: same tier-floor fix as the PRE-PUBLISH GATE above
         errors.append(f"WORD_COUNT_TOO_LOW:{word_count}_words")
     return errors
 
@@ -855,7 +864,7 @@ def main():
             "new_post_created": True,
             "title_valid": bool(title),
             "content_length_ok": content_chars >= 5000,
-            "word_count_ok": word_count >= 4000,
+            "word_count_ok": word_count >= 3500,
         },
     }, indent=2), encoding="utf-8")
 
