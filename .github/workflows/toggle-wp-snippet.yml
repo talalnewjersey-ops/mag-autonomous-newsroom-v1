@@ -1,0 +1,34 @@
+name: Toggle WordPress Code Snippet Active State (write)
+
+on:
+  workflow_dispatch:
+    inputs:
+      snippet_id:
+        description: "Snippet ID to toggle"
+        required: true
+      active:
+        description: "true or false"
+        required: true
+      confirm:
+        description: "Type 'yes' to actually write (safety gate)"
+        required: true
+        default: "no"
+
+jobs:
+  toggle-snippet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Toggle snippet
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          SNIPPET_ID: ${{ github.event.inputs.snippet_id }}
+          ACTIVE: ${{ github.event.inputs.active }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: python3 scripts/toggle_wp_snippet_active.py
