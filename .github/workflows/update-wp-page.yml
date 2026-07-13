@@ -1,0 +1,41 @@
+name: Update WordPress Page Content (write, optionally disables Elementor)
+
+on:
+  workflow_dispatch:
+    inputs:
+      page_id:
+        description: "WordPress page ID to update"
+        required: true
+      content_file:
+        description: "Path (in this repo checkout) to the file holding the new HTML content"
+        required: true
+      disable_elementor:
+        description: "Clear _elementor_edit_mode so the theme renders post_content directly"
+        required: true
+        default: "false"
+      confirm:
+        description: "Type 'yes' to actually write (safety gate for a live page edit)"
+        required: true
+        default: "no"
+
+# WRITE ACTION: updates one PAGE's content, requires the page to currently be
+# 'publish' and requires confirm=yes. Optionally clears _elementor_edit_mode.
+jobs:
+  update-page:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Update page content
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          PAGE_ID: ${{ github.event.inputs.page_id }}
+          CONTENT_FILE: ${{ github.event.inputs.content_file }}
+          DISABLE_ELEMENTOR: ${{ github.event.inputs.disable_elementor }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: python3 scripts/update_wp_page_content.py
