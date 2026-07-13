@@ -41,7 +41,8 @@
       "traffic_score": 4,
       "status": "candidate",
       "published_at": null,
-      "post_id": null
+      "post_id": null,
+      "selected_at": null
     },
     {
       "id": "us-send-money-to-india",
@@ -89,10 +90,10 @@
       "category": "assurance sante",
       "monetization_score": 5,
       "traffic_score": 4,
-      "status": "in_progress",
+      "status": "candidate",
       "published_at": null,
       "post_id": null,
-      "selected_at": "2026-07-13T15:48:56.847485Z"
+      "selected_at": null
     },
     {
       "id": "ca-best-newcomer-bank-accounts",
@@ -145,9 +146,11 @@
       "category": "cartes",
       "monetization_score": 5,
       "traffic_score": 4,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null
+      "post_id": 48747,
+      "selected_at": "2026-07-13T15:56:56.416086Z",
+      "drafted_at": "2026-07-13T16:17:18.460399Z"
     },
     {
       "id": "ca-health-mutuelle-new-immigrants",
@@ -255,9 +258,11 @@
       "category": "credit immo",
       "monetization_score": 5,
       "traffic_score": 3,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null
+      "post_id": 48754,
+      "selected_at": "2026-07-13T16:08:39.362338Z",
+      "drafted_at": "2026-07-13T16:17:18.460520Z"
     },
     {
       "id": "us-drivers-license-newcomer",
