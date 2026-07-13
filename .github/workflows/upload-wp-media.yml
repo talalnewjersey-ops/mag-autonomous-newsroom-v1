@@ -1,0 +1,40 @@
+name: Upload WordPress Media (write)
+
+on:
+  workflow_dispatch:
+    inputs:
+      media_file:
+        description: "Path (in this repo checkout) to the image file to upload"
+        required: true
+      media_title:
+        description: "Media title"
+        required: true
+      media_alt:
+        description: "Alt text"
+        required: true
+      media_caption:
+        description: "Caption (e.g. photographer credit)"
+        required: false
+        default: ""
+
+# WRITE ACTION: uploads one media file to the WordPress media library.
+# Additive only -- never deletes or replaces existing media.
+jobs:
+  upload-media:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Upload media
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          MEDIA_FILE: ${{ github.event.inputs.media_file }}
+          MEDIA_TITLE: ${{ github.event.inputs.media_title }}
+          MEDIA_ALT: ${{ github.event.inputs.media_alt }}
+          MEDIA_CAPTION: ${{ github.event.inputs.media_caption }}
+        run: python3 scripts/upload_wp_media.py
