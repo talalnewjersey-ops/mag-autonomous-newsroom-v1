@@ -1,0 +1,34 @@
+name: Update WordPress CSS Code Snippet (write, refuses non-site-css scope)
+
+on:
+  workflow_dispatch:
+    inputs:
+      snippet_id:
+        description: "Existing site-css snippet ID to update"
+        required: true
+      code_file:
+        description: "Path (in this repo checkout) to the file holding the new CSS"
+        required: true
+      confirm:
+        description: "Type 'yes' to actually write (safety gate)"
+        required: true
+        default: "no"
+
+jobs:
+  update-snippet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Update CSS snippet
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          SNIPPET_ID: ${{ github.event.inputs.snippet_id }}
+          CODE_FILE: ${{ github.event.inputs.code_file }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: python3 scripts/update_wp_css_snippet.py
