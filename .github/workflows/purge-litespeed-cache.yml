@@ -1,0 +1,39 @@
+name: Purge LiteSpeed Cache (write, temporary snippet activation)
+
+on:
+  workflow_dispatch:
+    inputs:
+      snippet_id:
+        description: "Existing 'MAG Purge All'/'MAG Purge Cache' snippet ID to temporarily activate"
+        required: true
+        default: "24"
+      purge_route:
+        description: "REST route the snippet registers"
+        required: true
+        default: "mag/v1/purge-all"
+      confirm:
+        description: "Type 'yes' to actually run (safety gate)"
+        required: true
+        default: "no"
+
+# WRITE ACTION: temporarily activates an existing, already-reviewed PHP
+# snippet just long enough to call its cache-purge REST route, then
+# deactivates it again. Minimizes standing PHP-execution surface.
+jobs:
+  purge-cache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Purge cache
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          SNIPPET_ID: ${{ github.event.inputs.snippet_id }}
+          PURGE_ROUTE: ${{ github.event.inputs.purge_route }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: python3 scripts/purge_litespeed_cache.py
