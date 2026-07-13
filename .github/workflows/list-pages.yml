@@ -1,0 +1,29 @@
+name: List WordPress Pages (read-only diagnostic)
+
+on:
+  workflow_dispatch:
+    inputs:
+      diagnose_ids:
+        description: "Comma-separated page IDs to also check directly by ID (context=edit)"
+        required: false
+        default: ""
+
+# READ-ONLY: lists existing pages via the WP REST API (Privacy Policy/Contact/
+# About check ahead of the AdSense review). Never writes to WordPress, never
+# touches data/topic_registry.json, never generates content.
+jobs:
+  list-pages:
+    name: "List pages"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Query WP REST API for all pages
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          DIAGNOSE_IDS: ${{ github.event.inputs.diagnose_ids }}
+        run: python3 scripts/list_wp_pages.py
