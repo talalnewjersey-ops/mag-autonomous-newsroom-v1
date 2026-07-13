@@ -1,0 +1,32 @@
+name: Update WordPress Post Content (write, status-preserving)
+
+on:
+  workflow_dispatch:
+    inputs:
+      post_id:
+        description: "WordPress post ID to update"
+        required: true
+      content_file:
+        description: "Path (in this repo checkout) to the file holding the new HTML content"
+        required: true
+
+# WRITE ACTION: updates ONE post's content via the REST API. Refuses to run
+# unless the post is currently draft/pending/private (never touches a
+# published post's content through this path, and never changes status).
+jobs:
+  update-post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Update post content
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          POST_ID: ${{ github.event.inputs.post_id }}
+          CONTENT_FILE: ${{ github.event.inputs.content_file }}
+        run: python3 scripts/update_wp_post_content.py
