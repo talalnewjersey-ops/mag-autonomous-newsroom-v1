@@ -1,0 +1,26 @@
+name: Get WordPress Code Snippet (read-only diagnostic)
+
+on:
+  workflow_dispatch:
+    inputs:
+      snippet_id:
+        description: "Code Snippets entry ID to fetch"
+        required: true
+
+# READ-ONLY. Never writes to WordPress.
+jobs:
+  get-snippet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Get snippet
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          SNIPPET_ID: ${{ github.event.inputs.snippet_id }}
+        run: python3 scripts/get_wp_code_snippet.py
