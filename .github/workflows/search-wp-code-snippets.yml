@@ -1,0 +1,26 @@
+name: Search WordPress Code Snippets by content (read-only diagnostic)
+
+on:
+  workflow_dispatch:
+    inputs:
+      search_term:
+        description: "Exact substring to search for inside snippet code"
+        required: true
+
+# READ-ONLY. Never writes to WordPress.
+jobs:
+  search-snippets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Search snippets
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          SEARCH_TERM: ${{ github.event.inputs.search_term }}
+        run: python3 scripts/search_wp_code_snippets.py
