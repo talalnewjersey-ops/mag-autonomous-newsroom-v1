@@ -1,0 +1,27 @@
+name: List WordPress Posts (read-only diagnostic)
+
+on:
+  workflow_dispatch:
+    inputs:
+      statuses:
+        description: "Comma-separated post statuses to list"
+        required: false
+        default: "publish,draft"
+
+# READ-ONLY: lists posts via the REST API. Never writes to WordPress.
+jobs:
+  list-posts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: List posts
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          STATUSES: ${{ github.event.inputs.statuses }}
+        run: python3 scripts/list_wp_posts.py
