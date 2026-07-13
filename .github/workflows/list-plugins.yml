@@ -1,0 +1,29 @@
+name: List WordPress Plugins (read-only diagnostic)
+
+on:
+  workflow_dispatch:
+    inputs:
+      search_terms:
+        description: "Comma-separated terms to highlight (name/path/description match)"
+        required: false
+        default: "header,footer,elementor,astra,menu,builder"
+
+# READ-ONLY: lists installed plugins via the REST API (wp/v2/plugins, requires
+# manage_options). Never writes to WordPress. Metadata only -- does not and
+# cannot retrieve plugin source code via this endpoint.
+jobs:
+  list-plugins:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: List plugins
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          SEARCH_TERMS: ${{ github.event.inputs.search_terms }}
+        run: python3 scripts/list_wp_plugins.py
