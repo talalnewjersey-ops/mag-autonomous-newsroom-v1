@@ -116,10 +116,12 @@
       "category": "assurance auto",
       "monetization_score": 5,
       "traffic_score": 4,
-      "status": "candidate",
+      "status": "blocked",
       "published_at": null,
       "post_id": null,
-      "selected_at": null
+      "selected_at": null,
+      "blocked_at": "2026-07-13T15:47:31.177003Z",
+      "blocked_reason": "G-Substance FAIL twice, identical reason (only 1 STABLE fact cited, need >= 2) -- structural Couche-1 facts shortage for this vertical, not retry variance. See AUDIT-LOG.md 2026-07-13."
     },
     {
       "id": "ca-send-money-to-from-canada",

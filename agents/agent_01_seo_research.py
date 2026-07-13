@@ -451,8 +451,9 @@ Return ONLY a valid JSON array with fields: keyword, market, search_volume, keyw
         """Pick up to `count` topics by the fixed priority rule:
         monetization_score (desc) > traffic_score (desc) > variety (least-used
         category, then id for determinism). NEVER selects a published/in_progress/
-        drafted topic, nor a candidate too similar to an already-used title. Variety
-        is a pure tie-breaker: monetization always dominates (no compensation).
+        drafted/blocked topic, nor a candidate too similar to an already-used
+        title. Variety is a pure tie-breaker: monetization always dominates (no
+        compensation).
 
         `drafted` (2026-07-13): a topic that already has a real WordPress post (draft
         or published) from a prior run must never be re-picked -- agent_11's own
@@ -460,15 +461,25 @@ Return ONLY a valid JSON array with fields: keyword, market, search_volume, keyw
         anyway, burning a full run for zero output (see AUDIT-LOG.md, run 29239130296:
         re-selected "car insurance for foreign drivers", already published as post
         48682, GATE C FAIL on dedup). `published` already got this exclusion;
-        `drafted` needed the same treatment."""
+        `drafted` needed the same treatment.
+
+        `blocked` (2026-07-13): a manual, temporary exclusion for a topic that
+        keeps failing a content gate for a STRUCTURAL reason (not retry variance)
+        -- e.g. ca-car-insurance-newcomers failed G-Substance twice with the
+        IDENTICAL reason ("only 1 STABLE facts cited, need >= 2"), meaning the
+        vertical's own Couche-1 facts pool (agents/_vertical_facts.py) is too
+        thin for this topic, not something a re-generation fixes. Unlike
+        `drafted`, no WordPress post exists -- this is a content/sourcing issue
+        to fix at the source, not a dedup concern. See AUDIT-LOG.md."""
         registry = self._load_registry()
         if not registry:
             return []
         topics = registry.get("topics", [])
-        used = [t for t in topics if t.get("status") in ("published", "in_progress", "drafted")]
+        EXCLUDED_STATUSES = ("published", "in_progress", "drafted", "blocked")
+        used = [t for t in topics if t.get("status") in EXCLUDED_STATUSES]
         used_titles = [t.get("title", "") for t in used]
         pool = [t for t in topics
-                if t.get("status") not in ("published", "in_progress", "drafted")
+                if t.get("status") not in EXCLUDED_STATUSES
                 and not self._is_near_duplicate(t.get("title", ""), used_titles)]
         cat_usage = Counter(t.get("category") for t in used)
         chosen: List[Dict] = []
