@@ -1,6 +1,0 @@
-/* MAG — Enlarge header logo (Version A, left-aligned). Unconditional (no @media): LiteSpeed's Unused-CSS optimizer strips viewport-scoped rules whose media query doesn't match at its analysis viewport, which silently dropped the mobile-only version of this rule. Applying it everywhere avoids that, at the cost of a modest ~14% desktop increase (140px -> 160px) alongside the intended ~45% mobile increase (110px -> 160px). */
-.custom-logo-link { width: 160px !important; }
-.custom-logo,
-.site-logo-img .custom-logo,
-.site-logo-img img.custom-logo,
-header .custom-logo-link img { max-width: 160px !important; width: 160px !important; height: auto !important; max-height: 160px !important; }
