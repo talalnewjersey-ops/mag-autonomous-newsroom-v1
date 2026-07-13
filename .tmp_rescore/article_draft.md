@@ -8,7 +8,7 @@ Buying a home is one of the most significant financial decisions you will make a
 
 Canada's mortgage market has evolved to serve immigrants and newcomers. Major federally regulated lenders, overseen by the [Financial Consumer Agency of Canada (FCAC)](https://www.canada.ca/en/financial-consumer-agency.html), now offer newcomer-specific mortgage programs. [CMHC Newcomers](https://www.cmhc-schl.gc.ca/professionals/project-funding-and-mortgage-financing/mortgage-loan-insurance/mortgage-loan-insurance-homeownership-programs/newcomers) is a real, named mortgage loan insurance product — but CMHC does not lend directly or approve individual applications. It insures eligible mortgages that lenders originate, which is what lets those lenders accept foreign credit history and non-traditional income in place of a conventional Canadian credit file. Each lender sets its own newcomer program rules within that insurance framework.
 
-Your immigration status — permanent residency, work permit, or study permit — directly shapes which programs you can access, your down payment, and what documentation lenders require in place of a Canadian credit history. Per [IRCC](https://www.canada.ca/en/immigration-refugees-citizenship.html), Canada welcomes hundreds of thousands of new permanent residents each year, making this one of the most consequential financial topics for the immigrant community.
+Your immigration status — permanent residency, work permit, or study permit — directly shapes which programs you can access, your down payment, and what documentation lenders require in place of a Canadian credit history. According to [IRCC](https://www.canada.ca/en/immigration-refugees-citizenship.html), Canada welcomes hundreds of thousands of new permanent residents each year, making this one of the most consequential financial topics for the immigrant community.
 
 Before approaching a lender, two foundational steps matter: obtaining your [Social Insurance Number](https://www.canada.ca/en/employment-social-development/services/sin.html) and beginning to build a Canadian credit profile. As the [FCAC notes](https://www.canada.ca/en/financial-consumer-agency/services/credit-reports-score.html), your credit history in your home country does not automatically transfer — many newcomers start from zero, which affects mortgage qualification.
 
@@ -47,11 +47,11 @@ Beyond standard proof of income and assets, newcomer-specific documentation comm
 - Two years of foreign tax returns or employer letters (translated and notarized)
 - Three to six months of Canadian bank statements showing settlement funds
 
-Newcomers becoming Canadian residents for tax purposes on arrival — per the [CRA newcomers page](https://www.canada.ca/en/revenue-agency/services/tax/international-non-residents/individuals-leaving-entering-canada-non-residents/newcomers-canada-immigrants.html) — may need to show filing compliance even for a partial tax year, which some lenders treat as supplementary income verification.
+Newcomers becoming Canadian residents for tax purposes on arrival — according to the [CRA newcomers page](https://www.canada.ca/en/revenue-agency/services/tax/international-non-residents/individuals-leaving-entering-canada-non-residents/newcomers-canada-immigrants.html) — may need to show filing compliance even for a partial tax year, which some lenders treat as supplementary income verification.
 
 ### Fixed vs. Variable Rate Considerations for Newcomers
 
-There is no universally correct choice between fixed and variable — it depends on income stability, risk tolerance, expected length of stay, and your view on rate direction. Fixed-rate mortgages typically carry larger early-break penalties (Interest Rate Differential); variable-rate mortgages generally cap break penalties at three months' interest. Newcomers relocate domestically more often in their first years, per IRCC settlement data — worth weighing, not a reason to default to either product. Discuss your circumstances with a licensed mortgage professional before deciding.
+There is no universally correct choice between fixed and variable — it depends on income stability, risk tolerance, expected length of stay, and your view on rate direction. Fixed-rate mortgages typically carry larger early-break penalties (Interest Rate Differential); variable-rate mortgages generally cap break penalties at three months' interest. Newcomers relocate domestically more often in their first years, according to IRCC settlement data — worth weighing, not a reason to default to either product. Discuss your circumstances with a licensed mortgage professional before deciding.
 
 ## 2. What Is a Mortgage for Newcomers to Canada and Why Do Immigrants Need It?
 
@@ -59,11 +59,11 @@ Canada's housing market operates under a distinct legal and financial framework 
 
 ### Why Standard Mortgage Underwriting Fails New Arrivals
 
-Canadian lenders rely on credit bureau data from Equifax or TransUnion Canada to evaluate repayment risk. Immigrants arriving with strong financial records from their home country — years of on-time payments, real estate ownership, or stable employment — start with a thin or empty Canadian credit file. Per the [Financial Consumer Agency of Canada](https://www.canada.ca/en/financial-consumer-agency/services/credit-reports-score.html), credit history in Canada is tracked separately from any foreign record, meaning a new arrival is effectively invisible to automated mortgage adjudication regardless of their actual financial discipline. Without adapted underwriting criteria, this would systematically exclude otherwise creditworthy immigrants from homeownership simply due to recency of arrival — not financial risk.
+Canadian lenders rely on credit bureau data from Equifax or TransUnion Canada to evaluate repayment risk. Immigrants arriving with strong financial records from their home country — years of on-time payments, real estate ownership, or stable employment — start with a thin or empty Canadian credit file. According to the [Financial Consumer Agency of Canada](https://www.canada.ca/en/financial-consumer-agency/services/credit-reports-score.html), credit history in Canada is tracked separately from any foreign record, meaning a new arrival is effectively invisible to automated mortgage adjudication regardless of their actual financial discipline. Without adapted underwriting criteria, this would systematically exclude otherwise creditworthy immigrants from homeownership simply due to recency of arrival — not financial risk.
 
 ### The Economic Case for Homeownership Access
 
-Newcomers become Canadian tax residents on arrival and, per the [CRA](https://www.canada.ca/en/revenue-agency/services/tax/international-non-residents/individuals-leaving-entering-canada-non-residents/newcomers-canada-immigrants.html), begin accruing tax obligations immediately. Building equity through homeownership is a tax-efficient wealth-building tool in Canada — principal residence capital gains remain exempt from CRA taxation. Accessing a mortgage earlier can mean more years of equity accumulation, though this depends on local market conditions and is not a guarantee of appreciation; values can also decline, and the trade-off should be weighed against your own risk tolerance.
+Newcomers become Canadian tax residents on arrival and, according to the [CRA](https://www.canada.ca/en/revenue-agency/services/tax/international-non-residents/individuals-leaving-entering-canada-non-residents/newcomers-canada-immigrants.html), begin accruing tax obligations immediately. Building equity through homeownership is a tax-efficient wealth-building tool in Canada — principal residence capital gains remain exempt from CRA taxation. Accessing a mortgage earlier can mean more years of equity accumulation, though this depends on local market conditions and is not a guarantee of appreciation; values can also decline, and the trade-off should be weighed against your own risk tolerance.
 
 ### How CMHC's Newcomers Insurance Bridges the Gap
 
@@ -71,7 +71,7 @@ The accommodation works by substituting Canadian credit history with verifiable 
 
 ### Tax Residency and Financial Identity
 
-Alongside mortgage qualification, immigrants build a Canadian **financial identity** simultaneously across multiple systems — credit bureaus, CRA, and banking. Per FCAC, newcomers have the [right to open a personal bank account](https://www.canada.ca/en/financial-consumer-agency/services/banking/opening-bank-account.html) without a job or an initial deposit, a practical first step toward the banking history mortgage lenders will later scrutinize.
+Alongside mortgage qualification, immigrants build a Canadian **financial identity** simultaneously across multiple systems — credit bureaus, CRA, and banking. According to FCAC, newcomers have the [right to open a personal bank account](https://www.canada.ca/en/financial-consumer-agency/services/banking/opening-bank-account.html) without a job or an initial deposit, a practical first step toward the banking history mortgage lenders will later scrutinize.
 
 Opening a bank account shortly after arrival and maintaining consistent account activity creates a paper trail that lenders treat as supplementary evidence of financial stability. See our [guide to the best newcomer bank accounts in Canada](https://moneyabroadguide.com/best-newcomer-bank-accounts-in-canada-complete-guide-for-canada-immigrants-2026/) for a full walkthrough.
 
@@ -95,7 +95,7 @@ Lender eligibility criteria for newcomer mortgages split across four dimensions:
 
 ### Credit History Requirements
 
-Lenders require either a Canadian credit file or acceptable substitute evidence — acceptance of foreign credit documentation varies by lender, with no industry-wide rule. Common alternatives: international credit bureau reports (Equifax Global, Nova Credit for select countries), proof of on-time rent/utility/foreign-loan payments, and a Canadian bank account open for several months showing consistent deposits. Per [FCAC](https://www.canada.ca/en/financial-consumer-agency/services/credit-reports-score.html), Canadian credit files are maintained by Equifax and TransUnion Canada; newcomers should begin building one immediately, typically with a secured card — see our [guide to the best credit cards for newcomers in Canada](https://moneyabroadguide.com/best-credit-cards-for-newcomers-in-canada-complete-guide-for-canada-immigrants-2026/).
+Lenders require either a Canadian credit file or acceptable substitute evidence — acceptance of foreign credit documentation varies by lender, with no industry-wide rule. Common alternatives: international credit bureau reports (Equifax Global, Nova Credit for select countries), proof of on-time rent/utility/foreign-loan payments, and a Canadian bank account open for several months showing consistent deposits. According to [FCAC](https://www.canada.ca/en/financial-consumer-agency/services/credit-reports-score.html), Canadian credit files are maintained by Equifax and TransUnion Canada; newcomers should begin building one immediately, typically with a secured card — see our [guide to the best credit cards for newcomers in Canada](https://moneyabroadguide.com/best-credit-cards-for-newcomers-in-canada-complete-guide-for-canada-immigrants-2026/).
 
 ### Down Payment Sourcing Rules
 
@@ -124,7 +124,7 @@ Newcomer mortgage files fail or stall for predictable, avoidable reasons, based 
 - **Applying too early**, before you have Canadian bank or employment history — this can leave a hard credit inquiry on a file with little else to show.
 - **Underestimating the down payment.** Newcomer and non-resident categories can require more than a standard insured mortgage; confirm the actual minimum for your status before house-hunting.
 - **Ignoring closing costs.** Land transfer tax, legal fees, title insurance, and appraisal costs are separate from the down payment and frequently underbudgeted.
-- **Assuming foreign credit history transfers automatically.** Per FCAC, Canadian credit files are built independently of any foreign record.
+- **Assuming foreign credit history transfers automatically.** According to FCAC, Canadian credit files are built independently of any foreign record.
 - **Consulting only one lender.** Newcomer program terms vary meaningfully by institution; comparing several — or using a broker who can — helps you find the program that fits.
 - **Skipping pre-approval**, which makes it hard to know your realistic price range before making an offer.
 
