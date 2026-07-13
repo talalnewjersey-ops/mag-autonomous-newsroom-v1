@@ -1,0 +1,103 @@
+name: Re-score Article (agent_06 + agent_12 + agent_13, no regeneration, no WordPress write)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Run ID whose artifact holds the fact-check/image-validation reports to reuse"
+        required: true
+      article_dir:
+        description: "article_N directory name inside that source artifact"
+        required: true
+      revised_draft_path:
+        description: "Path (in this repo checkout) to the REVISED article markdown to score"
+        required: true
+      article_type:
+        description: "Tier (OPPORTUNITY, STANDARD, PILLAR)"
+        required: true
+        default: "OPPORTUNITY"
+
+# ONE-OFF TOOL (2026-07-13): re-scores a manually-revised article with the
+# real agent_06 (EEAT)/agent_12 (QA)/agent_13 (editor) scoring engines --
+# reuses the ORIGINAL run's fact-check + image-validation + wordpress
+# (title/keyword) reports since those didn't change; only the article TEXT
+# is new. Never calls agent_11 (no new WordPress post, no risk of a
+# duplicate), never writes to WordPress at all.
+jobs:
+  rescore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restore original run's reports (fact-check, images, wordpress title/keyword)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "${{ github.event.inputs.source_run_id }}" --dir restored --repo ${{ github.repository }}
+          mkdir -p "output/${{ github.event.inputs.article_dir }}"
+          cp -r restored/*/"${{ github.event.inputs.article_dir }}"/* "output/${{ github.event.inputs.article_dir }}/"
+          cp "${{ github.event.inputs.revised_draft_path }}" "output/${{ github.event.inputs.article_dir }}/agent_04/article_draft.md"
+          echo "Using revised draft ($(wc -w < "output/${{ github.event.inputs.article_dir }}/agent_04/article_draft.md") words) in place of the original."
+
+      - name: Re-score (agent_06 EEAT, agent_12 QA, agent_13 editor -- no agent_11, no WordPress write)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MIN_WORD_COUNT: 4000
+          MIN_IMAGES: 4
+          MIN_FAQ: 10
+          MIN_INTERNAL_LINKS: 6
+          MIN_SOURCES: 5
+          EEAT_SCORE_THRESHOLD: 85
+        run: |
+          set -eo pipefail
+          ARTICLE_DIR="output/${{ github.event.inputs.article_dir }}"
+          DRAFT="$ARTICLE_DIR/agent_04/article_draft.md"
+          ARTICLE_TYPE="${{ github.event.inputs.article_type }}"
+
+          echo "=== GATE B: EEAT re-validation ==="
+          python -m agents.agent_06_eeat_validator --input "$DRAFT" --output "${ARTICLE_DIR}/agent_06_rescore" --threshold 85
+
+          echo "=== GATE QA: full re-score ==="
+          python -m agents.agent_12_quality_assurance \
+            --article "$DRAFT" \
+            --wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_report.json" \
+            --fact-check "${ARTICLE_DIR}/agent_05/fact_check_report.json" \
+            --image-validation "${ARTICLE_DIR}/agent_10/image_validation_report.json" \
+            --output "${ARTICLE_DIR}/agent_12_rescore/qa_report.json" \
+            --article-type "${ARTICLE_TYPE}" \
+            --min-words ${MIN_WORD_COUNT} --min-images ${MIN_IMAGES} \
+            --min-faq ${MIN_FAQ} --min-links ${MIN_INTERNAL_LINKS} \
+            --min-sources ${MIN_SOURCES} --min-case-studies 0 \
+            --seo-threshold 85 --eeat-threshold ${EEAT_SCORE_THRESHOLD}
+
+          echo "=== Editor re-check ==="
+          python -m agents.agent_13_chief_editor \
+            --qa-report "${ARTICLE_DIR}/agent_12_rescore/qa_report.json" \
+            --article "$DRAFT" \
+            --article-type "${ARTICLE_TYPE}" \
+            --output "${ARTICLE_DIR}/agent_13_rescore/editor_report.json"
+
+          echo "=== RESULT ==="
+          cat "${ARTICLE_DIR}/agent_06_rescore/eeat_report.json"
+          cat "${ARTICLE_DIR}/agent_12_rescore/qa_report.json"
+          cat "${ARTICLE_DIR}/agent_13_rescore/editor_report.json"
+
+      - name: Upload rescore report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: "rescore-${{ github.run_id }}"
+          retention-days: 30
+          path: output/
