@@ -1,0 +1,22 @@
+name: List WordPress Code Snippets (read-only diagnostic)
+
+on:
+  workflow_dispatch: {}
+
+# READ-ONLY: lists Code Snippets plugin entries via its own REST namespace.
+# Never writes to WordPress.
+jobs:
+  list-snippets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: List snippets
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+        run: python3 scripts/list_wp_code_snippets.py
