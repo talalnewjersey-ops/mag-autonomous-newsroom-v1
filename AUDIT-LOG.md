@@ -832,3 +832,21 @@ L'utilisateur a récupéré le fichier réel (`moneyabroadguide-fusion-v51-wordp
   - Bloc CSS de restylage `.mag-wpforms-mount` (devenu inutile, le vrai formulaire WPForms n'est plus affiché) retiré proprement.
 - **Vérifications de sécurité identiques à la version précédente** : diff contre le fichier v1 déjà en ligne -- exactement 4 blocs modifiés ; équilibre accolades (580/580) et parenthèses (922/922) confirmé ; guillemets simples +14 par rapport à v1, entièrement justifiés (5 nouveaux littéraux PHP autonomes dans le bloc d'extraction de token + 2 nouvelles paires de rupture/reprise de chaîne dans le formulaire) -- aucune apostrophe orpheline.
 - **Fichiers livrés** : `~/Downloads/moneyabroadguide-fusion-v51-wordpress-FIXED-v2.php` (à uploader) + archive repo (`site-plugins/fusion-v51/moneyabroadguide-fusion-v51-wordpress-FIXED-v2-2026-07-14.php`).
+
+### 🔴 ÉTAT EXACT DU CHANTIER EN COURS (avant compaction de contexte, 2026-07-14) -- REPRENDRE ICI
+
+**Statut : EN ATTENTE DE L'UPLOAD UTILISATEUR.** Rien à refaire côté fichier -- `FIXED-v2` est prêt, vérifié, archivé. Ne pas reconstruire un v3 sans nouvelle raison.
+
+- **Déjà fait, confirmé** :
+  - Champ Nom retiré du formulaire WPForms 48766 dans l'admin (fait par l'utilisateur avant cette entrée).
+  - `FIXED-v2.php` construit, vérifié (diff propre 4 blocs, accolades/parenthèses/guillemets équilibrés), présent dans `~/Downloads/moneyabroadguide-fusion-v51-wordpress-FIXED-v2.php` ET archivé dans le repo (`site-plugins/fusion-v51/moneyabroadguide-fusion-v51-wordpress-FIXED-v2-2026-07-14.php`).
+  - Contenu de FIXED-v2 : (1) fix CLS (`#hero-results`/`#hero-save-banner` min-height, déjà confirmé servi en prod avec la v1 précédente, inchangé dans v2) ; (2) formulaire newsletter homepage remis en HTML custom d'origine (email + bouton), câblé en `fetch()` natif vers `/wp-admin/admin-ajax.php?action=wpforms_submit` avec un token CSRF frais extrait côté PHP via un `do_shortcode()` jamais affiché (contourne le fait que cette page ne déclenche jamais `wp_head`/`wp_footer`, donc les assets JS de WPForms ne peuvent jamais se charger ici -- root cause confirmée dans l'entrée précédente).
+- **En attente** : l'utilisateur va uploader `FIXED-v2.php` via le File Manager Hostinger (remplace le fichier actuellement en ligne, qui est la v1 -- CLS déjà bon, mais newsletter homepage cassée car shortcode affiché en texte brut).
+- **À faire dès confirmation de l'upload par l'utilisateur** (dans l'ordre) :
+  1. Purger le cache LiteSpeed (`purge-litespeed-cache.yml`, `snippet_id=24`, `purge_route=mag/v1/purge-all`).
+  2. Re-fetch la homepage (`curl` avec UA mobile), confirmer que le fix CLS est TOUJOURS servi (`#hero-results{min-height:290px}` etc. présents) -- ne devrait pas régresser puisque inchangé entre v1 et v2.
+  3. Confirmer que le formulaire newsletter homepage n'affiche PLUS le texte brut `[wpforms id="48766"]` -- vérifier la présence du vrai `<form id="nl-form">` avec les attributs `data-token`/`data-token-time` peuplés (non vides).
+  4. Faire une VRAIE soumission de test sur le formulaire homepage (POST direct vers `/wp-admin/admin-ajax.php` avec les mêmes champs que le JS construit, en réutilisant le token extrait de la page fraîchement fetchée) -- confirmer `{"success":true}`.
+  5. Re-vérifier Start Here (`/start-here/`) : toujours le formulaire WPForms shortcode-rendu (mécanisme différent, page normale -- ne devrait pas être affecté par les changements homepage) -- confirmer présence de `wpforms-form-48766` avec seulement 2 champs (honeypot + email, sans Nom).
+  6. Mettre à jour AUDIT-LOG avec les résultats de ces vérifications et clôturer ce chantier si tout est vert.
+- **Outils déjà en place, prêts à réutiliser** : `purge-litespeed-cache.yml`, `backup-wp-page.yml`, tous les scripts `create_wp_*`/`toggle_wp_snippet_active.py` (les snippets diagnostics temporaires ont tous été désactivés/nettoyés, aucun résidu actif à surveiller).
