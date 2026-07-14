@@ -90,10 +90,11 @@
       "category": "assurance sante",
       "monetization_score": 5,
       "traffic_score": 4,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null,
-      "selected_at": null
+      "post_id": 48777,
+      "selected_at": "2026-07-14T08:04:57.426173Z",
+      "drafted_at": "2026-07-14T08:14:00.535552Z"
     },
     {
       "id": "ca-best-newcomer-bank-accounts",
