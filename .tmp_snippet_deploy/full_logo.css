@@ -1,6 +1,0 @@
-/* MAG — Enlarge header logo (Version A, left-aligned). Unconditional (no @media): investigation showed Code Snippets' site-css scope does not appear to render at all on this install (a pre-existing site-css snippet was also confirmed never actually output, despite looking active/correct in the DB) -- likely a Free-vs-Pro plugin limitation. Left as-is pending a PHP-wrap approach (see AUDIT-LOG). */
-.custom-logo-link { width: 160px !important; }
-.custom-logo,
-.site-logo-img .custom-logo,
-.site-logo-img img.custom-logo,
-header .custom-logo-link img { max-width: 160px !important; width: 160px !important; height: auto !important; max-height: 160px !important; }
