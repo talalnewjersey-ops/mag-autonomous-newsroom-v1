@@ -1,0 +1,47 @@
+name: Create WordPress PHP Code Snippet (write, arbitrary PHP -- review before use)
+
+on:
+  workflow_dispatch:
+    inputs:
+      snippet_name:
+        description: "Snippet name"
+        required: true
+      snippet_desc:
+        description: "Snippet description"
+        required: false
+        default: ""
+      code_file:
+        description: "Path (in this repo checkout) to the file holding the PHP code"
+        required: true
+      active:
+        description: "Activate immediately"
+        required: true
+        default: "true"
+      confirm:
+        description: "Type 'yes' to actually write (safety gate)"
+        required: true
+        default: "no"
+
+# WRITE ACTION: creates a scope=global Code Snippets entry with arbitrary PHP
+# supplied by the caller. Higher blast-radius than the CSS-only tools --
+# only use after explicit user approval for the specific functionality.
+jobs:
+  create-snippet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Create PHP snippet
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          SNIPPET_NAME: ${{ github.event.inputs.snippet_name }}
+          SNIPPET_DESC: ${{ github.event.inputs.snippet_desc }}
+          CODE_FILE: ${{ github.event.inputs.code_file }}
+          ACTIVE: ${{ github.event.inputs.active }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: python3 scripts/create_wp_php_snippet.py
