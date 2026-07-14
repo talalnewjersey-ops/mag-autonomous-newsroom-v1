@@ -850,3 +850,12 @@ L'utilisateur a récupéré le fichier réel (`moneyabroadguide-fusion-v51-wordp
   5. Re-vérifier Start Here (`/start-here/`) : toujours le formulaire WPForms shortcode-rendu (mécanisme différent, page normale -- ne devrait pas être affecté par les changements homepage) -- confirmer présence de `wpforms-form-48766` avec seulement 2 champs (honeypot + email, sans Nom).
   6. Mettre à jour AUDIT-LOG avec les résultats de ces vérifications et clôturer ce chantier si tout est vert.
 - **Outils déjà en place, prêts à réutiliser** : `purge-litespeed-cache.yml`, `backup-wp-page.yml`, tous les scripts `create_wp_*`/`toggle_wp_snippet_active.py` (les snippets diagnostics temporaires ont tous été désactivés/nettoyés, aucun résidu actif à surveiller).
+
+### ✅ 2026-07-14 — Session (suite) : FIXED-v2 uploadé, TOUTES les vérifications passent -- CHANTIER CLOS
+
+- **Purge LiteSpeed** : effectuée avec succès (`purge-litespeed-cache.yml`).
+- **(1) Fix CLS** : confirmé toujours servi -- `#hero-results{min-height:290px}` et `#hero-save-banner{min-height:80px;display:flex;align-items:center;justify-content:center}` présents dans le HTML live (taille homepage 106595 octets, cohérent avec la v1 + les ajouts newsletter).
+- **(2) Shortcode homepage** : **0 occurrence** de `[wpforms` en texte brut -- le vrai `<form id="nl-form">` custom s'affiche, avec `data-token`/`data-token-time` correctement peuplés à chaque chargement (valeurs fraîches confirmées différentes entre deux fetchs successifs : `1784057541` puis `1784057608`).
+- **(3) Soumission de test réelle** : POST direct vers `/wp-admin/admin-ajax.php` avec les valeurs de token extraites d'un fetch frais de la homepage -- **`{"success":true}`**, avec la confirmation WPForms native ("Thanks for signing up for the newsletter! We'll be in touch soon."). Le mécanisme `fetch()` natif + token CSRF server-side fonctionne exactement comme prévu, sans aucune dépendance aux assets JS de WPForms.
+- **(4) Start Here revérifié** : `wpforms-form-48766` toujours présent et fonctionnel, mécanisme shortcode-dans-contenu inchangé (page normale, non affectée par les changements du fichier homepage).
+- **BILAN** : les 3 chantiers de cette session (CLS homepage, newsletter homepage, non-régression Start Here) sont **tous verts**. Fichier `moneyabroadguide-fusion-v51-wordpress.php` en production = FIXED-v2, archivé dans le repo. Chantier clos.
