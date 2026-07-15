@@ -1,0 +1,37 @@
+name: Update WordPress Post Categories (write, category field only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      post_id:
+        description: "WordPress post ID to update"
+        required: true
+      new_category_ids:
+        description: "Comma-separated new category IDs, e.g. 18"
+        required: true
+      confirm:
+        description: "Type 'yes' to actually write (safety gate)"
+        required: true
+        default: "no"
+
+# WRITE ACTION: replaces one published post's `categories` field via the REST
+# API. Refuses unless the post is currently 'publish' and confirm=yes. Never
+# touches content, title, or status.
+jobs:
+  update-categories:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Update post categories
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          POST_ID: ${{ github.event.inputs.post_id }}
+          NEW_CATEGORY_IDS: ${{ github.event.inputs.new_category_ids }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: python3 scripts/update_wp_post_categories.py
