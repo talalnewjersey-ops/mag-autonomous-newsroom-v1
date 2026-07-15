@@ -1,0 +1,34 @@
+name: Fetch One WP Code Snippet To File (read-only diagnostic)
+
+on:
+  workflow_dispatch:
+    inputs:
+      snippet_id:
+        description: "Code Snippets entry ID to fetch (full code, written to file to avoid log truncation)"
+        required: true
+
+# READ-ONLY: fetches one Code Snippets entry's full code for inspection.
+# Writes to a file + uploads as artifact instead of printing, to avoid
+# GitHub Actions per-line log truncation on large snippet code. Never
+# writes to WordPress.
+jobs:
+  fetch-snippet:
+    name: "Fetch snippet full code"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Fetch snippet
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          SNIPPET_ID: ${{ github.event.inputs.snippet_id }}
+        run: python3 scripts/fetch_wp_snippet_to_file.py
+      - name: Upload snippet content
+        uses: actions/upload-artifact@v4
+        with:
+          name: snippet-${{ github.event.inputs.snippet_id }}-content
+          path: snippet_${{ github.event.inputs.snippet_id }}_full.json
