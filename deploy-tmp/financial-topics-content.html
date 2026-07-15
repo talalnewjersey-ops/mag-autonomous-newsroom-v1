@@ -1,0 +1,459 @@
+<!-- wp:html -->
+<style>
+@font-face{font-family:"Inter-fallback";src:local("Segoe UI"),local("Roboto"),local("Helvetica Neue"),local("Arial");ascent-override:96.88%;descent-override:24.12%;line-gap-override:0%;size-adjust:100%}
+@font-face{font-family:"Lora-fallback";src:local("Georgia");ascent-override:100.6%;descent-override:27.4%;line-gap-override:0%;size-adjust:100%}
+@font-face{font-family:"Inter";font-style:normal;font-weight:400;font-display:optional;src:url(https://moneyabroadguide.com/wp-content/uploads/fonts/inter-latin-var.woff2) format("woff2")}
+@font-face{font-family:"Inter";font-style:normal;font-weight:500;font-display:optional;src:url(https://moneyabroadguide.com/wp-content/uploads/fonts/inter-latin-var.woff2) format("woff2")}
+@font-face{font-family:"Inter";font-style:normal;font-weight:600;font-display:optional;src:url(https://moneyabroadguide.com/wp-content/uploads/fonts/inter-latin-var.woff2) format("woff2")}
+@font-face{font-family:"Inter";font-style:normal;font-weight:700;font-display:optional;src:url(https://moneyabroadguide.com/wp-content/uploads/fonts/inter-latin-var.woff2) format("woff2")}
+@font-face{font-family:"Inter";font-style:normal;font-weight:800;font-display:optional;src:url(https://moneyabroadguide.com/wp-content/uploads/fonts/inter-latin-var.woff2) format("woff2")}
+@font-face{font-family:"Lora";font-style:normal;font-weight:700;font-display:optional;src:url(https://moneyabroadguide.com/wp-content/uploads/fonts/lora-latin-var.woff2) format("woff2")}
+*,*::before,*::after{box-sizing:border-box}
+:root{
+  --marine:#001f3f;--marine-md:#0a2d52;--marine-dk:#001429;--marine-lt:#e8f1f8;
+  --green:#05825f;--green-md:#07a076;--green-lt:#e3f5ef;--green-br:#0ac489;
+  --gold:#f5a623;--gold-lt:#fff8ed;
+  --g50:#f9fafb;--g100:#f3f4f6;--g200:#e5e7eb;--g300:#d1d5db;
+  --g400:#9ca3af;--g500:#6b7280;--g600:#4b5563;--g700:#374151;--g900:#111827;
+  --bg:#fff;--card-bg:#fff;
+  --sh-md:0 4px 6px -1px rgba(0,0,0,.1);
+  --sh-lg:0 10px 15px -3px rgba(0,0,0,.1);
+  --fn:"Inter","Inter-fallback",system-ui,sans-serif;--fs:"Lora","Lora-fallback",Georgia,serif;
+}
+:root[data-theme="dark"]{
+  --bg:#0b1420;--card-bg:#0f1c2c;--g50:#101c2b;--g100:#16233355;--g200:#22364a;
+  --g300:#33526e;--g400:#7891a8;--g500:#94aabe;--g600:#b7c6d6;--g700:#d4dfe9;--g900:#f3f7fa;
+  --marine-lt:#13324f;--green-lt:#0d2e26;--gold-lt:#2a2110;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0b1420;--card-bg:#0f1c2c;--g50:#101c2b;--g100:#16233355;--g200:#22364a;
+    --g300:#33526e;--g400:#7891a8;--g500:#94aabe;--g600:#b7c6d6;--g700:#d4dfe9;--g900:#f3f7fa;
+    --marine-lt:#13324f;--green-lt:#0d2e26;--gold-lt:#2a2110;
+  }
+}
+@media (prefers-reduced-motion: reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important;scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:var(--fn);background:var(--bg);color:var(--g900);line-height:1.55;font-size:15px}
+.sec{padding:52px 4%}
+.co{max-width:1200px;margin:0 auto}
+.bg-w{background:var(--bg)}
+.bg-s{background:var(--g50)}
+.sec-hd{text-align:center;max-width:640px;margin:0 auto 30px}
+.sec-hd h2{font-family:var(--fs);font-size:clamp(21px,3vw,32px);font-weight:700;line-height:1.16;letter-spacing:-.2px;color:var(--g900);margin:0 0 9px;text-wrap:balance}
+.sec-hd p{font-size:14px;color:var(--g500);line-height:1.7;margin:0}
+.stag{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--green);margin-bottom:9px}
+/* HERO */
+.hero{background:linear-gradient(135deg,var(--g50) 0%,var(--bg) 100%);padding:44px 4% 32px;text-align:center}
+.hero h1{font-family:var(--fs);font-size:clamp(32px,5vw,50px);font-weight:700;line-height:1.1;letter-spacing:-.4px;color:var(--marine);margin:0 0 14px;text-wrap:balance}
+.hero-sub{font-size:16px;color:var(--g600);line-height:1.7;max-width:600px;margin:0 auto}
+.pillrow{display:flex;flex-wrap:wrap;gap:9px;justify-content:center;margin:26px auto 0;max-width:820px}
+.pill{display:inline-flex;align-items:center;gap:6px;background:var(--card-bg);border:1.5px solid var(--g200);color:var(--g700);font-size:13px;font-weight:700;padding:9px 16px;border-radius:50px;text-decoration:none;transition:border-color .18s,color .18s,transform .18s}
+.pill:hover{border-color:var(--green-br);color:var(--green);transform:translateY(-2px)}
+/* CARDS */
+.tgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+@media(max-width:900px){.tgrid{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.tgrid{grid-template-columns:1fr}.sec{padding:32px 5%}.hero{padding:28px 5% 24px}}
+.tcard{display:block;background:var(--card-bg);border:1.5px solid var(--g200);border-radius:16px;padding:20px 20px 18px;text-decoration:none;box-shadow:var(--sh-md);transition:border-color .18s,box-shadow .18s,transform .18s}
+.tcard:hover,.tcard:focus-visible{border-color:var(--green-br);box-shadow:var(--sh-lg);transform:translateY(-3px)}
+.tcard-flag{font-size:1.15em;display:block;margin-bottom:10px}
+.tcard-h{font-family:var(--fs);font-size:16.5px;font-weight:700;color:var(--g900);line-height:1.32;margin:0 0 8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tcard-p{font-size:13px;color:var(--g500);line-height:1.6;margin:0 0 14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tcard-cta{font-size:12.5px;font-weight:800;color:var(--green)}
+/* CTA FINAL */
+.cta-final{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:980px;margin:0 auto}
+@media(max-width:760px){.cta-final{grid-template-columns:1fr}}
+.eb-card,.nl-card{background:var(--card-bg);border:1.5px solid var(--g200);border-radius:18px;padding:26px 26px 24px}
+.eb-card{background:var(--marine);border-color:var(--marine)}
+.eb-tag{display:inline-block;background:rgba(255,255,255,.14);color:#fff;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:5px 13px;border-radius:50px;margin-bottom:14px}
+.eb-h{font-family:var(--fs);font-size:19px;font-weight:700;color:#fff;margin:0 0 8px;line-height:1.3}
+.eb-card p{font-size:13.5px;color:rgba(255,255,255,.82);line-height:1.6;margin:0 0 18px}
+.btn-pill{display:inline-flex;align-items:center;gap:7px;background:var(--green);color:#fff!important;padding:12px 22px;border-radius:50px;font-size:13.5px;font-weight:800;text-decoration:none;border:none;cursor:pointer;transition:all .2s}
+.btn-pill:hover{background:var(--green-md);transform:translateY(-2px)}
+.eb-card .btn-pill{background:#fff;color:var(--marine)!important}
+.eb-card .btn-pill:hover{background:var(--g50)}
+.nl-card h3{font-family:var(--fs);font-size:18px;font-weight:700;color:var(--g900);margin:0 0 8px}
+.nl-card p{font-size:13.5px;color:var(--g600);line-height:1.6;margin:0 0 16px}
+.nl-note{font-size:11.5px;color:var(--g400);margin-top:10px!important}
+.mag-nl-embed .wpforms-container{margin:0!important}
+.mag-nl-embed .wpforms-field{padding:0!important;margin:0 0 10px!important}
+.mag-nl-embed .wpforms-field-label{display:none!important}
+.mag-nl-embed input[type=email],.mag-nl-embed input[type=text]{font-family:var(--fn)!important;font-size:14px!important;padding:11px 16px!important;border-radius:12px!important;border:1.5px solid var(--g200)!important;width:100%!important}
+.mag-nl-embed .wpforms-submit{background:var(--green)!important;color:#fff!important;padding:12px 22px!important;border-radius:50px!important;font-size:13.5px!important;font-weight:800!important;border:none!important}
+.mag-nl-embed .wpforms-submit:hover{background:var(--green-md)!important}
+.disc{font-size:11.5px;color:var(--g400);max-width:1200px;margin:0 auto;line-height:1.6}
+.disc a{color:var(--g500)}
+</style>
+<section class="hero">
+  <div class="co">
+    <div class="stag" style="justify-content:center;display:flex">OUR CONTENT LIBRARY</div>
+    <h1>Financial Topics</h1>
+    <p class="hero-sub">45 independent guides on banking, credit, transfers, taxes, and settling in &#8212; organized by topic, for newcomers to the USA and Canada.</p>
+    <nav class="pillrow" aria-label="Jump to topic">
+<a class="pill" href="#credit">💳 Building Credit</a>
+<a class="pill" href="#banking">🏦 Banking</a>
+<a class="pill" href="#transfers">💸 Money Transfers</a>
+<a class="pill" href="#taxes">🧾 Taxes</a>
+<a class="pill" href="#housing">🏠 Housing & Cost of Living</a>
+<a class="pill" href="#essentials">🛡️ Insurance & Essentials</a>
+    </nav>
+  </div>
+</section>
+<section class="sec bg-w" id="credit">
+  <div class="co">
+    <div class="sec-hd">
+      <div class="stag">💳 Building Credit &middot; 7 guides</div>
+      <h2>Building Credit</h2>
+      <p>Establishing a credit history from zero, with or without a prior credit file.</p>
+    </div>
+    <div class="tgrid">
+<a class="tcard" href="https://moneyabroadguide.com/best-credit-cards-for-newcomers-in-canada-complete-guide-for-canada-immigrants-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Best Credit Cards For Newcomers In Canada: Complete Guide for Canada Immigrants (2026)</h3>
+<p class="tcard-p">The best credit cards for […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/best-credit-cards-for-new-immigrants-no-ssn-complete-guide-for-usa-immigrants-2026/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">Best Credit Cards For New Immigrants No Ssn: Complete Guide for USA Immigrants (2026)</h3>
+<p class="tcard-p">New immigrants can qualify […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/best-credit-cards-newcomers-canada-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Best Credit Cards for Newcomers in Canada (2026 Complete Guide)</h3>
+<p class="tcard-p">Compare the best credit cards for newcomers in Canada (2026): newcomer program cards, secured cards and student options — get…</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/building-credit-canada-newcomers-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Building Credit in Canada for Newcomers: 2026 Complete Guide</h3>
+<p class="tcard-p">Build credit in Canada from scratch as a newcomer in 2026: Equifax and TransUnion explained, secured cards, SIN tips, rent…</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/how-to-build-credit-in-usa-without-ssn/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">How to Build Credit in the USA Without a Social Security Number (2026 Complete Guide)</h3>
+<p class="tcard-p">and does not constitute legal, tax, or financial advice. Credit policies, […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/best-credit-cards-for-newcomers-usa-2026/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">Best Credit Cards for Newcomers in USA 2026 | No SSN Needed</h3>
+<p class="tcard-p">Compare 7 credit cards for newcomers in the USA with no SSN required: Petal 2, Deserve EDU, Capital One Platinum Secured and…</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/rent-without-credit-canada/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">How to Rent Without Credit History in Canada 2026: No Credit Check Options</h3>
+<p class="tcard-p">No Canadian credit history? Get landlord-approved in 2026 with 8 proven alternatives: income letters, reference checks,…</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+    </div>
+  </div>
+</section>
+<section class="sec bg-w" id="banking">
+  <div class="co">
+    <div class="sec-hd">
+      <div class="stag">🏦 Banking &middot; 14 guides</div>
+      <h2>Banking</h2>
+      <p>Opening your first account, comparing providers, and understanding common banking products.</p>
+    </div>
+    <div class="tgrid">
+<a class="tcard" href="https://moneyabroadguide.com/best-mortgage-for-newcomers-to-canada-complete-guide-for-canada-immigrants-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Best Mortgage For Newcomers To Canada: Complete Guide for Canada Immigrants (2026)</h3>
+<p class="tcard-p">Newcomers to Canada can qualify for […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/best-newcomer-bank-accounts-in-canada-complete-guide-for-canada-immigrants-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Best Newcomer Bank Accounts In Canada: Complete Guide for Canada Immigrants (2026)</h3>
+<p class="tcard-p">The best newcomer bank accounts in […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/best-high-interest-savings-accounts-for-international-students-in-canada-complete-guide-for-canada-i/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Best High-Interest Savings Accounts For International Students In Canada: Complete Guide for Canada – International Students Immigrants (2026)</h3>
+<p class="tcard-p">International students in Canada can open a high-interest savings account (HISA) with a valid study permit and passport […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/student-bank-account-canada-newcomers-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">How to Open a Bank Account in Canada as an International Student (2026 Guide)</h3>
+<p class="tcard-p">ide (2026) Quick Answer Affiliate disclosure: We […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/tfsa-newcomers-canada-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Best TFSA Accounts for Newcomers to Canada (2026 Guide)</h3>
+<p class="tcard-p">A complete guide to Tax-Free Savings Accounts for newcomers to Canada — eligibility, how providers compare, and contribution…</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/high-interest-savings-newcomers-canada-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Best High-Interest Savings Accounts for Newcomers to Canada (2026 Guide)</h3>
+<p class="tcard-p">A 2026 guide to high-interest savings accounts for newcomers to Canada.</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/best-banks-newcomers-usa-2026/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">Best Banks for Newcomers to the USA (2026 Guide)</h3>
+<p class="tcard-p">Find the best US bank accounts for newcomers in 2026: which banks accept ITIN or passport ID, how to avoid fees, and how to open…</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/rbc-vs-scotiabank-vs-td-newcomers-canada-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">RBC vs Scotiabank vs TD for Newcomers Canada 2026: Which Big Bank Wins?</h3>
+<p class="tcard-p">RBC vs Scotiabank vs TD for Newcomers Canada 2026 Winner for most newcomers: Scotiabank StartRight™ — 2 […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/bank-newcomer-bonus-300-cad-canada-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Best Bank Welcome Bonuses for Newcomers Canada 2026 ($300 CAD Offers Compared)</h3>
+<p class="tcard-p">Which Banks Offer $300 Welcome Bonus for Newcomers Canada 2026? Banks offering the best welcome bonuses for […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/best-banks-iranian-newcomers-canada-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Best Banks for Iranian Newcomers in Canada (2026): Complete Guide</h3>
+<p class="tcard-p">Best Banks for Iranian Newcomers in Canada 2026 Scotiabank (StartRight™ Program): Best overall — accepts Iranian passports, […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/best-itin-friendly-bank-accounts-usa/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">Best ITIN-Friendly Bank Accounts for New Immigrants in the USA (2026)</h3>
+<p class="tcard-p">and does not constitute legal, tax, or financial advice. Bank policies, […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/best-high-yield-savings-accounts-newcomers-usa/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">Best High-Yield Savings Accounts for Newcomers in the USA (2026 Complete Guide)</h3>
+<p class="tcard-p">Best High-Yield Savings Accounts for Newcomers in the USA (2026) Some of the most consistently recommended high-yield savings […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/open-bank-account-newcomer-usa-2026/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">How to Open a Bank Account as a Newcomer in the USA (2026 Guide)</h3>
+<p class="tcard-p">Step-by-step guide to opening a US bank account as a newcomer in 2026: documents needed, best banks for immigrants, SSN vs ITIN,…</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/best-banks-newcomers-canada-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Best Banks for New Immigrants &amp; Newcomers to Canada 2026: Top Picks</h3>
+<p class="tcard-p">RBC, TD, Scotiabank, BMO and CIBC newcomer programs compared for 2026: fee waivers, credit cards with no Canadian history…</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+    </div>
+  </div>
+</section>
+<section class="sec bg-w" id="transfers">
+  <div class="co">
+    <div class="sec-hd">
+      <div class="stag">💸 Money Transfers &middot; 4 guides</div>
+      <h2>Money Transfers</h2>
+      <p>Comparing apps and services for sending money internationally.</p>
+    </div>
+    <div class="tgrid">
+<a class="tcard" href="https://moneyabroadguide.com/best-money-transfer-apps-immigrants/">
+<span class="tcard-flag">🌎</span>
+<h3 class="tcard-h">Best Money Transfer Apps for Immigrants (2026 Guide)</h3>
+<p class="tcard-p">Compare the best money transfer apps for immigrants in the USA and Canada in 2026 — Wise, Remitly, OFX, Xe and Western Union…</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/best-apps-to-send-money-internationally-from-canada-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Best Apps To Send Money Internationally From Canada 2026</h3>
+<p class="tcard-p">Compare the best apps to send money internationally from Canada in 2026.</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/wise-vs-remitly-canada-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Wise vs Remitly Canada 2026: Best Alternative for Newcomers (Fees Compared)</h3>
+<p class="tcard-p">Wise vs Remitly in Canada (2026) For most transfers from Canada, Wise is cheaper for amounts over $1,000 […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/best-way-to-send-money-usa-to-canada-2026/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">Send Money from USA to Canada 2026: Cheapest Ways to Transfer (Wise vs Remitly vs Bank Wire)</h3>
+<p class="tcard-p">Best Way to Send Money from USA to Canada (2026) The best way to send money from the […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+    </div>
+  </div>
+</section>
+<section class="sec bg-w" id="taxes">
+  <div class="co">
+    <div class="sec-hd">
+      <div class="stag">🧾 Taxes &middot; 4 guides</div>
+      <h2>Taxes</h2>
+      <p>Understanding tax residency, filing obligations, and cross-border rules.</p>
+    </div>
+    <div class="tgrid">
+<a class="tcard" href="https://moneyabroadguide.com/taxes-new-immigrants-canada-cra-guide-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Taxes for New Immigrants to Canada: Complete CRA Guide (2026)</h3>
+<p class="tcard-p">Taxes for Newcomers to Canada (2026) If you are a resident of Canada for tax purposes, you must […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/taxes-for-new-immigrants-to-the-usa-2026/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">Taxes for New Immigrants to the USA (2026): Complete IRS Guide</h3>
+<p class="tcard-p">Taxes for New Immigrants to the USA (2026) If you moved to the USA in 2025, you are […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/us-expat-tax-filing-guide-2026/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">US Expat Tax Filing Guide 2026: The Complete Handbook for Americans Living Abroad</h3>
+<p class="tcard-p">and does not constitute legal, tax, or financial advice. Tax laws […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/us-bank-interest-tax-nonresident-alien/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">US Bank Interest Tax for Non-Resident Aliens 2026: HYSA &amp; Savings Guide</h3>
+<p class="tcard-p">Nonresident alien with a US bank account? The W-8BEN form likely exempts your interest from US tax.</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+    </div>
+  </div>
+</section>
+<section class="sec bg-w" id="housing">
+  <div class="co">
+    <div class="sec-hd">
+      <div class="stag">🏠 Housing &amp; Cost of Living &middot; 7 guides</div>
+      <h2>Housing &amp; Cost of Living</h2>
+      <p>Renting your first place and budgeting for real monthly costs.</p>
+    </div>
+    <div class="tgrid">
+<a class="tcard" href="https://moneyabroadguide.com/cheapest-provinces-canada-immigrants-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Cheapest Provinces to Live in Canada for Immigrants 2026 (Complete Rankings)</h3>
+<p class="tcard-p">⚡ Cheapest Provinces to Live in Canada for Immigrants (2026) The 3 cheapest provinces for immigrants in Canada are: (1) […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/first-apartment-usa-new-immigrants-2026/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">First Apartment in the USA for New Immigrants (2026 Complete Guide)</h3>
+<p class="tcard-p">How to rent your first apartment in the USA as a new immigrant in 2026: no credit history workarounds, lease tips, tenant rights…</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/first-apartment-canada-newcomers-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">First Apartment in Canada for New Immigrants (2026 Complete Guide)</h3>
+<p class="tcard-p">Complete guide to renting your first apartment in Canada as a new immigrant: costs, no-credit workarounds, documents, tenant…</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/cost-of-living-canada-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Cost of Living in Canada 2026 for New Immigrants &amp; Expats: Real Monthly Budgets</h3>
+<p class="tcard-p">Real monthly cost data for Toronto, Vancouver, Montreal, and Calgary in 2026.</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/cost-of-living-usa-2026/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">Cost of Living in USA 2026 for New Immigrants &amp; Expats: City-by-City Guide</h3>
+<p class="tcard-p">Real monthly budget data for NYC, LA, Houston, and Miami in 2026. Single newcomer: $2,200-$7,000+/mo depending on city.</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/canada-budget-planner-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Canada Newcomer Budget Planner 2026 for Immigrants &amp; Expats</h3>
+<p class="tcard-p">Free interactive budget planner for newcomers to Canada.</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/usa-budget-planner-2026/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">USA Expat Budget Planner 2026: Monthly Costs Guide</h3>
+<p class="tcard-p">Free interactive budget planner for expats moving to the USA.</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+    </div>
+  </div>
+</section>
+<section class="sec bg-w" id="essentials">
+  <div class="co">
+    <div class="sec-hd">
+      <div class="stag">🛡️ Insurance &amp; Essentials &middot; 9 guides</div>
+      <h2>Insurance &amp; Essentials</h2>
+      <p>Health and car insurance, ID numbers, phone plans, and other settling-in basics.</p>
+    </div>
+    <div class="tgrid">
+<a class="tcard" href="https://moneyabroadguide.com/best-car-insurance-for-foreign-drivers-and-international-students-complete-guide-for-usa-immigrants-4/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">Best Car Insurance For Foreign Drivers And International Students: Complete Guide for USA Immigrants (2026)</h3>
+<p class="tcard-p">Foreign drivers and [&amp;hellip…</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/how-to-get-itin-number-usa-2026/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">How to Get an ITIN Number in the USA (2026): Complete Guide for Newcomers</h3>
+<p class="tcard-p">How to Get an ITIN in the USA (2026) An ITIN (Individual Taxpayer Identification Number) is a 9-digit […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/moving-to-canada-checklist-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Moving to Canada Checklist 2026: Complete Financial &amp; Settlement Guide</h3>
+<p class="tcard-p">Your complete 2026 moving to Canada checklist: SIN, bank account, health insurance, housing, and credit building — step by step,…</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/best-phone-plans-newcomers-usa-2026/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">Best Phone Plans for Newcomers to the USA (2026)</h3>
+<p class="tcard-p">Best prepaid phone plans for newcomers to the USA in 2026: no SSN needed.</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/how-to-get-sin-canada-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">How to Get a SIN in Canada (2026): Complete Guide for Newcomers</h3>
+<p class="tcard-p">Complete 2026 guide to getting your Social Insurance Number in Canada: eligibility, required documents, Service Canada steps and…</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/health-insurance-for-new-immigrants-usa/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">Health Insurance for New Immigrants in the USA (2026 Complete Guide)</h3>
+<p class="tcard-p">and does not constitute legal, tax, medical, or insurance advice. Eligibility […</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/best-phone-plans-for-newcomers-to-canada-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Best Phone Plans for Newcomers to Canada (2026)</h3>
+<p class="tcard-p">Compare the best phone plans for newcomers to Canada in 2026: prepaid vs postpaid, Public Mobile, Koodo, Fizz, Freedom — get…</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/health-insurance-newcomers-canada-2026/">
+<span class="tcard-flag">🇨🇦</span>
+<h3 class="tcard-h">Health Insurance for Newcomers in Canada 2026: Complete Guide</h3>
+<p class="tcard-p">2026 health insurance guide for newcomers in Canada: provincial waiting periods, OHIP/MSP registration, IFHP for refugees, and…</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+<a class="tcard" href="https://moneyabroadguide.com/itin-vs-ssn-for-newcomers-in-the-usa-complete-2026-guide/">
+<span class="tcard-flag">🇺🇸</span>
+<h3 class="tcard-h">ITIN vs SSN for Newcomers in the USA: Complete 2026 Guide</h3>
+<p class="tcard-p">ITIN vs SSN for newcomers in the USA in 2026: differences, which do you need for banking, taxes and credit building, and how to…</p>
+<span class="tcard-cta">Read the guide &#8594;</span>
+</a>
+    </div>
+  </div>
+</section>
+<section class="sec bg-s">
+  <div class="co">
+    <div class="cta-final">
+      <div class="eb-card">
+        <div class="eb-tag">Free Ebook</div>
+        <div class="eb-h">Build Your Credit Score in the USA &#8212; 2026 Edition</div>
+        <p>A step-by-step ebook for newcomers with no US credit history &#8212; what to open first, and in what order.</p>
+        <a class="btn-pill" href="https://moneyabroadguide.com/ebook-build-your-credit-score-usa/">Get the Free Ebook &#8594;</a>
+      </div>
+      <div class="nl-card">
+        <h3>&#128233; Get Our Newsletter</h3>
+        <p>The latest guides and money tips for newcomers, free.</p>
+        <div class="mag-nl-embed">[wpforms id="48766"]</div>
+        <p class="nl-note">100% free &middot; No spam &middot; Unsubscribe anytime &middot; Educational only</p>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="sec bg-w" style="padding:0 4% 36px">
+  <p class="disc">This page is for general educational purposes only and is not financial, tax, or immigration advice. Guides linked above reflect our independent research &#8212; see our <a href="https://moneyabroadguide.com/how-we-test/">How We Test</a> and <a href="https://moneyabroadguide.com/editorial-policy/">Editorial Policy</a> for methodology. &#169; 2026 MoneyAbroadGuide.com</p>
+</section>
+<!-- /wp:html -->
