@@ -1,0 +1,238 @@
+<!-- wp:html -->
+<p><style>
+    .mag-lp * { margin: 0; padding: 0; box-sizing: border-box; }
+    .mag-lp { font-family: 'Inter', sans-serif; background: #FFFFFF; color: #0F172A; line-height: 1.5; scroll-behavior: smooth; overflow-x: hidden;
+      --navy: #0A1128; --gold: #D4AF37; --gold-light: #F3E5AB; --gray-bg: #F8FAFC; --text-muted: #475569; }
+    .mag-lp .container { max-width: 1280px; margin: 0 auto; padding: 0 32px; }
+    .mag-lp .bg-glow { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; }
+    .mag-lp .bg-glow::before { content: ''; position: absolute; top: -20%; left: -10%; width: 70%; height: 70%; background: radial-gradient(circle, rgba(212,175,55,0.08) 0%, rgba(10,17,40,0) 70%); border-radius: 50%; }
+    .mag-lp .bg-glow::after { content: ''; position: absolute; bottom: -10%; right: -10%; width: 60%; height: 60%; background: radial-gradient(circle, rgba(10,17,40,0.04) 0%, rgba(212,175,55,0) 70%); border-radius: 50%; }
+    .mag-lp .logo { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.2px; }
+    .mag-lp .logo-icon { width: 36px; height: 36px; background: linear-gradient(135deg, var(--gold), #B8860B); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--navy); font-size: 1.2rem; }
+    .mag-lp .logo-text { color: var(--navy); font-weight: 800; letter-spacing: -0.3px; }
+    .mag-lp .badge { display: inline-block; background: linear-gradient(135deg, var(--gold) 0%, #E2C28B 100%); color: var(--navy); font-size: 0.7rem; font-weight: 800; padding: 6px 14px; border-radius: 40px; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+    .mag-lp .btn { display: inline-block; background: var(--navy); color: white; font-weight: 700; font-size: 1rem; padding: 14px 32px; border-radius: 60px; text-decoration: none; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: none; }
+    .mag-lp .btn:hover { transform: translateY(-3px) scale(1.02); box-shadow: 0 15px 30px -12px rgba(0,0,0,0.2); }
+    .mag-lp .btn-gold { background: linear-gradient(135deg, var(--gold) 0%, #B8860B 100%); color: var(--navy); }
+    .mag-lp .btn-gold:hover { background: linear-gradient(135deg, #E2C28B 0%, var(--gold) 100%); }
+    .mag-lp .btn-large { padding: 18px 48px; font-size: 1.1rem; }
+    .mag-lp section { padding: 100px 0; position: relative; border-bottom: 1px solid #EFF3F8; }
+    .mag-lp h1 { font-size: 3.8rem; font-weight: 800; line-height: 1.15; letter-spacing: -0.03em; background: linear-gradient(135deg, var(--navy) 0%, #2D3A5F 100%); -webkit-background-clip: text; background-clip: text; color: transparent; margin-bottom: 28px; }
+    .mag-lp h2 { font-size: 2.5rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 28px; color: var(--navy); }
+    .mag-lp h3 { font-size: 1.4rem; font-weight: 700; margin-bottom: 12px; }
+    .mag-lp .hero-grid { display: flex; gap: 60px; align-items: center; flex-wrap: wrap; }
+    .mag-lp .hero-content { flex: 1.2; }
+    .mag-lp .hero-visual { flex: 1; position: relative; min-height: 550px; }
+    .mag-lp .hero-subhead { font-size: 1.25rem; color: var(--text-muted); margin-bottom: 32px; max-width: 550px; }
+    .mag-lp .book-3d { position: relative; width: 100%; max-width: 400px; margin: 0 auto; transform-style: preserve-3d; animation: floatBook 5s ease-in-out infinite; }
+    .mag-lp .book-cover { background: #0A1128; border-radius: 16px 8px 8px 16px; box-shadow: 30px 35px 45px -20px rgba(0,0,0,0.4), inset -1px 0 0 rgba(255,255,255,0.1); overflow: hidden; transform: rotateY(-8deg) rotateX(5deg); transition: transform 0.4s ease; position: relative; }
+    .mag-lp .book-cover:hover { transform: rotateY(-5deg) rotateX(3deg) scale(1.02); }
+    .mag-lp .book-cover img { width: 100%; display: block; border-radius: 12px 4px 4px 12px; }
+    .mag-lp .book-spine { position: absolute; left: -14px; top: 8px; width: 16px; height: 94%; background: linear-gradient(90deg, #5A4A2A, #3A2E1A); border-radius: 3px 0 0 3px; box-shadow: inset -1px 0 0 rgba(0,0,0,0.3); }
+    .mag-lp .book-reflection { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0) 60%); pointer-events: none; border-radius: 12px 4px 4px 12px; }
+    @keyframes floatBook { 0% { transform: translateY(0px) rotateX(0deg); } 50% { transform: translateY(-15px) rotateX(2deg); } 100% { transform: translateY(0px) rotateX(0deg); } }
+    .mag-lp .floating-card { position: absolute; background: rgba(255,255,255,0.95); backdrop-filter: blur(12px); border-radius: 40px; padding: 10px 20px; font-size: 0.85rem; font-weight: 700; box-shadow: 0 20px 35px -10px rgba(0,0,0,0.15); border: 1px solid rgba(212,175,55,0.4); display: flex; align-items: center; gap: 8px; white-space: nowrap; animation: floatCard 4s ease-in-out infinite; color: var(--navy); }
+    .mag-lp .floating-card i { color: var(--gold); font-size: 1rem; }
+    @keyframes floatCard { 0% { transform: translateY(0px); } 50% { transform: translateY(-8px); } 100% { transform: translateY(0px); } }
+    .mag-lp .card1 { top: 5%; left: -30px; animation-delay: 0s; }
+    .mag-lp .card2 { bottom: 25%; right: -40px; animation-delay: 0.6s; }
+    .mag-lp .card3 { top: 35%; right: -20px; animation-delay: 1.2s; }
+    .mag-lp .card4 { bottom: 10%; left: -20px; animation-delay: 1.8s; }
+    .mag-lp .trust-bar { background: rgba(248,250,252,0.8); backdrop-filter: blur(8px); border-radius: 100px; padding: 18px 32px; margin-top: 60px; display: flex; justify-content: center; gap: 48px; flex-wrap: wrap; font-weight: 600; border: 1px solid rgba(212,175,55,0.2); }
+    .mag-lp .feature-grid, .mag-lp .audience-grid, .mag-lp .trust-grid, .mag-lp .creation-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; margin-top: 40px; }
+    .mag-lp .feature-card, .mag-lp .audience-card, .mag-lp .trust-card, .mag-lp .creation-card { background: white; border-radius: 32px; padding: 32px; box-shadow: 0 20px 25px -12px rgba(0,0,0,0.08); border: 1px solid #EDF2F7; transition: all 0.4s; }
+    .mag-lp .feature-card:hover, .mag-lp .audience-card:hover, .mag-lp .trust-card:hover, .mag-lp .creation-card:hover { transform: translateY(-8px); border-color: var(--gold); }
+    .mag-lp .bonus-grid { display: flex; gap: 32px; flex-wrap: wrap; margin-top: 48px; }
+    .mag-lp .bonus-card { background: linear-gradient(145deg, #FFFFFF, #F8FAFC); border-radius: 32px; padding: 32px; flex: 1; box-shadow: 0 30px 40px -20px rgba(0,0,0,0.1); border: 1px solid rgba(212,175,55,0.25); }
+    .mag-lp .case-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; margin-top: 40px; }
+    .mag-lp .case-card { background: white; border-radius: 32px; padding: 32px; box-shadow: 0 12px 24px -12px rgba(0,0,0,0.08); }
+    .mag-lp .pricing-dark { background: linear-gradient(135deg, #0A1128 0%, #121B3B 100%); border-radius: 48px; padding: 64px; color: white; text-align: center; box-shadow: 0 40px 50px -25px rgba(0,0,0,0.3); }
+    .mag-lp .price-large { font-size: 4rem; font-weight: 800; }
+    .mag-lp .payment-icons { display: flex; justify-content: center; gap: 24px; margin-top: 24px; flex-wrap: wrap; }
+    .mag-lp .payment-icons i { font-size: 2rem; color: white; opacity: 0.8; transition: opacity 0.2s; }
+    .mag-lp .payment-icons i:hover { opacity: 1; }
+    .mag-lp .buyer-confidence { display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; margin: 24px 0 16px; }
+    .mag-lp .buyer-confidence span { font-size: 0.9rem; display: inline-flex; align-items: center; gap: 8px; }
+    .mag-lp .whats-included-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px 40px; text-align: left; margin: 32px 0; max-width: 700px; margin-left: auto; margin-right: auto; }
+    .mag-lp .whats-included-grid span { display: flex; align-items: center; gap: 12px; font-size: 1rem; }
+    .mag-lp .whats-included-grid i { color: var(--gold); font-size: 1.2rem; }
+    .mag-lp .faq-item { border-bottom: 1px solid #EDF2F7; padding: 20px 0; }
+    .mag-lp .faq-question { font-weight: 700; font-size: 1.1rem; cursor: pointer; display: flex; justify-content: space-between; }
+    .mag-lp .faq-answer { display: none; margin-top: 12px; color: var(--text-muted); }
+    .mag-lp .faq-answer.show { display: block; }
+    .mag-lp .story-title { font-size: 2rem; font-weight: 700; line-height: 1.3; margin-bottom: 24px; color: var(--navy); }
+    .mag-lp .fade-up { opacity: 0; transform: translateY(40px); transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+    .mag-lp .fade-up.visible { opacity: 1; transform: translateY(0); }
+    .mag-lp .disclaimer-small { font-size: 0.7rem; color: var(--text-muted); margin-top: 16px; text-align: center; }
+    .mag-lp .author-photo { width: 220px; height: 220px; border-radius: 16px; overflow: hidden; margin-bottom: 24px; background: linear-gradient(135deg, var(--gold), #B8860B); display: flex; align-items: center; justify-content: center; }
+    .mag-lp .author-photo img { width: 100%; height: 100%; object-fit: contain; }
+    .mag-lp .credibility-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(212,175,55,0.12); padding: 8px 16px; border-radius: 40px; font-weight: 600; color: var(--navy); margin-top: 16px; }
+    .mag-lp .credibility-badge i { color: var(--gold); }
+    @media (prefers-reduced-motion: reduce) { .mag-lp .fade-up, .mag-lp .book-3d, .mag-lp .floating-card { animation: none; opacity: 1; transform: none; } }
+    @media (max-width: 768px) {
+      .mag-lp h1 { font-size: 2.5rem; }
+      .mag-lp h2 { font-size: 1.8rem; }
+      .mag-lp .story-title { font-size: 1.6rem; }
+      .mag-lp .feature-grid, .mag-lp .audience-grid, .mag-lp .trust-grid, .mag-lp .creation-grid, .mag-lp .case-grid { grid-template-columns: 1fr; }
+      .mag-lp .hero-grid { flex-direction: column; }
+      .mag-lp .floating-card { display: none; }
+      .mag-lp .pricing-dark { padding: 32px; }
+      .mag-lp .container { padding: 0 24px; }
+      .mag-lp .btn-large { padding: 14px 28px; font-size: 1rem; }
+      .mag-lp .logo { margin-bottom: 24px; }
+    }
+</style></p>
+ 
+<main>
+<section style="padding-top: 100px;">
+ 
+MoneyAbroadGuide
+⭐ PREMIUM EDITION 2026 – Updated for FICO 8/9 &amp; ChexSystems
+<h1>You can have $15,000 in the bank — and still get rejected for a $1,200 apartment.</h1>
+In America, you don’t exist until you have a credit score. I learned it the hard way when I arrived. This guide is the exact system I wish someone had handed me at the airport: from invisible to creditworthy, step by step, starting from zero.
+<a href="https://play.google.com/store/books/details/Talal_Eddaouahiri_Build_Your_Credit_Score_in_the_U?id=2oPjEQAAQBAJ" target="_blank" rel="noopener">Get the guide on Google Play — $19.99 →</a>
+ Step‑by‑step roadmap  For newcomers
+ 
+<img src="https://moneyabroadguide.com/wp-content/uploads/2026/06/ebook-cover-credit-score-usa-2026.jpg" alt="Build Your Credit Score in the USA - 2026 Edition Cover" />
+ 
+ Apartment Approval
+ Credit Card Access
+ Better Loan Terms
+ Financial Opportunities
+ Beginner-Friendly  Updated For 2026  Practical Strategies  Designed For Newcomers
+</section>
+<section style="background-color: var(--gray-bg);">
+<h2 style="text-align: center;">📘 What you’ll learn inside (no fluff)</h2>
+<h3>FICO vs VantageScore</h3>
+<p>How scoring models differ and why free apps may show variations.</p>
+<h3>Secured card strategy</h3>
+<p>How deposit amounts work and what affects credit building.</p>
+<h3>Payment timing</h3>
+<p>Understanding statement closing dates vs due dates.</p>
+<h3>ChexSystems overview</h3>
+<p>How to open bank accounts even with limited history.</p>
+<h3>Authorized user considerations</h3>
+<p>Potential benefits and risks.</p>
+<h3>12‑month roadmap</h3>
+<p>A structured approach to building credit step by step.</p>
+</section>
+<section>
+<h2 style="text-align: center;">👥 Who this guide is for</h2>
+<h3>New Immigrants</h3>
+<p>Arriving with no U.S. credit history.</p>
+<h3>International Students</h3>
+<p>Building from zero, often without SSN.</p>
+<h3>ITIN Holders</h3>
+<p>Alternative tax ID paths to credit.</p>
+<h3>Temporary Workers</h3>
+<p>H-1B, L-1, TN visa holders.</p>
+<h3>Green Card Holders</h3>
+<p>New permanent residents.</p>
+<h3>Starting From Zero</h3>
+<p>No credit file at all.</p>
+<p style="text-align: center; margin-top: 32px; font-weight: 500;">If you are starting from zero in the U.S. credit system, this guide was written for you.</p>
+</section>
+<section>
+🎁 FREE BONUSES (value $97)
+<h2>Your purchase includes 3 exclusive bonuses</h2>
+$49 VALUE
+<h3>Email templates</h3>
+<p>Sample dispute letters (educational use).</p>
+FREE TODAY
+$19 VALUE
+<h3>12‑month tracker</h3>
+<p>Printable score tracker + planner.</p>
+FREE TODAY
+$29 VALUE
+<h3>Secured cards list</h3>
+<p>Examples of cards that may accept ITIN (2026).</p>
+FREE TODAY
+</section>
+<section style="background-color: var(--gray-bg);">
+<img src="https://moneyabroadguide.com/wp-content/uploads/2026/06/talal-eddaouahiri-founder-photo.webp" alt="Talal Eddaouahiri, Founder of MoneyAbroadGuide.com" />
+<h3>Talal Eddaouahiri</h3>
+<p>Founder, MoneyAbroadGuide.com</p>
+ Founder of MoneyAbroadGuide.com
+<p style="margin-top: 16px;">As an immigrant who has lived in Morocco, Spain, and the United States, Talal experienced firsthand the difficulties of navigating the U.S. financial system without a credit history.</p>
+<p style="margin-top: 12px;">He created MoneyAbroadGuide.com to publish educational resources that help newcomers understand banking, credit building, money transfers, and personal finance in North America.</p>
+Immigrant Finance Researcher Cross-Border Banking Specialist Financial Education Publisher
+<h3 style="margin-top: 16px;">Why I Created This Guide</h3>
+<p>When I arrived in the U.S., I had savings, a job offer, and a degree – but I couldn't rent an apartment because I had no credit file. I realized that thousands of newcomers face the same invisible barrier.</p>
+<p style="margin-top: 12px;">This guide compiles what I learned through trial, error, and research: a practical, step-by-step educational framework to understand and build credit in the U.S. system.</p>
+<p style="margin-top: 12px;"><strong>It’s not about magic tricks. It’s about understanding how the system works.</strong></p>
+</section>
+<section>
+<h2 style="text-align: center;">📚 How This Guide Was Created</h2>
+<h3>Research from public financial resources</h3>
+<p>Information drawn from publicly available consumer finance materials and credit bureau guidelines.</p>
+<h3>Review of newcomer banking practices</h3>
+<p>Analysis of common challenges faced by immigrants, students, and temporary workers.</p>
+<h3>Credit-building educational principles</h3>
+<p>Based on widely accepted credit education frameworks, not individual advice.</p>
+This guide does not provide personalized financial, legal, or credit repair advice. Always consult a qualified professional for your specific situation.
+</section>
+<section>
+<h2 style="text-align: center;">📘 Illustrative Newcomer Success Scenarios</h2>
+<p style="text-align: center; margin-bottom: 16px; font-size: 0.9rem; color: var(--text-muted);">These examples are educational illustrations based on common newcomer situations. Individual results may vary.</p>
+🏠
+<h3>New Immigrant</h3>
+<p>No credit history → Apartment rejections.</p>
+<p><strong>Illustrative strategy:</strong> Secured card + utilization management.</p>
+<p><strong>Illustrative outcome:</strong> Improved credit profile over time.</p>
+🎓
+<h3>International Student</h3>
+<p>No SSN, no bank account.</p>
+<p><strong>Illustrative strategy:</strong> ITIN-based approach + secured card.</p>
+<p><strong>Illustrative outcome:</strong> First credit product approved.</p>
+💼
+<h3>New Worker</h3>
+<p>No lending history.</p>
+<p><strong>Illustrative strategy:</strong> 12‑month credit roadmap.</p>
+<p><strong>Illustrative outcome:</strong> Better access to financial products.</p>
+*These are hypothetical scenarios for educational purposes. Past performance does not guarantee future results.
+</section>
+<section style="background-color: var(--gray-bg);">
+<h2 style="text-align: center;">🔒 Why Trust MoneyAbroadGuide?</h2>
+<h3>Independent Educational Publisher</h3>
+<p>No bank or lender affiliations.</p>
+<h3>Research-Based Content</h3>
+<p>Information drawn from public sources and expert analysis.</p>
+<h3>Regularly Updated Guides</h3>
+<p>2026 Edition includes latest FICO models and ChexSystems info.</p>
+<h3>Editorial Review Process</h3>
+<p>Content reviewed for clarity and accuracy.</p>
+<h3>Newcomer-Focused Resources</h3>
+<p>Tailored for immigrants, students, and temporary workers.</p>
+</section>
+<section id="purchase">
+🔥 2026 Edition – Special Launch Price
+<h2 style="color: white; margin-top: 16px;">Start building your credit today</h2>
+<span style="text-decoration: line-through; opacity: 0.6; font-size: 1.5rem; margin-right: 10px;">$29.99</span><span class="price-large">$19.99</span>
+<h3 style="color: var(--gold); font-size: 1.6rem; margin-bottom: 24px;">📦 Everything Included With Your Purchase</h3>
+ 184-page guide  Beginner-Friendly Step-by-Step Framework  Updated for 2026  Read instantly on any device (Google Play Books)  Mobile, Tablet &amp; Desktop Compatible  Bonus Templates Included  Lifetime Updates  Immediate Access After Purchase
+<a id="magBuyButton" href="https://play.google.com/store/books/details/Talal_Eddaouahiri_Build_Your_Credit_Score_in_the_U?id=2oPjEQAAQBAJ" target="_blank" rel="noopener">💳 Buy now – $19.99 →</a>
+ Secure checkout by Google Play · Read on phone, tablet &amp; desktop · 2026 Edition
+</section>
+<section>
+<h2 style="text-align: center;">Frequently asked questions</h2>
+I don’t have a SSN. Does this still work? 
+The guide includes educational strategies using an ITIN and information for those without a SSN. Consult a tax professional for ITIN applications.
+Is this guide updated for 2026? 
+Yes, this edition covers FICO 8/9, ChexSystems, and secured card options as of 2026.
+I just arrived, no credit card at all. Can I use this? 
+Absolutely. The guide starts from the very beginning, assuming no credit history.
+Why pay when there’s free information? 
+Free information can be contradictory. This guide organizes essential strategies into a structured, actionable roadmap.
+</section>
+<section style="background: var(--navy); color: white; text-align: center;">
+<h2 style="color: white;">Your Credit Journey Starts Today</h2>
+<p style="font-size: 1.2rem; margin-bottom: 32px; max-width: 600px; margin-left: auto; margin-right: auto;">The sooner you start building credit, the sooner lenders, landlords, and financial institutions can recognize your profile.</p>
+<p style="font-size: 1.3rem; margin-bottom: 16px;"><span style="text-decoration: line-through; opacity: 0.7;">$29.99</span> <strong>$19.99</strong></p>
+<a href="https://play.google.com/store/books/details/Talal_Eddaouahiri_Build_Your_Credit_Score_in_the_U?id=2oPjEQAAQBAJ" target="_blank" rel="noopener">Get Instant Access – $19.99 →</a>
+</section>
+<footer style="padding: 40px 0;">
+<p> Educational &amp; informational purpose only. MoneyAbroadGuide.com does not provide financial, legal, tax, or credit repair advice. Individual results vary. This guide is for general educational use and does not guarantee any specific credit score outcome.</p>
+<p style="margin-top: 16px;">© 2026 MoneyAbroadGuide.com – All rights reserved.</p>
+</footer></main>
+<p></p>
+<!-- /wp:html -->
