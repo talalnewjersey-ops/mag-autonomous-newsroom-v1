@@ -1,0 +1,44 @@
+name: Update WordPress PHP Code Snippet (write, existing global PHP snippet)
+
+on:
+  workflow_dispatch:
+    inputs:
+      snippet_id:
+        description: "Code Snippets entry ID to update (must be scope=global)"
+        required: true
+      code_file:
+        description: "Path (in this repo checkout) to the file holding the new PHP code"
+        required: true
+      expected_current_length:
+        description: "Expected code_length of the CURRENT live snippet (safety check against concurrent edits)"
+        required: true
+      confirm:
+        description: "Type 'yes' to actually write (safety gate)"
+        required: true
+        default: "no"
+
+# WRITE ACTION: replaces the code of an EXISTING global-scope (PHP) Code
+# Snippets entry. Higher blast radius than update-wp-css-snippet.yml -- this
+# is arbitrary PHP executed sitewide on every page load. Refuses if the
+# snippet isn't scope=global, if its current code length doesn't match
+# expected_current_length (protects against clobbering a concurrent edit),
+# or if confirm != yes.
+jobs:
+  update-snippet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Update PHP snippet
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          SNIPPET_ID: ${{ github.event.inputs.snippet_id }}
+          CODE_FILE: ${{ github.event.inputs.code_file }}
+          EXPECTED_CURRENT_LENGTH: ${{ github.event.inputs.expected_current_length }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: python3 scripts/update_wp_php_snippet.py
