@@ -225,7 +225,8 @@
       "traffic_score": 3,
       "status": "candidate",
       "published_at": null,
-      "post_id": null
+      "post_id": null,
+      "selected_at": null
     },
     {
       "id": "ca-building-credit-from-zero",
