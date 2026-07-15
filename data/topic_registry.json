@@ -39,10 +39,11 @@
       "category": "banques",
       "monetization_score": 5,
       "traffic_score": 4,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null,
-      "selected_at": null
+      "post_id": 48787,
+      "selected_at": "2026-07-15T08:10:10.629748Z",
+      "drafted_at": "2026-07-15T08:18:16.258355Z"
     },
     {
       "id": "us-send-money-to-india",
