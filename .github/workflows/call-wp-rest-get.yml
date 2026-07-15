@@ -1,0 +1,27 @@
+name: Call WordPress REST Route (read-only diagnostic, GET only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      route:
+        description: "REST route to GET, e.g. wp-json/mag-diag/v1/dump-plugin"
+        required: true
+
+# READ-ONLY: authenticated GET against an arbitrary WP REST route. Never
+# writes to WordPress. Generic diagnostic utility.
+jobs:
+  call-route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Call route
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          ROUTE: ${{ github.event.inputs.route }}
+        run: python3 scripts/call_wp_rest_get.py
