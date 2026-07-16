@@ -1,0 +1,37 @@
+name: Set WordPress Page Meta (write, arbitrary meta keys)
+
+on:
+  workflow_dispatch:
+    inputs:
+      page_id:
+        description: "WordPress page ID to update"
+        required: true
+      meta_json:
+        description: "JSON object of meta key/value pairs to set, e.g. {\"site-post-title\":\"disabled\"}"
+        required: true
+      confirm:
+        description: "Type 'yes' to actually write (safety gate for a live page edit)"
+        required: true
+        default: "no"
+
+# WRITE ACTION: sets arbitrary meta key(s) on one PAGE via the standard REST
+# meta update mechanism. Requires the page to currently be 'publish' and
+# requires confirm=yes.
+jobs:
+  set-meta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Set page meta
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          PAGE_ID: ${{ github.event.inputs.page_id }}
+          META_JSON: ${{ github.event.inputs.meta_json }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: python3 scripts/set_wp_page_meta.py
