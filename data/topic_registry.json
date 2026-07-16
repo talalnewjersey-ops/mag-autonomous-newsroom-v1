@@ -223,10 +223,11 @@
       "category": "credit immo",
       "monetization_score": 5,
       "traffic_score": 3,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null,
-      "selected_at": null
+      "post_id": 48803,
+      "selected_at": "2026-07-16T08:13:33.386872Z",
+      "drafted_at": "2026-07-16T08:25:14.797899Z"
     },
     {
       "id": "ca-building-credit-from-zero",
