@@ -1,0 +1,63 @@
+name: "Publish WordPress Draft (write, gated on real QA PASS >= 95)"
+
+# Manual promotion path for a draft produced under draft_only=true (or any
+# draft a human wants to review before it goes live) -- e.g. today's manual
+# runs (production_v2.yml with the default draft_only=true) create a real
+# WordPress draft but never flip it to publish on their own. This workflow
+# reuses scripts/publish_if_qa_passed.py UNCHANGED -- the same single-source-
+# -of-truth gate (real, non-heuristic QA PASS >= PUBLICATION_QUALITY_GATE,
+# imported from agent_12) that scheduled real-auto-publish runs use. It is
+# NOT a bypass: pointing this at a run/article whose qa_report.json didn't
+# clear the real gate simply leaves the post untouched as a draft, same as
+# the automated path (see tests/test_publish_flip_invariant.py).
+#
+# Inputs identify WHICH run's artifact holds the real qa_report.json +
+# wordpress_validation_report.json to gate on -- never a raw score/post_id
+# typed by hand, so this can only ever act on a report a real pipeline run
+# actually produced.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "The production_v2.yml run ID whose artifact holds the article (e.g. 29605350538)"
+        required: true
+      article_num:
+        description: "Article number within that run's artifact"
+        required: true
+        default: "1"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download the run's artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: "nexus14-v4-reports-${{ github.event.inputs.run_id }}"
+          run-id: ${{ github.event.inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: downloaded
+
+      - name: Publish if the real QA report clears the gate
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          ARTICLE_NUM: ${{ github.event.inputs.article_num }}
+        run: |
+          python3 scripts/publish_if_qa_passed.py \
+            --qa-report "downloaded/article_${ARTICLE_NUM}/agent_12/qa_report.json" \
+            --wordpress-report "downloaded/article_${ARTICLE_NUM}/agent_11/wordpress_validation_report.json" \
+            --draft-only "false"
