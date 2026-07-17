@@ -1,16 +1,15 @@
 <?php
 add_action('rest_api_init', function () {
-    register_rest_route('mag-diag/v1', '/lscache-jsexc-fix', [
-        'methods' => 'POST',
+    register_rest_route('mag-diag/v1', '/lscache-jsexc-verify', [
+        'methods' => 'GET',
         'callback' => function () {
-            $before = get_option('litespeed.conf.optm-js_defer_exc');
-            $new = is_array($before) ? $before : [];
-            if (!in_array('wp-i18n', $new, true)) {
-                $new[] = 'wp-i18n';
+            $raw = get_option('litespeed.conf.optm-js_defer_exc');
+            $out = ['raw_type' => gettype($raw), 'raw_value' => $raw];
+            if (class_exists('\LiteSpeed\Conf') && defined('\LiteSpeed\Base::O_OPTM_JS_DEFER_EXC')) {
+                $conf = \LiteSpeed\Conf::get_instance();
+                $out['via_class'] = $conf->conf(\LiteSpeed\Base::O_OPTM_JS_DEFER_EXC);
             }
-            $updated = update_option('litespeed.conf.optm-js_defer_exc', $new);
-            $after = get_option('litespeed.conf.optm-js_defer_exc');
-            return ['before' => $before, 'after' => $after, 'update_result' => $updated];
+            return $out;
         },
         'permission_callback' => '__return_true',
     ]);
