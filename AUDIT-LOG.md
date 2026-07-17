@@ -57,6 +57,19 @@ Ces décisions ont déjà été tranchées sur le prototype. Ne pas les re-déba
 - Anciennes règles à `permission`/boucle retirées. Ne jamais recréer une règle dont la source
   = le propre slug d'un article publié actif (crée une boucle).
 
+### LEÇONS TECHNIQUES TRANSVERSALES (valables pour tout le site, pas que le chantier ebook)
+- **Les pages Elementor ignorent le contenu classique (`post_content`/`content_raw`)** —
+  toujours vérifier le builder actif d'une page (chercher `class="elementor-page..."` dans le
+  HTML rendu, ou `_elementor_data` en meta) AVANT d'y injecter un shortcode ou d'y compter sur
+  une modification de contenu classique. Un shortcode ajouté au contenu classique d'une page
+  Elementor est du code mort silencieux — aucune erreur, juste aucun effet. Repéré le
+  2026-07-17 : la conversion du hook `wp_footer` du snippet 114 en shortcode `[mag_cv3]`
+  fonctionnait sur 46505 (Elementor désactivé) mais a fait disparaître le bloc entier sur 1364
+  et 1369 (tous les deux Elementor) — régression live détectée et corrigée dans la même
+  session (~10 min), voir entrée détaillée plus bas. Pour toute page candidate à un futur
+  changement similaire (contenu injecté par hook plutôt que par shortcode/contenu direct) :
+  vérifier le builder AVANT de toucher au mécanisme d'injection, pas après.
+
 ---
 
 ## ARTICLES TRAITÉS
@@ -101,6 +114,19 @@ Ces décisions ont déjà été tranchées sur le prototype. Ne pas les re-déba
   (USA) et 47851 (Canada) qui l'ont splitté. Décider : garder / fusionner / rediriger.
 - **48236** — build credit score newcomer USA/Canada : contenait le lien mort déjà neutralisé.
 - **Tous les autres articles publiés** (~44) non encore audités.
+- **🆕 CHANTIER SÉPARÉ (2026-07-17) — Fix footer Elementor sur 1364 (USA) et 1369 (Canada)** :
+  ces deux pages ont encore le bug "footer au milieu de page" (le bloc quiz/calculateurs/
+  ressources gratuites du snippet 114 s'affiche après le footer du site). Root cause identique
+  à celle déjà corrigée sur 46505 (ebook), mais ces deux pages sont construites en Elementor
+  — `post_content` y est ignoré par le rendu, donc le fix "shortcode dans le contenu" qui a
+  marché sur 46505 ne s'applique pas ici. Nécessite d'éditer directement leur JSON
+  `_elementor_data` (ajouter un widget Shortcode/HTML appelant `[mag_cv3]` au bon endroit dans
+  la structure Elementor) — mécanisme différent, plus risqué, pas commencé. Décision
+  utilisateur du 2026-07-17 : ne pas y toucher pour l'instant, chantier à ouvrir séparément.
+  Voir la leçon technique correspondante plus haut ("LEÇONS TECHNIQUES TRANSVERSALES").
+- **🆕 Lien mort trouvé au passage (2026-07-17)** : `/newcomers-to-the-usa/` (1364) a un bouton
+  "Get the eBook — $19.99 →" avec `href="#"` — jamais audité, hors périmètre de la session qui
+  l'a repéré (recherche d'un point d'insertion pour le shortcode 114).
 
 ## NOTES TRANSVERSALES (à traiter en passes dédiées, pas article par article)
 - **Yoast** : bannière "Finish your first-time configuration" — vérifier ce que couvre
