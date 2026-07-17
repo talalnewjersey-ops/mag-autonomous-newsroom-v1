@@ -433,7 +433,7 @@ function magShowResult(el, s) {
     if (cta.type === 'ebook' && MAG_EBOOK) {
       html += '<a href="' + MAG_EBOOK + '" target="_blank" rel="noopener" style="display:inline-block;margin:6px;padding:12px 24px;background:#f59e0b;color:#fff;border-radius:8px;text-decoration:none;font-weight:700">' + cta.text + '</a>';
     } else if (cta.type === 'pdf') {
-      html += '<button onclick="magLead(' + JSON.stringify(cta.id) + ')" style="margin:6px;padding:12px 24px;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:15px">' + cta.text + '</button>';
+      html += '<button onclick="magLead(&#39;' + cta.id + '&#39;)" style="margin:6px;padding:12px 24px;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:15px">' + cta.text + '</button>';
     }
   });
   html += '<br><button onclick="magInitQuiz()" style="margin-top:10px;padding:8px 16px;background:none;border:1px solid #6b7280;border-radius:6px;cursor:pointer;color:#6b7280;font-size:13px">Retake Quiz</button>';
