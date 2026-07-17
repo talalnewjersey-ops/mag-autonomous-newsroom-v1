@@ -1,11 +1,19 @@
 // MAG Conversion Optimizer V3
 // Injects quizzes, calculators, lead capture and PDF downloads
 // Target pages: USA (1364), Canada (1369), Ebook Credit Score (46505)
-// Rendered via [mag_cv3] shortcode called explicitly in each page's content
-// (was add_action('wp_footer', ..., 99) until 2026-07-17 -- that made this
-// block render AFTER the theme footer and the EEAT footer snippet, visually
-// pushing the real site footer to mid-page. Auto page-type detection via
-// get_the_ID() is unchanged, only the trigger mechanism changed.)
+//
+// 2026-07-17: 46505 (ebook, Elementor disabled, post_content actually
+// rendered) now uses an explicit [mag_cv3] shortcode placed in its own
+// content -- fixes the old wp_footer(99) hook rendering this block AFTER
+// the theme/EEAT footers (visually pushing the real footer to mid-page).
+//
+// 1364 (USA) and 1369 (Canada) are Elementor-rendered pages -- Elementor
+// ignores post_content/content_raw entirely, so a shortcode placed there
+// never runs. Adding it to their Elementor JSON is a separate, riskier
+// change not done yet. Until then, wp_footer stays active but SCOPED to
+// just these two page IDs so their quiz/calculators/free-resources don't
+// disappear -- 46505 is explicitly excluded since it now renders via the
+// shortcode and would otherwise get the block twice.
 
 add_shortcode('mag_cv3', 'mag_cv3_shortcode');
 
@@ -14,6 +22,12 @@ function mag_cv3_shortcode() {
     mag_cv3_inject();
     return ob_get_clean();
 }
+
+add_action('wp_footer', function () {
+    if (in_array(get_the_ID(), [1364, 1369])) {
+        mag_cv3_inject();
+    }
+}, 99);
 
 function mag_cv3_inject() {
     $pid = get_the_ID();
