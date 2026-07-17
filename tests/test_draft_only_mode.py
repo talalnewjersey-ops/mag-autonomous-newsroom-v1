@@ -12,6 +12,13 @@ skipped entirely, so the existing rollback-to-candidate logic in
 agent_01_seo_research --reconcile takes over unchanged. WordPress drafts
 are still created either way -- this only gates the registry promotion.
 
+2026-07-17 UPDATE: scheduled runs now resolve DRAFT_ONLY to the literal
+"false" (see test_schedule_events_resolve_draft_only_to_false below) --
+manual/workflow_dispatch runs are UNCHANGED, still safe-by-default. Note
+draft_only=false alone still does NOT publish anything live on WordPress --
+that is a separate, additionally-gated action (PUBLICATION_QUALITY_GATE
+real-PASS check), see tests/test_publish_flip_invariant.py.
+
 Offline, no network, no API key.
 """
 import os
@@ -27,13 +34,27 @@ BATCH_LOOP_SCRIPT = open(os.path.join(ROOT, "scripts", "production_batch_loop.sh
 
 def test_draft_only_input_exists_and_defaults_to_true():
     idx = WORKFLOW.index("draft_only:")
-    window = WORKFLOW[idx:idx + 300]
+    window = WORKFLOW[idx:idx + 500]
     assert "type: boolean" in window
     assert "default: true" in window
 
 
 def test_draft_only_env_wired_from_the_dispatch_input():
-    assert "DRAFT_ONLY: ${{ github.event.inputs.draft_only }}" in WORKFLOW
+    # manual/workflow_dispatch runs are still governed by the draft_only
+    # input, unchanged -- only the schedule branch (tested below) differs.
+    assert "|| github.event.inputs.draft_only }}" in WORKFLOW
+
+
+def test_schedule_events_resolve_draft_only_to_the_literal_false():
+    # 2026-07-17: a schedule event has no workflow_dispatch inputs at all
+    # (github.event.inputs.draft_only is empty for it), which
+    # resolve_draft_only() would otherwise fail-safe to "true" -- so the
+    # workflow now gives schedule events the literal "false" directly,
+    # bypassing that fail-safe on purpose. Manual dispatch is untouched.
+    idx = WORKFLOW.index("DRAFT_ONLY:")
+    window = WORKFLOW[idx:idx + 200]
+    assert "github.event_name == 'schedule' && 'false'" in window
+    assert "|| github.event.inputs.draft_only" in window
 
 
 def test_only_the_explicit_literal_false_turns_off_draft_only():

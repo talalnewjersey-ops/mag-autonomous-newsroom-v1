@@ -407,6 +407,17 @@ for ARTICLE_NUM in $(seq 1 "$MAX_ARTICLES"); do
     else
       # SPRINT 9 publish-invariant: terminal marker written ONLY after QA+editor+gate all pass.
       python3 -c "import json,sys; json.dump({'post_id': '${POST_ID}', 'article': ${ARTICLE_NUM}, 'produced': True}, open('${ARTICLE_DIR}/PRODUCED.json','w'))"
+      # REAL PUBLISH (2026-07-17): the ONLY place a WordPress draft is ever
+      # flipped to live 'publish' -- strictly gated inside the script itself
+      # on a real (non-heuristic) QA PASS >= PUBLICATION_QUALITY_GATE (95),
+      # imported from agent_12, never a second hardcoded copy. Best-effort/
+      # non-blocking (same philosophy as mark_qa_failed.py above): a WP API
+      # hiccup here must never fail the batch loop -- the post just stays a
+      # draft if anything about the gate isn't crystal clear.
+      python scripts/publish_if_qa_passed.py \
+        --qa-report "${ARTICLE_DIR}/agent_12/qa_report.json" \
+        --wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_validation_report.json" \
+        --draft-only "${DRAFT_ONLY}" || true
     fi
     echo "SUCCESS: Article ${ARTICLE_NUM} -- WordPress Draft ID: ${POST_ID}"
   } || {

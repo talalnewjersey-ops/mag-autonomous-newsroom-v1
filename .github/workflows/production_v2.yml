@@ -15,19 +15,27 @@
 name: "NEXUS-14 PRODUCTION v4.0 -- Reliability-First"
 
 on:
-  # RODAGE DRAFT-ONLY (2026-07-11): scheduled auto-runs reactivated. The
-  # original SAFETY HOLD's precondition (sprint-9-publish-invariant) was
-  # merged and re-proven in real conditions on 2026-07-10 (AUDIT-LOG.md,
-  # control_publish_invariant.yml run 29128544472) -- the Sprint 6 reconcile
-  # now promotes a topic to "published" only on true post-QA success, never
-  # on agent_11's post_id alone. DRAFT_ONLY still defaults to true for ANY
-  # run without an explicit override (see the Batch Loop step below,
-  # unchanged) -- a scheduled run has no workflow_dispatch inputs at all, so
-  # it always falls into that safe default. No cron can auto-publish during
-  # this rodage phase. Criterion to flip draft_only's default to false: a
-  # satisfactory >=95 QA pass rate sustained over ~1 week of these
-  # draft-only runs, with the STANDARD/PILLAR GATE LENGTH gap and the
-  # meta_description bug fixed in parallel (see AUDIT-LOG.md).
+  # REAL AUTO-PUBLISH (2026-07-17, decided by user): rodage phase closed.
+  # Scheduled cron runs now resolve DRAFT_ONLY to the literal "false" below
+  # (see the Batch Loop step's env block) -- workflow_dispatch/manual runs
+  # are UNCHANGED, still safe-by-default (draft_only input, default true).
+  #
+  # draft_only=false does NOT by itself publish anything live -- it only lets
+  # scripts/production_batch_loop.sh write PRODUCED.json (the registry
+  # bookkeeping marker, unchanged Sprint 9 behavior). The actual WordPress
+  # status flip is a SEPARATE, newly-added gate: scripts/publish_if_qa_passed.py,
+  # called right after PRODUCED.json, which only ever flips a post from draft
+  # to publish when agent_12's qa_report.json is a real (non-heuristic) PASS
+  # at or above PUBLICATION_QUALITY_GATE (95, imported from agent_12 --
+  # tests/test_publish_flip_invariant.py locks this). Any QA outcome short of
+  # that -- FAIL, NEEDS_REVIEW, heuristic-path PASS, missing report -- leaves
+  # the WordPress post as a draft, unconditionally, regardless of draft_only.
+  #
+  # Preconditions this rests on, already proven before this flip: the Sprint
+  # 9 reconcile promotes a topic to "published" (registry bookkeeping) only
+  # on true post-QA success (control_publish_invariant.yml, AUDIT-LOG.md
+  # 2026-07-10), and PUBLICATION_QUALITY_GATE itself was corrected from a
+  # drifted 85 back to the documented 95 hard gate (2026-07-11).
   schedule:
     - cron: "0 6 * * *"
     - cron: "0 13 * * *"
@@ -52,7 +60,7 @@ on:
         required: false
         default: ""
       draft_only:
-        description: "Draft-only (safety default): skip PRODUCED.json so no topic can be promoted to published — WordPress drafts are still created, just never marked producible. Set false only for a real publish run."
+        description: "Draft-only (safety default, MANUAL RUNS ONLY -- scheduled runs ignore this input entirely and resolve to false, see the 'on:' block comment above): skip PRODUCED.json so no topic can be promoted to published — WordPress drafts are still created, just never marked producible. Set false only for a real publish run."
         required: false
         default: true
         type: boolean
@@ -147,7 +155,15 @@ jobs:
           WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
           WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
           TOPIC_OVERRIDE: ${{ github.event.inputs.topic }}
-          DRAFT_ONLY: ${{ github.event.inputs.draft_only }}
+          # REAL AUTO-PUBLISH (2026-07-17): a schedule event has no
+          # workflow_dispatch inputs at all (github.event.inputs.draft_only
+          # is empty), which resolve_draft_only() in production_batch_loop.sh
+          # would otherwise fail-safe to "true" -- so scheduled runs are given
+          # the literal "false" directly here instead. Manual/workflow_dispatch
+          # runs are UNCHANGED: still governed by the draft_only input above
+          # (default true). See the 'on:' block comment for what draft_only=
+          # false does and does NOT do on its own.
+          DRAFT_ONLY: ${{ github.event_name == 'schedule' && 'false' || github.event.inputs.draft_only }}
           FORCE_OPPORTUNITY_TIER: ${{ github.event.inputs.force_opportunity_tier }}
           # FIX (2026-07-12): the OLD inline expression referenced
           # `needs.detect.outputs.max_articles` -- a job named "detect" that

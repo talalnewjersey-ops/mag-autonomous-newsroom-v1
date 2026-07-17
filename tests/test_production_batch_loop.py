@@ -198,6 +198,32 @@ def test_tier_force_flag_empty_value_still_forces_opportunity():
 
 # ---------------------------------------------------------------- workflow wiring
 
+# ---------------------------------------------------------------- publish-flip wiring (2026-07-17)
+
+def test_publish_script_is_only_called_inside_the_non_draft_only_branch():
+    with open(SCRIPT_PATH, encoding="utf-8") as f:
+        src = f.read()
+    produced_idx = src.index("json.dump({'post_id': '${POST_ID}'")
+    else_idx = src.rindex("else", 0, produced_idx)
+    fi_idx = src.index("\n    fi", produced_idx)
+    publish_idx = src.index("python scripts/publish_if_qa_passed.py")
+    # the publish call must be strictly between the "else" (draft_only=false
+    # branch) and its closing "fi" -- i.e. it never runs in draft-only mode.
+    assert else_idx < produced_idx < publish_idx < fi_idx
+
+
+def test_publish_script_is_passed_the_resolved_draft_only_value():
+    with open(SCRIPT_PATH, encoding="utf-8") as f:
+        src = f.read()
+    idx = src.index("python scripts/publish_if_qa_passed.py")
+    window = src[idx:idx + 400]
+    assert '--qa-report "${ARTICLE_DIR}/agent_12/qa_report.json"' in window
+    assert '--wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_validation_report.json"' in window
+    assert '--draft-only "${DRAFT_ONLY}"' in window
+    # non-blocking: a WP hiccup here must never fail the batch loop
+    assert window.strip().endswith("|| true") or "|| true" in window
+
+
 def test_workflow_invokes_the_extracted_script_with_a_short_run_block():
     import yaml
     with open(os.path.join(ROOT, ".github/workflows/production_v2.yml"), encoding="utf-8") as f:
