@@ -79,9 +79,10 @@
       "category": "transferts",
       "monetization_score": 5,
       "traffic_score": 5,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null
+      "post_id": 48842,
+      "drafted_at": "2026-07-17T19:04:11.736928Z"
     },
     {
       "id": "us-send-money-to-philippines",
