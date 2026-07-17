@@ -1162,3 +1162,17 @@ L'utilisateur a récupéré le fichier réel (`moneyabroadguide-fusion-v51-wordp
 
 - L'utilisateur confirme que le CTA final ("Start being seen. Get the guide — $19.99 →") a le même problème que le hero : `href="#pricing"` au lieu du lien Google Play direct.
 - Backup horodaté (`46505-pre-finalcta-fix-...json`) → même fix appliqué (lien direct + `target="_blank" rel="noopener"`, cohérent avec les 2 autres) → déployé → purge (1 échec transitoire, résolu par retry, même schéma récurrent que d'habitude) → vérifié en direct (UA mobile) : **les 3 boutons `.cta-gold` de la page pointent maintenant vers Google Play**. Plus aucun CTA d'achat en `#pricing`.
+
+### 2026-07-17 (suite) — Audit complet sitewide de tous les liens d'achat ebook : 4 nouveaux liens morts trouvés et corrigés (dont 2 via Elementor JSON, première fois)
+
+- **Demande utilisateur** : vérifier TOUS les liens d'achat de l'ebook sur tout le site, confirmer qu'ils redirigent tous vers Google Play.
+- **Méthode** : 17 pages re-fetchées fraîches (articles + pages + hubs), extraction de tous les `<a>` avec texte évoquant un achat ($19.99, "buy", "get the ebook/guide", "purchase", "start being seen"), classification automatique (OK / lien mort / vieux slug mort / pointe ailleurs).
+- **58 liens confirmés OK** (Google Play direct ou vraie page ebook).
+- **4 nouveaux liens morts trouvés, tous corrigés** :
+  1. **`/newcomers-to-the-usa/` (1364)** : bouton principal `href="#"` — page **Elementor**, `content_raw` inutile (confirmé `_elementor_edit_mode=builder`). Corrigé en éditant directement `_elementor_data` (postmeta JSON) via un snippet PHP temporaire dédié : `get_post_meta()` → `str_replace()` exact-count vérifié (1 occurrence) → `update_post_meta()` avec `wp_slash()` (obligatoire, sinon WP strip les backslashes d'échappement JSON) → cache Elementor vidé (`_elementor_css` + `files_manager->clear_cache()`). **Premier fix Elementor du chantier — nouvelle capacité technique, pas juste `content_raw`.**
+  2. **`/newcomers-to-canada/` (1369)** : même bug, même bouton, même fix. Vérifié : 1 occurrence exacte avant écriture.
+  3. **47514 (`best-credit-cards-newcomers-canada-2026`)** : lien vers le même slug mort `/how-to-build-your-credit-score-in-the-usa/` déjà neutralisé sur 3 autres articles (Groupe B) — celui-ci avait été manqué au premier passage. Corrigé avec le même outil `apply-single-post-fix.yml` que le Groupe B original.
+  4. *(rappel, déjà fait avant cette entrée)* : hero CTA + CTA final de la page ebook elle-même, `#pricing` → lien direct.
+- **Vérifié en direct après purge** (re-fetch frais des 2 pages Elementor) : les 2 boutons `.mag-ebook-cta` pointent bien vers Google Play avec `target="_blank" rel="noopener"`, cohérent avec les autres CTA du site.
+- **Trouvé mais PAS corrigé (catégorie différente — pas un lien mort, juste mal étiqueté)** : sur `/newcomers-to-the-usa/` et `/newcomers-to-canada/`, plusieurs liens texte "Get the eBook →" / "Get the Credit-Building eBook →" pointent en réalité vers des ARTICLES (`how-to-build-credit-in-usa-without-ssn`, `building-credit-canada-newcomers-2026`) au lieu de la vraie page ebook. Ces pages existent et sont valides — ce n'est pas un lien cassé, juste une étiquette trompeuse. Signalé, pas traité (hors périmètre "liens morts").
+- **Nettoyage** : snippet de diagnostic/fix temporaire (id=138) désactivé après usage.
