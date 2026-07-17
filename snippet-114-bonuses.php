@@ -354,12 +354,11 @@ function mag_cv3_scripts($pt) {
                 ['q'=>'Do you have a US Social Security Number (SSN)?','opts'=>['Yes','No — applied but waiting','No — have not applied yet','I have an ITIN instead']],
                 ['q'=>'Do you have a US bank account?','opts'=>['Yes — checking and savings','Yes — checking only','No bank account yet','I have an international account']],
                 ['q'=>'Do you have a US credit card?','opts'=>['Yes — unsecured rewards card','Yes — secured credit card','No — never had one','My application was denied']],
-                ['q'=>'Do you have any US credit history?','opts'=>['Yes — 1+ year of history','Some history (under 6 months)','Just starting — under 3 months','No history at all']],
             ],
             'results' => [
-                ['min'=>0,'max'=>1,'level'=>'Starting From Zero','emoji'=>'🌱','color'=>'#e65100','score'=>'200-400','title'=>'Credit Readiness: Beginner','desc'=>'You are at the starting line — and that is perfectly fine! The ebook will give you the exact steps to go from zero to a solid credit score in 12 months.','ctas'=>[['type'=>'ebook','text'=>'Get Full Ebook — $19.99'],['type'=>'pdf','id'=>'ebook-sample','text'=>'Free Sample Chapter']]],
-                ['min'=>2,'max'=>2,'level'=>'Building Foundation','emoji'=>'🚀','color'=>'#1565c0','score'=>'400-600','title'=>'Credit Readiness: Intermediate','desc'=>'You have the basics in place. With the right strategy from the ebook, you can jump to 680+ within 6 months.','ctas'=>[['type'=>'ebook','text'=>'Get Full Ebook — $19.99'],['type'=>'pdf','id'=>'ebook-roadmap','text'=>'Credit Score Roadmap']]],
-                ['min'=>3,'max'=>4,'level'=>'Strong Foundation','emoji'=>'⭐','color'=>'#2e7d32','score'=>'600-750+','title'=>'Credit Readiness: Advanced','desc'=>'Excellent foundation! The ebook will show you how to optimize your strategy for 750+ credit score.','ctas'=>[['type'=>'ebook','text'=>'Get Full Ebook — $19.99'],['type'=>'pdf','id'=>'ebook-mistakes','text'=>'Credit Mistakes to Avoid']]],
+                ['min'=>0,'max'=>0,'level'=>'Starting From Zero','emoji'=>'🌱','color'=>'#e65100','score'=>'200-400','title'=>'Credit Readiness: Beginner','desc'=>'You are at the starting line — and that is perfectly fine! The ebook will give you the exact steps to go from zero to a solid credit score in 12 months.','ctas'=>[['type'=>'ebook','text'=>'Get Full Ebook — $19.99'],['type'=>'pdf','id'=>'ebook-sample','text'=>'Free Sample Chapter']]],
+                ['min'=>1,'max'=>1,'level'=>'Building Foundation','emoji'=>'🚀','color'=>'#1565c0','score'=>'400-600','title'=>'Credit Readiness: Intermediate','desc'=>'You have the basics in place. With the right strategy from the ebook, you can jump to 680+ within 6 months.','ctas'=>[['type'=>'ebook','text'=>'Get Full Ebook — $19.99'],['type'=>'pdf','id'=>'ebook-roadmap','text'=>'Credit Score Roadmap']]],
+                ['min'=>2,'max'=>3,'level'=>'Strong Foundation','emoji'=>'⭐','color'=>'#2e7d32','score'=>'600-750+','title'=>'Credit Readiness: Advanced','desc'=>'Excellent foundation! The ebook will show you how to optimize your strategy for 750+ credit score.','ctas'=>[['type'=>'ebook','text'=>'Get Full Ebook — $19.99'],['type'=>'pdf','id'=>'ebook-mistakes','text'=>'Credit Mistakes to Avoid']]],
             ],
         ],
     ];
@@ -418,23 +417,25 @@ window.magAns = function(i) {
 function magShowResult(el, s) {
   var score = 0;
   s.qz.questions.forEach(function(q, i) {
-    if (s.ans[i] === q.correct) score++;
+    if (s.ans[i] === 0) score++;
   });
-  var total = s.qz.questions.length;
-  var pct = Math.round((score / total) * 100);
-  var level, msg, color;
-  if (pct >= 70) { level = s.qz.results.advanced.label; msg = s.qz.results.advanced.msg; color = '#27ae60'; }
-  else if (pct >= 40) { level = s.qz.results.intermediate.label; msg = s.qz.results.intermediate.msg; color = '#f39c12'; }
-  else { level = s.qz.results.beginner.label; msg = s.qz.results.beginner.msg; color = '#e74c3c'; }
-  var html = '<div style="text-align:center;padding:24px;border:3px solid ' + color + ';border-radius:12px;background:#fff">';
-  html += '<div style="font-size:48px;font-weight:900;color:' + color + '">' + score + ' / ' + total + '</div>';
-  html += '<div style="font-size:22px;font-weight:700;color:' + color + ';margin:8px 0">' + level + '</div>';
-  html += '<p style="color:#374151;margin:12px 0">' + msg + '</p>';
-  if (MAG_EBOOK) {
-    html += '<a href="' + MAG_EBOOK + '" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#f59e0b;color:#fff;border-radius:8px;text-decoration:none;font-weight:700">Get the Complete Ebook ($19.99)</a>';
-  } else {
-    html += '<button onclick="magLead(null)" style="margin-top:16px;padding:12px 24px;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:15px">Download Free Guide</button>';
+  var results = s.qz.results || [];
+  var tier = results[results.length - 1] || {};
+  for (var i = 0; i < results.length; i++) {
+    if (score >= results[i].min && score <= results[i].max) { tier = results[i]; break; }
   }
+  var color = tier.color || '#27ae60';
+  var html = '<div style="text-align:center;padding:24px;border:3px solid ' + color + ';border-radius:12px;background:#fff">';
+  html += '<div style="font-size:40px">' + (tier.emoji || '') + '</div>';
+  html += '<div style="font-size:22px;font-weight:700;color:' + color + ';margin:8px 0">' + (tier.title || tier.level || '') + '</div>';
+  html += '<p style="color:#374151;margin:12px 0">' + (tier.desc || '') + '</p>';
+  (tier.ctas || []).forEach(function(cta) {
+    if (cta.type === 'ebook' && MAG_EBOOK) {
+      html += '<a href="' + MAG_EBOOK + '" target="_blank" rel="noopener" style="display:inline-block;margin:6px;padding:12px 24px;background:#f59e0b;color:#fff;border-radius:8px;text-decoration:none;font-weight:700">' + cta.text + '</a>';
+    } else if (cta.type === 'pdf') {
+      html += '<button onclick="magLead(' + JSON.stringify(cta.id) + ')" style="margin:6px;padding:12px 24px;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:15px">' + cta.text + '</button>';
+    }
+  });
   html += '<br><button onclick="magInitQuiz()" style="margin-top:10px;padding:8px 16px;background:none;border:1px solid #6b7280;border-radius:6px;cursor:pointer;color:#6b7280;font-size:13px">Retake Quiz</button>';
   html += '</div>';
   el.innerHTML = html;

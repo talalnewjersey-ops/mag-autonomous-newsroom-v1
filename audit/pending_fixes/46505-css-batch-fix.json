@@ -1,0 +1,1 @@
+{"post_id": 46505, "old_text": ".on-warm .calc-card input{background:var(--cream);border:1px solid rgba(184,134,46,0.35);color:var(--ink);}\n</style>", "expected_count": 1, "new_text": ".on-warm .calc-card input{background:var(--cream);border:1px solid rgba(184,134,46,0.35);color:var(--ink);}\n[id$=\"-result\"]{color:var(--ink);}\n#colophon{display:none!important;}\n</style>"}
