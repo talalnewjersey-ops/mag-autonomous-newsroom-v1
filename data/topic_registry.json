@@ -162,10 +162,11 @@
       "category": "assurance",
       "monetization_score": 4,
       "traffic_score": 4,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null,
-      "selected_at": null
+      "post_id": 48832,
+      "selected_at": null,
+      "drafted_at": "2026-07-17T18:30:01.364496Z"
     },
     {
       "id": "us-building-credit-itin",
