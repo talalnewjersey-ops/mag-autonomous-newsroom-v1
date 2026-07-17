@@ -1,8 +1,19 @@
 // MAG Conversion Optimizer V3
 // Injects quizzes, calculators, lead capture and PDF downloads
 // Target pages: USA (1364), Canada (1369), Ebook Credit Score (46505)
+// Rendered via [mag_cv3] shortcode called explicitly in each page's content
+// (was add_action('wp_footer', ..., 99) until 2026-07-17 -- that made this
+// block render AFTER the theme footer and the EEAT footer snippet, visually
+// pushing the real site footer to mid-page. Auto page-type detection via
+// get_the_ID() is unchanged, only the trigger mechanism changed.)
 
-add_action('wp_footer', 'mag_cv3_inject', 99);
+add_shortcode('mag_cv3', 'mag_cv3_shortcode');
+
+function mag_cv3_shortcode() {
+    ob_start();
+    mag_cv3_inject();
+    return ob_get_clean();
+}
 
 function mag_cv3_inject() {
     $pid = get_the_ID();
