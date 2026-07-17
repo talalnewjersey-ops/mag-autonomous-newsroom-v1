@@ -157,8 +157,8 @@ function mag_cv3_get_config($pt) {
             'calcs' => ['living'=>'Cost of Living','budget'=>'Monthly Budget','savings'=>'Newcomer Savings'],
         ],
         'ebook' => [
-            'grad' => 'linear-gradient(135deg,#e65100 0%,#f57c00 50%,#ff9800 100%)',
-            'accent' => '#e65100', 'dl_badge' => 'FREE BEFORE YOU BUY',
+            'grad' => 'linear-gradient(135deg,#B8862E 0%,#D4AF37 50%,#F3E5AB 100%)',
+            'accent' => '#B8862E', 'dl_badge' => 'FREE BEFORE YOU BUY',
             'dl_title' => 'Try Before You Buy — 6 Free Resources',
             'dl_sub' => 'Get a taste of the ebook quality — completely free',
             'dl_cta' => 'Download Free Sample',
