@@ -366,6 +366,24 @@ for ARTICLE_NUM in $(seq 1 "$MAX_ARTICLES"); do
     ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
   }
 
+  # Phase 11.5: Anti-Placeholder Gate [BLOCKING GATE D] (2026-07-18, AUDIT-LOG.md)
+  # Runs AFTER agent_11 (needs its real, WordPress-bound title -- see
+  # scripts/placeholder_gate.py's module docstring for why the title check
+  # can't live inside agent_12) and BEFORE agent_12 scoring, so a dropped
+  # template variable is caught before any more pipeline work is spent on
+  # an article that's going to be rejected anyway. Real case that forced
+  # this: 48854 published with 4 body-text placeholder leaks + a broken
+  # Title Case, scored 98.8/100, went out with no human review at all.
+  echo "[${ARTICLE_NUM}] Phase 11.5: Anti-Placeholder Gate [GATE D]"
+  python scripts/placeholder_gate.py \
+    --article "$DRAFT" \
+    --wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_report.json" \
+    --output "${ARTICLE_DIR}/agent_11/placeholder_gate_report.json" || {
+    echo "GATE D FAIL: placeholder artifact(s) detected in article ${ARTICLE_NUM} -- never scoring, never publishing"
+    python scripts/mark_qa_failed.py --wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_validation_report.json" --gate PLACEHOLDER || true
+    ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
+  }
+
   # SPRINT 1 (B/C): Phase 12-13 QA + Chief Editor are now BLOCKING gates.
   echo "[${ARTICLE_NUM}] Phase 12-13: QA + Chief Editor [BLOCKING]"
   python -m agents.agent_12_quality_assurance \

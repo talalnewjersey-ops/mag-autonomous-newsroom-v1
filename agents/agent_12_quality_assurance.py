@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 
 from agents.base_agent import BaseAgent
 from agents._eeat_scoring import audit_eeat, calculate_eeat_score  # single source of truth, shared with agent_06 (2026-07-11)
+from agents._placeholder_scan import scan_body  # anti-placeholder gate, shared with scripts/placeholder_gate.py (2026-07-18)
 from services.llm_service import LLMService
 from services.storage_service import StorageService
 
@@ -117,8 +118,25 @@ class QualityAssuranceAgent(BaseAgent):
             _hc = self.config.get("hallucination", {}) if isinstance(getattr(self, "config", None), dict) else {}
             _halluc_penalty = hallucination_penalty(_hc.get("unsourced_stat_count", 0),
                                                     _hc.get("unbacked_attribution_count", 0))
+            # ANTI-PLACEHOLDER GATE (2026-07-18, AUDIT-LOG.md): a dropped
+            # template variable (dangling connector, fused sentence+link,
+            # missing quantity before "of X", empty <img src>) is a hard
+            # bug, not a partial-credit content-quality judgment call like
+            # hallucination -- ANY finding zeroes the score outright rather
+            # than deducting points, guaranteeing it can never reach
+            # PUBLICATION_QUALITY_GATE (95). Real case: 48854 scored 98.8/100
+            # on form despite 4 sentence-level placeholder leaks. This can
+            # only see body text (article_data["article_content"], the
+            # agent_04 markdown this class already has) -- it CANNOT catch a
+            # broken-Title-Case bug introduced downstream at agent_11 (48854's
+            # own markdown title was already correct; the corruption happened
+            # after this agent's title source was read). That gap is covered
+            # separately by scripts/placeholder_gate.py, which runs after
+            # agent_11 and checks the real WordPress-bound title.
+            _placeholder_findings = scan_body(article_data.get("article_content", ""))
+            _placeholder_penalty = placeholder_penalty(len(_placeholder_findings))
             form_overall = overall_score
-            overall_score = max(0.0, round(overall_score - _halluc_penalty, 1))
+            overall_score = max(0.0, round(overall_score - _halluc_penalty - _placeholder_penalty, 1))
 
             # Compile QA report
             qa_report = {
@@ -151,15 +169,21 @@ class QualityAssuranceAgent(BaseAgent):
                 "content_details": content_check,
                 
                 # Issues and recommendations
-                "critical_issues": self._identify_critical_issues(seo_check, eeat_check, faq_check, image_check, link_check),
+                "critical_issues": self._identify_critical_issues(seo_check, eeat_check, faq_check, image_check, link_check)
+                    + ([f"CRITICAL: {len(_placeholder_findings)} placeholder artifact(s) detected -- "
+                        f"{', '.join(sorted({f['type'] for f in _placeholder_findings}))}"] if _placeholder_findings else []),
                 "recommendations": self._generate_recommendations(seo_check, eeat_check, image_check),
-                
+
                 # SPRINT 10: hallucination transparency + single explicit PASS gate
                 # (PUBLICATION_QUALITY_GATE, see module-level constant above)
                 "form_overall_score": form_overall,
                 "hallucination_penalty": _halluc_penalty,
                 "unsourced_stat_count": _hc.get("unsourced_stat_count", 0),
                 "unbacked_attribution_count": _hc.get("unbacked_attribution_count", 0),
+                # ANTI-PLACEHOLDER GATE (2026-07-18): see comment at the penalty
+                # call site above for why this is a full-cap, not a deduction.
+                "placeholder_penalty": _placeholder_penalty,
+                "placeholder_findings": _placeholder_findings,
                 "status": "PASS" if overall_score >= PUBLICATION_QUALITY_GATE else "NEEDS_REVIEW"
             }
             
@@ -495,6 +519,17 @@ def hallucination_penalty(unsourced_stat_count: int, unbacked_attribution_count:
     return min(cap, 8 * max(0, unsourced_stat_count) + 15 * max(0, unbacked_attribution_count))
 
 
+def placeholder_penalty(finding_count: int, cap: int = 100) -> int:
+    """2026-07-18 (AUDIT-LOG.md): unlike hallucination_penalty's graduated
+    deduction, a placeholder artifact is a pure generation bug, not a content-
+    quality judgment call -- ANY finding zeroes the score outright (full cap,
+    not a partial one). Real case: 48854 scored form_overall_score=98.8/100
+    with 4 placeholder leaks still in the body; a graduated penalty in the
+    hallucination_penalty style could still have cleared 95 on a longer
+    article with only one leak. Zero tolerance is the correct bar here."""
+    return cap if finding_count > 0 else 0
+
+
 def main():
     """CLI entry point for workflow execution."""
     import argparse, sys, json, logging, os, re
@@ -625,7 +660,10 @@ def main():
 
         # SPRINT 10: hallucinations fail the heuristic gate too -- no path escapes.
         _hp = hallucination_penalty(halluc["unsourced_stat_count"], halluc["unbacked_attribution_count"])
-        overall_pass = passes_words and passes_faq and passes_images and _hp == 0
+        # ANTI-PLACEHOLDER GATE (2026-07-18): same zero-tolerance rule as the
+        # DI path above -- no path escapes here either.
+        _placeholder_findings = scan_body(content)
+        overall_pass = passes_words and passes_faq and passes_images and _hp == 0 and not _placeholder_findings
         seo_score = 75 if passes_words else 50
         eeat_score = 75 if passes_words else 50
 
@@ -636,6 +674,7 @@ def main():
             "hallucination_penalty": _hp,
             "unsourced_stat_count": halluc["unsourced_stat_count"],
             "unbacked_attribution_count": halluc["unbacked_attribution_count"],
+            "placeholder_findings": _placeholder_findings,
             "overall_score": seo_score,
             "seo_score": seo_score,
             "eeat_score": eeat_score,
