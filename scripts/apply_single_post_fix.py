@@ -15,7 +15,7 @@ Safety, per the user's explicit rules for this workstream:
     single, identical, verbatim artifact repeated within ONE article
     (e.g. a literal "<p>---</p>" markdown-separator leak appearing many
     times) -- never for distinct texts across multiple articles.
-  - Two fix-file shapes, mutually exclusive:
+  - Three fix-file shapes, mutually exclusive:
       1. {"post_id", "old_text", "expected_count", "new_text"?} -- replace
          an exact, verified-count substring in the post's raw CONTENT with
          `new_text` (defaults to "" -- a pure removal -- when omitted; e.g.
@@ -24,7 +24,13 @@ Safety, per the user's explicit rules for this workstream:
       2. {"post_id", "set_excerpt": "..."} -- set the post's EXCERPT field
          to an explicit, pre-approved value (used when the issue is an
          empty/auto-generated excerpt, not literal residue to remove).
-  - Never touches title, status, slug, or any other field.
+      3. {"post_id", "set_title": "..."} -- set the post's TITLE field to
+         an explicit, pre-approved value. Added 2026-07-18 at the user's
+         explicit request to fix a generation-bug title (broken Title
+         Case, e.g. "Checklist Usa" instead of "Checklist USA") on a
+         published post -- narrow, deliberate extension of the original
+         "never touches title" boundary below, not a silent bypass of it.
+  - Never touches status, slug, or any other field.
   - Caller is expected to have already written a pre-edit backup (see
     scripts/fetch_one_post.py) before this runs.
 """
@@ -70,6 +76,10 @@ def main():
         result = update_post_field(wp_url, user, app_pw, post_id, "excerpt", fix["set_excerpt"])
         print(f"Updated post {post_id} excerpt.")
         print("New excerpt (rendered):", result.get("excerpt", {}).get("rendered", ""))
+    elif "set_title" in fix:
+        result = update_post_field(wp_url, user, app_pw, post_id, "title", fix["set_title"])
+        print(f"Updated post {post_id} title.")
+        print("New title (rendered):", result.get("title", {}).get("rendered", ""))
     else:
         old_text = fix["old_text"]
         new_text = fix.get("new_text", "")
