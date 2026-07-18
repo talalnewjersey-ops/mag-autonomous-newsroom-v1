@@ -329,9 +329,10 @@
       "category": "banques cartes",
       "monetization_score": 4,
       "traffic_score": 4,
-      "status": "candidate",
-      "published_at": null,
-      "post_id": null
+      "status": "published",
+      "published_at": "2026-07-18T07:58:14.924256Z",
+      "post_id": "48854",
+      "selected_at": "2026-07-18T07:49:34.230270Z"
     },
     {
       "id": "us-payday-vs-credit-builder-loans",
