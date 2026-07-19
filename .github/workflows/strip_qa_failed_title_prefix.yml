@@ -1,0 +1,29 @@
+name: Strip QA-FAILED Title Prefix (write, hotfix)
+
+on:
+  workflow_dispatch:
+    inputs:
+      post_id:
+        description: "WordPress post ID to strip the '[QA-FAILED] ' title prefix from"
+        required: true
+        default: "48870"
+
+# HOTFIX (2026-07-19): fix_and_publish_post.py published post 48870 without
+# stripping the literal '[QA-FAILED] ' prefix baked into its title. This
+# strips it. Refuses unless the title starts with that exact prefix.
+jobs:
+  strip-prefix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Strip prefix
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          POST_ID: ${{ github.event.inputs.post_id }}
+        run: python3 scripts/strip_qa_failed_title_prefix.py
