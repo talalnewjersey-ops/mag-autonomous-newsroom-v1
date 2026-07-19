@@ -203,10 +203,11 @@
       "category": "assur habitation",
       "monetization_score": 4,
       "traffic_score": 4,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null,
-      "selected_at": null
+      "post_id": 48870,
+      "selected_at": "2026-07-19T08:18:14.653772Z",
+      "drafted_at": "2026-07-19T08:30:00.580240Z"
     },
     {
       "id": "us-renters-insurance-newcomers",
