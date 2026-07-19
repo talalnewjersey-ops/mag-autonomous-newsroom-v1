@@ -380,9 +380,10 @@
       "category": "banques cartes",
       "monetization_score": 4,
       "traffic_score": 3,
-      "status": "candidate",
-      "published_at": null,
-      "post_id": null
+      "status": "published",
+      "published_at": "2026-07-19T14:35:13.783072Z",
+      "post_id": "48878",
+      "selected_at": "2026-07-19T14:23:28.817196Z"
     }
   ]
 }
