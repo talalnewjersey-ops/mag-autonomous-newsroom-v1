@@ -1,0 +1,70 @@
+=== DRY-RUN: last 15 non-candidate topics from data/topic_registry.json ===
+(corpus background: 51 published posts, data/corpus_index.json)
+(similarity mode: tfidf_proxy_similarity -- DEGRADED, illustrative only, threshold=0.3)
+
+id                                            status     PriorityScore  max_sim   gate_verdict        
+------------------------------------------------------------------------------------------------------
+us-rent-apartment-no-ssn-credit               published  68.0           0.519     WOULD-FLAG vs 7170  
+ca-intl-students-money-checklist              published  65.0           0.947     WOULD-FLAG vs 48878 
+us-intl-students-money-checklist              published  68.0           0.955     WOULD-FLAG vs 48854 
+us-best-money-transfer-apps-comparison        drafted    76.0           0.585     WOULD-FLAG vs 47999 
+ca-health-mutuelle-new-immigrants             drafted    68.0           0.376     WOULD-FLAG vs 47162 
+us-building-credit-itin                       drafted    71.0           0.524     WOULD-FLAG vs 47510 
+us-first-time-home-buyer-mortgage             drafted    70.0           0.353     WOULD-FLAG vs 48754 
+us-best-banks-immigrants-no-ssn               drafted    73.0           0.512     WOULD-FLAG vs 48870 
+us-health-insurance-f1-j1-students            drafted    73.0           0.666     WOULD-FLAG vs 47092 
+ca-mortgage-for-newcomers                     drafted    70.0           0.418     WOULD-FLAG vs 48803 
+ca-best-credit-cards-newcomers                drafted    73.0           1.0       WOULD-FLAG vs 47514 
+ca-car-insurance-newcomers                    blocked    73.0           0.533     WOULD-FLAG vs 47092 
+ca-send-money-to-from-canada                  drafted    73.0           0.694     WOULD-FLAG vs 46707 
+ca-best-newcomer-bank-accounts                drafted    73.0           0.492     WOULD-FLAG vs 46779 
+us-best-credit-cards-no-ssn                   published  76.0           0.702     WOULD-FLAG vs 46281 
+
+=== Full PriorityScore breakdown for the single most recent topic ===
+{
+  "topic_id": "us-rent-apartment-no-ssn-credit",
+  "score": 68.0,
+  "breakdown": {
+    "revenue": {
+      "value": 4.0,
+      "weight": 0.25,
+      "contribution": 20.0,
+      "basis": "monetization_score=4 from topic_registry.json (measured, repo-native)"
+    },
+    "winnability": {
+      "value": 3.0,
+      "weight": 0.25,
+      "contribution": 15.0,
+      "basis": "[estimation: no GSC/keyword-tool feed wired in -- neutral default 3/5, TODO fill from GSC]"
+    },
+    "intent_fit": {
+      "value": 4.0,
+      "weight": 0.15,
+      "contribution": 12.0,
+      "basis": "traffic_score=4 used as a rough proxy (measured field, but traffic_score != intent-match, TODO replace)"
+    },
+    "authority_contribution": {
+      "value": 3.0,
+      "weight": 0.1,
+      "contribution": 6.0,
+      "basis": "[estimation: no internal-links graph consulted -- neutral default 3/5]"
+    },
+    "cannibalization_safety": {
+      "value": 3.0,
+      "weight": 0.15,
+      "contribution": 9.0,
+      "basis": "[estimation: no similarity check run for this factor computation]"
+    },
+    "freshness": {
+      "value": 3.0,
+      "weight": 0.1,
+      "contribution": 6.0,
+      "basis": "[estimation: no content-age/SERP-freshness signal wired in -- neutral default 3/5]"
+    }
+  }
+}
+
+NOTE: no line above changes anything in data/topic_registry.json or on
+WordPress. This script only reads and prints. See agent_01_seo_research.py's
+PRIORITY_ENGINE_DRY_RUN hook for where this would eventually plug into the
+real selection loop -- also log-only in this proposal, not applied.

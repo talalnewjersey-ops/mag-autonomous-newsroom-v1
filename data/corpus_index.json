@@ -1,0 +1,262 @@
+{
+  "_comment": "Cheap, one-time corpus index built from WP REST wp/v2/posts (title+slug), read-only. Built 2026-07-19 for the Task 4 cannibalization-gate proposal. Rebuild via scripts/build_corpus_index.py whenever the live post count changes materially.",
+  "built_at": "2026-07-19T15:50:00Z",
+  "post_count": 51,
+  "posts": [
+    {
+      "post_id": 48870,
+      "slug": "best-how-to-rent-an-apartment-without-ssn-or-credit-complete-guide-for-usa-immigrants-2026",
+      "title": "Best How To Rent An Apartment Without SSN Or Credit: Complete Guide for USA Immigrants (2026)"
+    },
+    {
+      "post_id": 48878,
+      "slug": "best-international-students-in-canada-money-checklist-complete-guide-for-canada-immigrants-2026",
+      "title": "Best International Students In Canada Money Checklist: Complete Guide for Canada Immigrants (2026)"
+    },
+    {
+      "post_id": 48854,
+      "slug": "best-international-students-money-setup-checklist-usa-complete-guide-for-usa-immigrants-2026",
+      "title": "Best International Students Money Setup Checklist USA: Complete Guide for USA Immigrants (2026)"
+    },
+    {
+      "post_id": 48842,
+      "slug": "best-wise-vs-xe-vs-ofx-vs-remitly-complete-guide-for-usa-immigrants-2026",
+      "title": "Best Wise Vs Xe Vs Ofx Vs Remitly: Complete Guide for USA Immigrants (2026)"
+    },
+    {
+      "post_id": 48803,
+      "slug": "best-first-time-home-buyer-mortgage-for-newcomers-complete-guide-for-usa-immigrants-2026",
+      "title": "Best First-Time Home Buyer Mortgage For Newcomers: Complete Guide for USA Immigrants (2026)"
+    },
+    {
+      "post_id": 48740,
+      "slug": "best-cheapest-ways-to-send-money-to-from-canada-complete-guide-for-canada-immigrants-2026",
+      "title": "Best Cheapest Ways To Send Money To From Canada: Complete Guide for Canada Immigrants (2026)"
+    },
+    {
+      "post_id": 48754,
+      "slug": "best-mortgage-for-newcomers-to-canada-complete-guide-for-canada-immigrants-2026",
+      "title": "Best Mortgage For Newcomers To Canada: Complete Guide for Canada Immigrants (2026)"
+    },
+    {
+      "post_id": 48747,
+      "slug": "best-credit-cards-for-newcomers-in-canada-complete-guide-for-canada-immigrants-2026",
+      "title": "Best Credit Cards For Newcomers In Canada: Complete Guide for Canada Immigrants (2026)"
+    },
+    {
+      "post_id": 48733,
+      "slug": "best-newcomer-bank-accounts-in-canada-complete-guide-for-canada-immigrants-2026",
+      "title": "Best Newcomer Bank Accounts In Canada: Complete Guide for Canada Immigrants (2026)"
+    },
+    {
+      "post_id": 48709,
+      "slug": "best-credit-cards-for-new-immigrants-no-ssn-complete-guide-for-usa-immigrants-2026",
+      "title": "Best Credit Cards For New Immigrants No Ssn: Complete Guide for USA Immigrants (2026)"
+    },
+    {
+      "post_id": 48682,
+      "slug": "best-car-insurance-for-foreign-drivers-and-international-students-complete-guide-for-usa-immigrants-4",
+      "title": "Best Car Insurance For Foreign Drivers And International Students: Complete Guide for USA Immigrants (2026)"
+    },
+    {
+      "post_id": 48384,
+      "slug": "best-high-interest-savings-accounts-for-international-students-in-canada-complete-guide-for-canada-i",
+      "title": "Best High-Interest Savings Accounts For International Students In Canada: Complete Guide for Canada &#8211; International Students Immigrants (2026)"
+    },
+    {
+      "post_id": 47999,
+      "slug": "best-money-transfer-apps-immigrants",
+      "title": "Best Money Transfer Apps for Immigrants (2026 Guide)"
+    },
+    {
+      "post_id": 47884,
+      "slug": "student-bank-account-canada-newcomers-2026",
+      "title": "How to Open a Bank Account in Canada as an International Student (2026 Guide)"
+    },
+    {
+      "post_id": 47869,
+      "slug": "tfsa-newcomers-canada-2026",
+      "title": "Best TFSA Accounts for Newcomers to Canada (2026 Guide)"
+    },
+    {
+      "post_id": 47851,
+      "slug": "high-interest-savings-newcomers-canada-2026",
+      "title": "Best High-Interest Savings Accounts for Newcomers to Canada (2026 Guide)"
+    },
+    {
+      "post_id": 47388,
+      "slug": "taxes-new-immigrants-canada-cra-guide-2026",
+      "title": "Taxes for New Immigrants to Canada: Complete CRA Guide (2026)"
+    },
+    {
+      "post_id": 47409,
+      "slug": "best-banks-newcomers-usa-2026",
+      "title": "Best Banks for Newcomers to the USA (2026 Guide)"
+    },
+    {
+      "post_id": 47765,
+      "slug": "rbc-vs-scotiabank-vs-td-newcomers-canada-2026",
+      "title": "RBC vs Scotiabank vs TD for Newcomers Canada 2026: Which Big Bank Wins?"
+    },
+    {
+      "post_id": 47764,
+      "slug": "bank-newcomer-bonus-300-cad-canada-2026",
+      "title": "Best Bank Welcome Bonuses for Newcomers Canada 2026 ($300 CAD Offers Compared)"
+    },
+    {
+      "post_id": 47751,
+      "slug": "cheapest-provinces-canada-immigrants-2026",
+      "title": "Cheapest Provinces to Live in Canada for Immigrants 2026 (Complete Rankings)"
+    },
+    {
+      "post_id": 47722,
+      "slug": "best-banks-iranian-newcomers-canada-2026",
+      "title": "Best Banks for Iranian Newcomers in Canada (2026): Complete Guide"
+    },
+    {
+      "post_id": 47692,
+      "slug": "taxes-for-new-immigrants-to-the-usa-2026",
+      "title": "Taxes for New Immigrants to the USA (2026): Complete IRS Guide"
+    },
+    {
+      "post_id": 47690,
+      "slug": "how-to-get-itin-number-usa-2026",
+      "title": "How to Get an ITIN Number in the USA (2026): Complete Guide for Newcomers"
+    },
+    {
+      "post_id": 47574,
+      "slug": "moving-to-canada-checklist-2026",
+      "title": "Moving to Canada Checklist 2026: Complete Financial &#038; Settlement Guide"
+    },
+    {
+      "post_id": 47572,
+      "slug": "best-phone-plans-newcomers-usa-2026",
+      "title": "Best Phone Plans for Newcomers to the USA (2026)"
+    },
+    {
+      "post_id": 47570,
+      "slug": "first-apartment-usa-new-immigrants-2026",
+      "title": "First Apartment in the USA for New Immigrants (2026 Complete Guide)"
+    },
+    {
+      "post_id": 47567,
+      "slug": "how-to-get-sin-canada-2026",
+      "title": "How to Get a SIN in Canada (2026): Complete Guide for Newcomers"
+    },
+    {
+      "post_id": 47514,
+      "slug": "best-credit-cards-newcomers-canada-2026",
+      "title": "Best Credit Cards for Newcomers in Canada (2026 Complete Guide)"
+    },
+    {
+      "post_id": 47510,
+      "slug": "building-credit-canada-newcomers-2026",
+      "title": "Building Credit in Canada for Newcomers: 2026 Complete Guide"
+    },
+    {
+      "post_id": 47152,
+      "slug": "how-to-build-credit-in-usa-without-ssn",
+      "title": "How to Build Credit in the USA Without a Social Security Number (2026 Complete Guide)"
+    },
+    {
+      "post_id": 47162,
+      "slug": "health-insurance-for-new-immigrants-usa",
+      "title": "Health Insurance for New Immigrants in the USA (2026 Complete Guide)"
+    },
+    {
+      "post_id": 47159,
+      "slug": "best-itin-friendly-bank-accounts-usa",
+      "title": "Best ITIN-Friendly Bank Accounts for New Immigrants in the USA (2026)"
+    },
+    {
+      "post_id": 47080,
+      "slug": "first-apartment-canada-newcomers-2026",
+      "title": "First Apartment in Canada for New Immigrants (2026 Complete Guide)"
+    },
+    {
+      "post_id": 47083,
+      "slug": "best-phone-plans-for-newcomers-to-canada-2026",
+      "title": "Best Phone Plans for Newcomers to Canada (2026)"
+    },
+    {
+      "post_id": 47092,
+      "slug": "health-insurance-newcomers-canada-2026",
+      "title": "Health Insurance for Newcomers in Canada 2026: Complete Guide"
+    },
+    {
+      "post_id": 46669,
+      "slug": "best-high-yield-savings-accounts-newcomers-usa",
+      "title": "Best High-Yield Savings Accounts for Newcomers in the USA (2026 Complete Guide)"
+    },
+    {
+      "post_id": 46779,
+      "slug": "open-bank-account-newcomer-usa-2026",
+      "title": "How to Open a Bank Account as a Newcomer in the USA (2026 Guide)"
+    },
+    {
+      "post_id": 46788,
+      "slug": "itin-vs-ssn-for-newcomers-in-the-usa-complete-2026-guide",
+      "title": "ITIN vs SSN for Newcomers in the USA: Complete 2026 Guide"
+    },
+    {
+      "post_id": 46817,
+      "slug": "us-expat-tax-filing-guide-2026",
+      "title": "US Expat Tax Filing Guide 2026: The Complete Handbook for Americans Living Abroad"
+    },
+    {
+      "post_id": 46652,
+      "slug": "best-apps-to-send-money-internationally-from-canada-2026",
+      "title": "Best Apps To Send Money Internationally From Canada 2026"
+    },
+    {
+      "post_id": 46635,
+      "slug": "wise-vs-remitly-canada-2026",
+      "title": "Wise vs Remitly Canada 2026: Best Alternative for Newcomers (Fees Compared)"
+    },
+    {
+      "post_id": 46707,
+      "slug": "best-way-to-send-money-usa-to-canada-2026",
+      "title": "Send Money from USA to Canada 2026: Cheapest Ways to Transfer (Wise vs Remitly vs Bank Wire)"
+    },
+    {
+      "post_id": 46281,
+      "slug": "best-credit-cards-for-newcomers-usa-2026",
+      "title": "Best Credit Cards for Newcomers in USA 2026 | No SSN Needed"
+    },
+    {
+      "post_id": 7170,
+      "slug": "rent-without-credit-canada",
+      "title": "How to Rent Without Credit History in Canada 2026: No Credit Check Options"
+    },
+    {
+      "post_id": 7164,
+      "slug": "cost-of-living-canada-2026",
+      "title": "Cost of Living in Canada 2026 for New Immigrants &#038; Expats: Real Monthly Budgets"
+    },
+    {
+      "post_id": 1641,
+      "slug": "cost-of-living-usa-2026",
+      "title": "Cost of Living in USA 2026 for New Immigrants &#038; Expats: City-by-City Guide"
+    },
+    {
+      "post_id": 1625,
+      "slug": "canada-budget-planner-2026",
+      "title": "Canada Newcomer Budget Planner 2026 for Immigrants &#038; Expats"
+    },
+    {
+      "post_id": 1624,
+      "slug": "usa-budget-planner-2026",
+      "title": "USA Expat Budget Planner 2026: Monthly Costs Guide"
+    },
+    {
+      "post_id": 1620,
+      "slug": "best-banks-newcomers-canada-2026",
+      "title": "Best Banks for New Immigrants &#038; Newcomers to Canada 2026: Top Picks"
+    },
+    {
+      "post_id": 1500,
+      "slug": "us-bank-interest-tax-nonresident-alien",
+      "title": "US Bank Interest Tax for Non-Resident Aliens 2026: HYSA &#038; Savings Guide"
+    }
+  ]
+}
