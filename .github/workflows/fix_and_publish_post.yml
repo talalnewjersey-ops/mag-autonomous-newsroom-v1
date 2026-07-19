@@ -1,0 +1,31 @@
+name: Fix Ssn Casing and Publish Post 48870 (write, one-off)
+
+on:
+  workflow_dispatch:
+    inputs:
+      post_id:
+        description: "WordPress post ID to fix and publish"
+        required: true
+        default: "48870"
+
+# ONE-OFF TOOL (2026-07-19): fixes the exact 'Ssn' -> 'SSN' title-case defect
+# that blocked post 48870 at GATE D (anti-placeholder gate), then publishes
+# it. Refuses to touch anything unless the live post still contains the
+# broken substring exactly once in both title and content, and unless the
+# post is currently draft/pending/private. See scripts/fix_and_publish_post.py.
+jobs:
+  fix-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Fix casing and publish
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          POST_ID: ${{ github.event.inputs.post_id }}
+        run: python3 scripts/fix_and_publish_post.py
