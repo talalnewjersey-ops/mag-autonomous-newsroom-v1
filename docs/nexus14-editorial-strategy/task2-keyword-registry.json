@@ -1,0 +1,82 @@
+{
+  "_comment": "Primary keyword -> canonical URL assignments for clusters A, B, C, F, G, H per Task 2. Scoped to the consolidation clusters only -- the full 51-post corpus index used by the Task 4 cannibalization gate is built separately (scripts/build_corpus_index.py). No search-volume data source is wired in; keywords here are inferred from live title/meta/content, not measured.",
+  "clusters": {
+    "A": {
+      "primary_keyword": "best money transfer apps for immigrants",
+      "canonical_url": "/best-money-transfer-apps-immigrants/",
+      "post_id": 47999,
+      "role": "USA PILLAR (confirmed DECISION 2, 2026-07-19)",
+      "absorbs": ["/best-wise-vs-xe-vs-ofx-vs-remitly-complete-guide-for-usa-immigrants-2026/"],
+      "corridor_spokes": {
+        "/best-way-to-send-money-usa-to-canada-2026/": {
+          "status": "RE-SCOPED (confirmed DECISION 2, 2026-07-19)",
+          "role": "USA corridor page, sibling of the future India/Philippines/Mexico corridor pages (Task 3 briefs 04-06)",
+          "primary_keyword": "send money from usa to canada",
+          "links_up_to": "/best-money-transfer-apps-immigrants/"
+        }
+      },
+      "explicitly_not_touched": {
+        "cluster": "A-adj (Canada-outbound transfers)",
+        "urls": ["/best-apps-to-send-money-internationally-from-canada-2026/", "/wise-vs-remitly-canada-2026/"],
+        "reason": "DECISION 2, 2026-07-19: distinct origin market (money leaving Canada, not the USA), separate cluster by design -- do not merge with the USA pillar or its corridor spokes. No canonical reassignment, no action.",
+        "internal_cluster_resolution": "RESOLVED 2026-07-19 (task1-decision-aadj-backlink-check.md): KEEP BOTH, no merge within the cluster either. Distinct-intent check passed for wise-vs-remitly-canada-2026 (dedicated head-to-head, 8 internal links vs the roundup's 5, older, longer at 8,917 words) -- the opposite result from the rbc-vs-scotiabank-vs-td check in Cluster F, which failed the same test and got merged.",
+        "primary_keyword_roundup": "best money transfer apps from canada",
+        "roundup_url": "/best-apps-to-send-money-internationally-from-canada-2026/",
+        "primary_keyword_comparison": "wise vs remitly canada",
+        "comparison_url": "/wise-vs-remitly-canada-2026/"
+      }
+    },
+    "B": {
+      "decision": "CONFIRMED, weak signal (backlink check 2026-07-19, task1-decision-bfg-backlink-check.md) -- 7 internal links / 2026-06-14 publish (open-bank-account) vs 8 internal links / 2026-06-22 publish (banks-newcomers-usa). Close to a tie; kept on scope grounds (broader roundup = canonical), not a decisive link-count gap like Cluster C or F.",
+      "primary_keyword": "best banks for newcomers usa",
+      "canonical_url": "/best-banks-newcomers-usa-2026/",
+      "post_id": 47409,
+      "absorbs": ["/open-bank-account-newcomer-usa-2026/"],
+      "secondary_keyword": "itin friendly bank accounts usa",
+      "secondary_canonical_url": "/best-itin-friendly-bank-accounts-usa/",
+      "secondary_post_id": 47159
+    },
+    "C": {
+      "decision": "CONSOLIDATE, corrected 2026-07-19 (supersedes the same-day RE-SCOPE call) -- see task1-decision1-backlink-check.md: best-credit-cards-for-newcomers-usa-2026 has 6 internal inbound links + is older/more indexed + its title tag already targets 'No SSN Needed', vs. 0 internal links on the other page. Consolidating into the stronger, already-linked asset avoids orphaning link equity.",
+      "primary_keyword": "credit cards for itin holders / no ssn",
+      "canonical_url": "/best-credit-cards-for-newcomers-usa-2026/",
+      "post_id": 46281,
+      "absorbs": ["/best-credit-cards-for-new-immigrants-no-ssn-complete-guide-for-usa-immigrants-2026/"],
+      "pre_redirect_action": "graft any card/brand named only in the no-ssn page's content into the canonical page before redirecting, so no unique content is lost",
+      "redirected_into_canonical": {
+        "url": "/best-credit-cards-for-new-immigrants-no-ssn-complete-guide-for-usa-immigrants-2026/",
+        "post_id": 48709,
+        "internal_links": 0
+      }
+    },
+    "F": {
+      "decision": "CONFIRMED, strongest signal of the 4 clusters checked (backlink check 2026-07-19) -- 19 internal links / published 2026-03-05 (4 months older than either competitor) vs 1 link each for the two absorbed pages.",
+      "primary_keyword": "best banks for newcomers canada",
+      "canonical_url": "/best-banks-newcomers-canada-2026/",
+      "post_id": 1620,
+      "absorbs": [
+        "/best-newcomer-bank-accounts-in-canada-complete-guide-for-canada-immigrants-2026/",
+        "/rbc-vs-scotiabank-vs-td-newcomers-canada-2026/"
+      ],
+      "distinct_intent_check": "rbc-vs-scotiabank-vs-td-newcomers-canada-2026 checked for a genuinely separate comparison-query intent (not defaulted to merge) -- rejected: canonical's own SEO title already claims the same 3-way comparison, source has only 1 internal link and is thin (1,244 words). Merge confirmed.",
+      "kept_distinct": {
+        "/student-bank-account-canada-newcomers-2026/": "international student persona, distinct intent, no change"
+      }
+    },
+    "G": {
+      "decision": "CONFIRMED (backlink check 2026-07-19) -- 4 internal links / 2026-06-22 publish vs 1 internal link / 2026-07-13 publish. Consistent signal on both axes.",
+      "primary_keyword": "best credit cards for newcomers canada",
+      "canonical_url": "/best-credit-cards-newcomers-canada-2026/",
+      "post_id": 47514,
+      "absorbs": ["/best-credit-cards-for-newcomers-in-canada-complete-guide-for-canada-immigrants-2026/"]
+    },
+    "H": {
+      "note": "no merge -- all three pages kept as distinct intents per task1 audit. Registered here for completeness only.",
+      "entries": [
+        {"keyword": "high interest savings accounts newcomers canada", "url": "/high-interest-savings-newcomers-canada-2026/", "post_id": 47851},
+        {"keyword": "tfsa newcomers canada", "url": "/tfsa-newcomers-canada-2026/", "post_id": 47869},
+        {"keyword": "high interest savings international students canada", "url": "/best-high-interest-savings-accounts-for-international-students-in-canada-.../", "post_id": 48384, "flag": "title/meta are broken/generic -- needs a data-quality fix, unrelated to cannibalization"}
+      ]
+    }
+  }
+}
