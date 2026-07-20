@@ -1,9 +1,18 @@
-# Task 4 — Pipeline Upgrade Proposal (branch: `nexus14/priority-engine`)
+# Task 4 — Pipeline Upgrade Proposal
 
-**Nothing in this branch is applied to production.** All additions are either new,
-inert files, or additive log-only hooks into existing agents (see the diff summary
-below — `decision`/`blocking`/`pool.sort()` in the touched files are byte-for-byte
-unchanged). Staged locally, not committed, not pushed.
+**Corrected 2026-07-19 (post-review):** this document was originally written on the
+separate `nexus14/priority-engine` branch/worktree, where it describes 6 additions
+including two diffs to existing production agent files. **This copy, committed on
+`nexus14/consolidation`, contains only 4 of those 6** — the standalone, inert files.
+The two production-file diffs (`agent_01_seo_research.py`, `agent_17_cannibalization.py`)
+are **not part of this branch or this PR**. They exist only as uncommitted, local
+changes in the separate `nexus14/priority-engine` worktree, and will be proposed via
+a separate PR from that branch if/when you want to review them. See "What this branch
+actually adds" below for the corrected, accurate list of what's actually here.
+
+**Nothing in this branch is applied to production.** All additions here are new,
+inert files — no hooks into existing agents ship in this branch (see correction
+above). Committed and pushed to `nexus14/consolidation`, not merged.
 
 ## Critical discovery before proposing anything new
 
@@ -62,6 +71,9 @@ embeddings in production, not a working substitute for them.
 
 ## What this branch actually adds
 
+Exactly 4 files, all new, all standalone/inert (nothing hooks into an existing agent
+on this branch):
+
 1. **`agents/_priority_score.py`** — Task 4(a). `PriorityScore = 0.25*Revenue +
    0.25*Winnability + 0.15*IntentFit + 0.10*AuthorityContribution +
    0.15*CannibalizationSafety + 0.10*Freshness`, each factor 0-5, scaled to 0-100.
@@ -74,26 +86,30 @@ embeddings in production, not a working substitute for them.
    `openai_embedding_similarity()` via `text-embedding-3-small` (OPENAI_API_KEY is
    already a configured repo secret, used elsewhere by `generate_drafts.py`).
    Fallback path for when the key is unavailable: `tfidf_proxy_similarity()`, loudly
-   logged as degraded, never silent.
+   logged as degraded, never silent. Not called from anywhere in this branch — it's
+   a standalone module, imported by nothing here.
 
-3. **`agents/agent_17_cannibalization.py` diff** — adds a `semantic_similarity` block
-   to the existing `observation` section of the report. Batches ONE similarity call
-   across all existing titles (not per-article). Does not touch `decision`,
-   `blocking`, `score`, or `conflicts` — those are exactly as they were before this
-   patch. Falls back to the TF-IDF proxy with a loud warning log if no API key.
-
-4. **`agents/agent_01_seo_research.py` diff** — adds a `PRIORITY_ENGINE_DRY_RUN`
-   (default `true`) block inside `_select_from_registry` that computes and logs what
-   PriorityScore-based selection would have picked, and whether it matches the
-   actual (unchanged) monetization/traffic selection. Does not touch `pool.sort()`.
-
-5. **`data/corpus_index.json`** — one-time corpus snapshot (51 published posts,
+3. **`data/corpus_index.json`** — one-time corpus snapshot (51 published posts,
    title+slug), built from the live WP REST API (read-only), same fetch pattern
    agent_17 already uses.
 
-6. **`scripts/dry_run_priority_engine.py`** — standalone, no network calls, reads
+4. **`scripts/dry_run_priority_engine.py`** — standalone, no network calls, reads
    only `data/topic_registry.json` + `data/corpus_index.json`. Actually run this
    session; full output in `task4-dry-run-log.txt` in this same directory.
+
+**Not in this branch** (exist only as uncommitted, local changes on the separate
+`nexus14/priority-engine` worktree — described below for context on the fuller
+proposal, but not part of this PR):
+
+- An `agent_17_cannibalization.py` diff that would add a `semantic_similarity`
+  observation block to its report (additive only — doesn't touch `decision`,
+  `blocking`, `score`, or `conflicts`).
+- An `agent_01_seo_research.py` diff that would add a `PRIORITY_ENGINE_DRY_RUN`
+  (default `true`) log-only block inside `_select_from_registry` — doesn't touch
+  `pool.sort()`.
+
+If you want to review those two, they'd come via a separate PR from
+`nexus14/priority-engine`, not this one.
 
 ## What is explicitly NOT proposed here
 
@@ -121,7 +137,8 @@ embeddings in production, not a working substitute for them.
 
 1. Find out why `AGENT17_OBSERVE_ONLY` / the `# FIX 2` comment exists — check
    `AUDIT-LOG.md` and git history on that line. If it was a false-positive problem,
-   the semantic-similarity addition in this branch may be the actual fix; if it was
+   the semantic-similarity addition proposed for `agent_17_cannibalization.py` (not
+   in this branch — see "Not in this branch" above) may be the actual fix; if it was
    something else (rate limits, cost, a bad incident), that needs its own read before
    re-enabling blocking.
 2. Get `OPENAI_API_KEY` embedding calls actually run against a real batch of

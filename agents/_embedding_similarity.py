@@ -22,9 +22,14 @@ Two implementations, same interface:
     embedding cosine -- do not reuse the 0.86 threshold with this function.
     See PROXY_THRESHOLD below for its own, separately-calibrated cutoff.
 
-Neither function is wired into a blocking decision anywhere by this patch --
-see agent_17_cannibalization.py's diff in this same branch, which only adds
-the score to the existing (already non-blocking, OBSERVE_ONLY) report.
+Neither function is wired into anything by this module itself -- it's a standalone
+utility. The proposed integration point is an additive diff to
+agent_17_cannibalization.py (adds the score to the existing, already non-blocking
+OBSERVE_ONLY report; does not touch decision/blocking/score/conflicts) -- that diff
+lives only as an uncommitted, local change on the separate nexus14/priority-engine
+worktree, not necessarily in whichever branch this copy of this file is on. See
+docs/nexus14-editorial-strategy/task4-priority-engine-proposal.md for the current,
+branch-accurate status of what's actually wired in vs. proposed.
 """
 import math
 import os
