@@ -40,10 +40,17 @@ def _write(tmp_path, registry: dict) -> Path:
 def test_registry_file_valid_28_topics_one_published():
     d = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
     topics = d["topics"]
-    assert len(topics) == 28, "curated table must hold 28 topics"
+    # Production legitimately grows the curated table over time -> do NOT hard-code
+    # an exact count (2026-07-19: went 28 -> 29 with a new, legitimately distinct
+    # topic added, confirmed via a duplicate-id scan, not a data bug). The stable
+    # invariants are: never fewer than the original curated baseline, no duplicate
+    # ids (a real duplicate WOULD indicate data corruption, unlike count growth),
+    # and the seed stays published.
+    assert len(topics) >= 28, "curated table must hold at least the original 28 topics"
+    ids = [t["id"] for t in topics]
+    dupes = {i for i in ids if ids.count(i) > 1}
+    assert not dupes, f"duplicate topic ids found (data corruption, not legitimate growth): {dupes}"
     published_ids = {t["id"] for t in topics if t["status"] == "published"}
-    # Production legitimately publishes topics over time -> do NOT hard-code the
-    # count. The stable invariant is that the pre-marked seed is (and stays) published.
     assert PUBLISHED_SEED_ID in published_ids, "the seed topic must be among published"
     # every candidate carries the two scoring axes 1-5
     for t in topics:
@@ -88,16 +95,28 @@ def test_mark_selected_persists_and_excludes_next_run(tmp_path):
 # ---------- lexicographic priority (monetization > traffic > variety) ----------
 
 def test_first_pick_is_highest_monetization_then_traffic():
+    # Derive the expected max from the topics NOT excluded by status or the
+    # near-duplicate guard -- do NOT hard-code a literal score. The guard can
+    # legitimately remove the nominal highest-monetization candidate from the
+    # real pool (2026-07-19: both M5 "send money to Mexico/Philippines"
+    # candidates were correctly excluded as near-duplicates of the already-
+    # drafted "send money to India" topic -- the guard doing its job, not a
+    # regression; see AUDIT-LOG.md for the 2026-07-13 precedent of the same
+    # dynamic). The tie-break LOGIC itself (monetization can never be bought
+    # back by traffic) is covered robustly with synthetic, drift-proof data in
+    # test_monetization_has_no_compensation below.
     agent = _agent(REAL_REGISTRY)
+    d = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
+    excluded_statuses = {"published", "in_progress", "drafted", "blocked"}
+    used_titles = [t["title"] for t in d["topics"] if t["status"] in excluded_statuses]
+    eligible = [t for t in d["topics"]
+                if t["status"] not in excluded_statuses
+                and not agent._is_near_duplicate(t["title"], used_titles)]
+    expected_max_monetization = max(t["monetization_score"] for t in eligible)
+
     first = agent._select_from_registry(1)[0]
-    assert first["monetization_score"] == 5, "monetization must dominate the first pick"
-    # NOT asserting an exact traffic_score here: 2026-07-13, the real registry's
-    # only M5/T5 candidate ("us-send-money-to-mexico") got correctly excluded as
-    # a near-duplicate title of "us-send-money-to-india" once that topic was
-    # migrated to `drafted` (see AUDIT-LOG.md) -- a live-data specific, not a
-    # code regression. The actual monetization>traffic tie-break LOGIC is
-    # covered robustly with synthetic data in test_monetization_has_no_
-    # compensation below, which doesn't drift with real registry content.
+    assert first["monetization_score"] == expected_max_monetization, \
+        "monetization must dominate the first pick (among the actually-eligible pool)"
 
 
 def test_monetization_has_no_compensation(tmp_path):
@@ -114,15 +133,38 @@ def test_monetization_has_no_compensation(tmp_path):
 
 
 def test_variety_breaks_ties_three_distinct_categories():
-    # Selecting 3 topics should surface >=3 distinct categories (blueprint matrix),
-    # achieved purely as a tie-breaker without violating monetization order.
+    # Selecting topics must never violate monetization order, and must never
+    # pick the same topic twice. Do NOT hard-code an expected category count
+    # against live data: the real pool's category mix legitimately changes as
+    # topics get selected/drafted/published (2026-07-19: after the near-
+    # duplicate guard correctly removed both top-tier "send money" candidates,
+    # only 2 distinct categories remained at the next tier -- a real reflection
+    # of the current pool, not a tie-break bug). The rotation LOGIC itself is
+    # covered robustly with synthetic, drift-proof data in
+    # test_variety_tie_break_rotates_categories_synthetic below.
     agent = _agent(REAL_REGISTRY)
     chosen = agent._select_from_registry(3)
-    cats = {c["category"] for c in chosen}
-    assert len(cats) >= 3, f"expected >=3 distinct categories, got {cats}"
-    # and monetization is non-increasing across the ordered picks
     scores = [c["monetization_score"] for c in chosen]
-    assert scores == sorted(scores, reverse=True)
+    assert scores == sorted(scores, reverse=True), "monetization order must never be violated for variety"
+    assert len({c["id"] for c in chosen}) == len(chosen), "no topic should be selected twice"
+
+
+def test_variety_tie_break_rotates_categories_synthetic(tmp_path):
+    # Synthetic, drift-proof: 3 topics tied on (monetization, traffic) across
+    # 3 distinct categories must all be selectable within the same 3-pick
+    # batch, proving the cat_usage rotation actually diversifies among ties.
+    reg = _write(tmp_path, {"topics": [
+        {"id": "t-a", "title": "Topic A", "market": "USA", "category": "cat-1",
+         "monetization_score": 4, "traffic_score": 3, "status": "candidate"},
+        {"id": "t-b", "title": "Topic B", "market": "USA", "category": "cat-2",
+         "monetization_score": 4, "traffic_score": 3, "status": "candidate"},
+        {"id": "t-c", "title": "Topic C", "market": "USA", "category": "cat-3",
+         "monetization_score": 4, "traffic_score": 3, "status": "candidate"},
+    ]})
+    agent = _agent(reg)
+    chosen = agent._select_from_registry(3)
+    cats = {c["category"] for c in chosen}
+    assert cats == {"cat-1", "cat-2", "cat-3"}, f"expected all 3 tied categories to be picked, got {cats}"
 
 
 # ---------- near-duplicate guard ----------
@@ -134,9 +176,36 @@ def test_near_duplicate_rejected_but_distinct_kept():
     assert agent._is_near_duplicate("building credit in canada from zero!!!", [pub]) is True
     # genuinely different topic sharing a few words -> NOT a duplicate
     assert agent._is_near_duplicate("Building US Credit From Zero With an ITIN", [pub]) is False
-    # and the ITIN topic is actually selectable from the real registry
+    # NOT asserting a specific real-registry topic id stays selectable here:
+    # 2026-07-19, "us-building-credit-itin" (the topic this test used to check)
+    # legitimately moved candidate -> drafted (real WP post 48810, confirmed via
+    # a live 401-not-404 check) as the pipeline processed it -- exactly the
+    # anti-repetition behavior test_published_seed_is_never_selected protects.
+    # The integration path (registry selection respecting the near-dup guard)
+    # is covered without that aging-out risk in the synthetic test below.
+
+
+def test_near_duplicate_guard_integration_synthetic(tmp_path):
+    # Integration-level, drift-proof: a candidate whose title is a near-
+    # rewording of an already-used title must never be selectable; a
+    # genuinely distinct candidate sharing a few words must remain
+    # selectable. Synthetic data so this never ages out as real topics
+    # legitimately move from candidate -> drafted/published over time.
+    reg = _write(tmp_path, {"topics": [
+        {"id": "already-used", "title": "Building Credit in Canada From Zero",
+         "market": "Canada", "category": "credit", "monetization_score": 3,
+         "traffic_score": 3, "status": "drafted"},
+        {"id": "near-dup-of-used", "title": "Building Credit In Canada From Zero!!!",
+         "market": "Canada", "category": "credit", "monetization_score": 5,
+         "traffic_score": 5, "status": "candidate"},
+        {"id": "genuinely-distinct", "title": "Building US Credit From Zero With an ITIN",
+         "market": "USA", "category": "credit builder", "monetization_score": 3,
+         "traffic_score": 3, "status": "candidate"},
+    ]})
+    agent = _agent(reg)
     ids = {c["id"] for c in agent._select_from_registry(99)}
-    assert "us-building-credit-itin" in ids
+    assert "near-dup-of-used" not in ids, "near-rewording of an already-used title must be rejected"
+    assert "genuinely-distinct" in ids, "a genuinely distinct topic must remain selectable"
 
 
 # ---------- output schema ----------
