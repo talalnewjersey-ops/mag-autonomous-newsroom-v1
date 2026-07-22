@@ -5,18 +5,18 @@
 ## 1. Pages de confiance (trust pages)
 Google evalue explicitement leur presence pour juger de la fiabilite du site.
 
-- ✅ About : trouvee (`about`, 695 mots)
-- ✅ Contact : trouvee (`contact`, 254 mots)
-- ✅ Privacy Policy : trouvee (`privacy-policy`, 1197 mots)
-- ✅ Terms : trouvee (`terms-and-conditions`, 989 mots)
-- ✅ Editorial Policy : trouvee (`editorial-policy`, 985 mots)
-- ✅ Affiliate Disclosure : trouvee (`affiliate-disclosure`, 752 mots)
+- ❌ About : **INTROUVABLE** — a creer ou renommer avec un slug standard
+- ❌ Contact : **INTROUVABLE** — a creer ou renommer avec un slug standard
+- ❌ Privacy Policy : **INTROUVABLE** — a creer ou renommer avec un slug standard
+- ❌ Terms : **INTROUVABLE** — a creer ou renommer avec un slug standard
+- ❌ Editorial Policy : **INTROUVABLE** — a creer ou renommer avec un slug standard
+- ❌ Affiliate Disclosure : **INTROUVABLE** — a creer ou renommer avec un slug standard
 - ❌ Disclaimer : **INTROUVABLE** — a creer ou renommer avec un slug standard
 
 ## 2. Profondeur du contenu (site entier)
-- 51 articles publies analyses
-- Longueur moyenne : 4532 mots
-- Min / Max : 1199 / 10620 mots
+- 0 articles publies analyses
+- Longueur moyenne : 0 mots
+- Min / Max : 0 / 0 mots
 - Articles sous le seuil de 800 mots : 0
 
 ## 3. Similarite site-large (seuil d'alerte : 0.45)
@@ -25,28 +25,36 @@ Contrairement au Bloc 1 (limite aux pages Canada), ceci compare TOUS les article
 Aucune paire au-dessus du seuil de 0.45.
 
 ## 4. Signaux E-E-A-T (autorite / fiabilite)
-Articles sans aucun lien vers une source officielle (.gov, IRS, CRA, FDIC...) : 19
+Articles sans aucun lien vers une source officielle (.gov, IRS, CRA, FDIC...) : 0
 
-### Articles sans source autoritaire citee
-- best-money-transfer-apps-immigrants
-- student-bank-account-canada-newcomers-2026
-- tfsa-newcomers-canada-2026
-- taxes-new-immigrants-canada-cra-guide-2026
-- rbc-vs-scotiabank-vs-td-newcomers-canada-2026
-- bank-newcomer-bonus-300-cad-canada-2026
-- cheapest-provinces-canada-immigrants-2026
-- best-banks-iranian-newcomers-canada-2026
-- taxes-for-new-immigrants-to-the-usa-2026
-- how-to-get-itin-number-usa-2026
-- moving-to-canada-checklist-2026
-- best-phone-plans-newcomers-usa-2026
-- first-apartment-usa-new-immigrants-2026
-- best-high-yield-savings-accounts-newcomers-usa
-- wise-vs-remitly-canada-2026
-- cost-of-living-canada-2026
-- cost-of-living-usa-2026
-- canada-budget-planner-2026
-- usa-budget-planner-2026
+## Erreurs rencontrees
+- find_page_by_slugs(about): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/pages?slug=about
+- find_page_by_slugs(about): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/posts?slug=about
+- find_page_by_slugs(about-us): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/pages?slug=about-us
+- find_page_by_slugs(about-us): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/posts?slug=about-us
+- find_page_by_slugs(contact): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/pages?slug=contact
+- find_page_by_slugs(contact): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/posts?slug=contact
+- find_page_by_slugs(contact-us): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/pages?slug=contact-us
+- find_page_by_slugs(contact-us): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/posts?slug=contact-us
+- find_page_by_slugs(privacy-policy): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/pages?slug=privacy-policy
+- find_page_by_slugs(privacy-policy): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/posts?slug=privacy-policy
+- find_page_by_slugs(privacy): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/pages?slug=privacy
+- find_page_by_slugs(privacy): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/posts?slug=privacy
+- find_page_by_slugs(terms): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/pages?slug=terms
+- find_page_by_slugs(terms): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/posts?slug=terms
+- find_page_by_slugs(terms-of-service): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/pages?slug=terms-of-service
+- find_page_by_slugs(terms-of-service): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/posts?slug=terms-of-service
+- find_page_by_slugs(terms-and-conditions): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/pages?slug=terms-and-conditions
+- find_page_by_slugs(terms-and-conditions): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/posts?slug=terms-and-conditions
+- find_page_by_slugs(editorial-policy): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/pages?slug=editorial-policy
+- find_page_by_slugs(editorial-policy): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/posts?slug=editorial-policy
+- find_page_by_slugs(affiliate-disclosure): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/pages?slug=affiliate-disclosure
+- find_page_by_slugs(affiliate-disclosure): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/posts?slug=affiliate-disclosure
+- find_page_by_slugs(disclosure): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/pages?slug=disclosure
+- find_page_by_slugs(disclosure): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/posts?slug=disclosure
+- find_page_by_slugs(disclaimer): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/pages?slug=disclaimer
+- find_page_by_slugs(disclaimer): 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/posts?slug=disclaimer
+- all_published_posts page 1: 504 Server Error: Gateway Time-out for url: https://moneyabroadguide.com/wp-json/wp/v2/posts?per_page=50&page=1&status=publish
 
 ---
 ### Checklist manuelle recommandee avant resoumission
