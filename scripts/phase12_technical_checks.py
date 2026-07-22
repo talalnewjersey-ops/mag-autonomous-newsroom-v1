@@ -93,7 +93,16 @@ def check_sitemap():
 def check_page(url, post_id, slug):
     entry = {"post_id": post_id, "slug": slug, "url": url}
     try:
-        r = SESSION.get(url, allow_redirects=True, timeout=30)
+        r = None
+        last_error = None
+        for attempt in range(1, 3):
+            try:
+                r = SESSION.get(url, allow_redirects=True, timeout=45)
+                break
+            except Exception as e:
+                last_error = e
+                if attempt == 2:
+                    raise last_error
         entry["final_status"] = r.status_code
         entry["redirect_count"] = len(r.history)
         entry["redirect_chain"] = [h.status_code for h in r.history]
@@ -103,21 +112,33 @@ def check_page(url, post_id, slug):
 
         html = r.text
 
+        # Canonical
         canon_match = re.search(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)["\']', html, re.IGNORECASE)
         entry["canonical"] = canon_match.group(1) if canon_match else None
-        if entry["canonical"] and entry["canonical"].rstrip("/") != url.rstrip("/"):
-            entry["issue_canonical_mismatch"] = True
+        if entry["canonical"]:
+            canon_domain = re.sub(r"^https?://", "", entry["canonical"]).split("/")[0]
+            site_domain = re.sub(r"^https?://", "", WP_URL).split("/")[0]
+            if canon_domain != site_domain:
+                # Canonical pointe vers un AUTRE site : vrai probleme potentiel
+                entry["issue_canonical_external"] = True
+            elif entry["canonical"].rstrip("/") != url.rstrip("/"):
+                # Canonical pointe vers une autre page DU MEME site : consolidation
+                # SEO normale et souvent volontaire. Info seulement, pas une "issue_".
+                entry["canonical_points_elsewhere_same_site"] = entry["canonical"]
 
+        # Robots meta
         robots_match = re.search(r'<meta[^>]+name=["\']robots["\'][^>]+content=["\']([^"\']+)["\']', html, re.IGNORECASE)
         entry["robots_meta"] = robots_match.group(1) if robots_match else None
         if entry["robots_meta"] and "noindex" in entry["robots_meta"].lower():
             entry["issue_unexpected_noindex"] = True
 
+        # H1 count (page complete, pas juste post_content)
         h1_count = len(re.findall(r"<h1[\s>]", html, re.IGNORECASE))
         entry["h1_count"] = h1_count
         if h1_count == 0 or h1_count > 1:
             entry["issue_h1_count"] = h1_count
 
+        # Residus markdown / contenu interne visibles publiquement
         text_lower = html.lower()
         leaks = [m for m in INTERNAL_LEAK_MARKERS if m in text_lower]
         if leaks:
@@ -175,6 +196,15 @@ def main():
         lines.append("## Pages en erreur HTTP (ni 200)")
         for p in broken:
             lines.append(f"- {p['slug']} → statut {p.get('final_status')} — {p['url']}")
+        lines.append("")
+
+    consolidations = [p for p in results["pages"] if p.get("canonical_points_elsewhere_same_site")]
+    if consolidations:
+        lines.append("## Info (pas un probleme) — Consolidation SEO detectee")
+        lines.append("Ces pages ont un canonical pointant vers une autre page du meme site "
+                      "(pratique normale pour eviter le duplicate content) :")
+        for p in consolidations:
+            lines.append(f"- {p['slug']} → {p['canonical_points_elsewhere_same_site']}")
         lines.append("")
 
     if issues:
