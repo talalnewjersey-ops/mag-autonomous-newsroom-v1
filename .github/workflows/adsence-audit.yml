@@ -1,0 +1,40 @@
+name: AdSense Audit (Bloc 1 - Lecture seule)
+
+on:
+  schedule:
+    # Tous les jours à 08:00 UTC — adapte l'horaire si besoin
+    - cron: '0 8 * * *'
+  workflow_dispatch: {}   # permet aussi de le lancer manuellement depuis l'onglet Actions
+
+permissions:
+  contents: write   # nécessaire pour committer le rapport dans audit/
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run AdSense audit (read-only)
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+        run: python scripts/adsense_audit.py
+
+      - name: Commit audit report
+        run: |
+          git config user.name "adsense-audit-bot"
+          git config user.email "actions@github.com"
+          git add audit/
+          git diff --staged --quiet || git commit -m "chore(audit): rapport AdSense $(date +%Y-%m-%d)"
+          git push
