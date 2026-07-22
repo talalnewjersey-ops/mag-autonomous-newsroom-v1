@@ -1,0 +1,81 @@
+name: AdSense Correction (Bloc 2/3 - Validation requise)
+
+on:
+  workflow_dispatch:
+    inputs:
+      post_id:
+        description: 'ID du post WordPress a corriger'
+        required: true
+        type: string
+      correction_file:
+        description: 'Chemin du fichier HTML corrige (dans corrections/pending/)'
+        required: true
+        type: string
+      backup_identifier:
+        description: 'Slug ou ID a sauvegarder avant correction (souvent = post_id)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Sauvegarde du contenu actuel (Phase 7)
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+        run: python scripts/adsense_backup.py "${{ inputs.backup_identifier }}"
+
+      - name: Commit la sauvegarde
+        run: |
+          git config user.name "adsense-correction-bot"
+          git config user.email "actions@github.com"
+          git add backups/
+          git diff --staged --quiet || git commit -m "chore(backup): avant correction post ${{ inputs.post_id }}"
+          git push
+
+      - name: Afficher le contenu propose (a relire avant validation)
+        run: |
+          echo "### Fichier de correction propose : ${{ inputs.correction_file }}"
+          echo "### Nombre de caracteres :"
+          wc -c "${{ inputs.correction_file }}"
+          echo "### Premieres lignes :"
+          head -c 2000 "${{ inputs.correction_file }}"
+
+  apply:
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: wordpress-production
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Appliquer la correction (apres validation humaine)
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+        run: python scripts/apply_correction.py "${{ inputs.post_id }}" "${{ inputs.correction_file }}"
