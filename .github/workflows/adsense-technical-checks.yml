@@ -1,0 +1,39 @@
+name: AdSense Technical Checks (Phase 12)
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '0 9 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  technical-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run technical checks (read-only)
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+        run: python scripts/phase12_technical_checks.py
+
+      - name: Commit report
+        run: |
+          git config user.name "adsense-technical-checks-bot"
+          git config user.email "actions@github.com"
+          git add audit/
+          git diff --staged --quiet || git commit -m "chore(technical-checks): rapport $(date +%Y-%m-%d)"
+          git push
