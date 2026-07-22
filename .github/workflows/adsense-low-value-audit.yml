@@ -1,0 +1,37 @@
+name: AdSense Low Value Content Audit
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  low-value-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run low value content audit (read-only)
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+        run: python scripts/low_value_content_audit.py
+
+      - name: Commit report
+        run: |
+          git config user.name "adsense-low-value-audit-bot"
+          git config user.email "actions@github.com"
+          git add audit/
+          git diff --staged --quiet || git commit -m "chore(low-value-audit): rapport $(date +%Y-%m-%d)"
+          git push
