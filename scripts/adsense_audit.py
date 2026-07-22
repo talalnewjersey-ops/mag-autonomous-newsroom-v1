@@ -15,7 +15,11 @@ import json
 import datetime
 import requests
 from requests.auth import HTTPBasicAuth
-
+import socket
+_orig_getaddrinfo = socket.getaddrinfo
+def _force_ipv4(host, port, family=0, type=0, proto=0, flags=0):
+    return _orig_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+socket.getaddrinfo = _force_ipv4
 WP_URL = os.environ["WORDPRESS_URL"].rstrip("/")
 WP_USER = os.environ["WORDPRESS_USERNAME"]
 WP_APP_PASSWORD = os.environ["WORDPRESS_APP_PASSWORD"]
