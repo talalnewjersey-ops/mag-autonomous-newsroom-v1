@@ -1,34 +1,44 @@
 # Rapport d'audit AdSense — 2026-07-22
 
-**Evaluation automatique : PRESQUE PRET**
+**Evaluation automatique : PRET (a confirmer manuellement)**
 
 > Rapport genere automatiquement en LECTURE SEULE via l'API REST WordPress. Aucune modification n'a ete effectuee sur le site. Validation humaine requise avant toute correction (Bloc 2 / Bloc 3).
 
-## Resume — P0: 0 | P1: 5 | P2: 0
+## Resume — P0: 0 | P1: 0 | P2: 0
 
 ### P0 — Urgent
 - Aucun
 
 ### P1 — A traiter
-- Lien mort actif : best-us-banks-for-foreigners-2026-guide
-- taxes-for-new-immigrants-to-the-usa-2026 (NEXUS-14 — a verifier)
-- how-to-build-credit-in-usa-without-ssn (NEXUS-14 — a verifier)
-- open-bank-account-newcomer-usa-2026 (NEXUS-14 — a verifier)
-- us-expat-tax-filing-guide-2026 (NEXUS-14 — a verifier)
+- Aucun
 
 ### P2 — A surveiller
 - Aucun
 
 ## Detail Phase 0 — Site
 ```json
-{}
+{
+  "site_name": "Money Abroad Guide",
+  "site_url": "https://moneyabroadguide.com",
+  "description": "Educational personal finance blog for expats in the USA and Canada. Learn banking, taxes, credit, budgeting, and smart money management.",
+  "note": "Liste des plugins actifs non accessible via REST API standard. A verifier manuellement (wp-admin > Plugins) si necessaire."
+}
 ```
 
 ## Detail Phase 1 — Article USA (best-banks-newcomers-usa-2026)
 ```json
 {
-  "status": "INTROUVABLE",
-  "slug": "best-banks-newcomers-usa-2026"
+  "post_id": 47409,
+  "status": "publish",
+  "modified": "2026-07-20T06:31:45",
+  "word_count": 6442,
+  "h1_count": 0,
+  "h2_count": 14,
+  "h3_count": 39,
+  "table_count": 3,
+  "link_count": 98,
+  "suspicious_phrases_found": [],
+  "internal_leak_markers": []
 }
 ```
 
@@ -36,9 +46,30 @@
 ```json
 {
   "dead_url": "https://moneyabroadguide.com/best-us-banks-for-foreigners-2026-guide/",
-  "http_status": null,
-  "still_broken": "inconnu",
-  "referencing_posts": []
+  "http_status": 200,
+  "still_broken": false,
+  "referencing_posts": [
+    {
+      "id": 47409,
+      "slug": "best-banks-newcomers-usa-2026",
+      "title": "Best Banks for Newcomers to the USA (2026 Guide)"
+    },
+    {
+      "id": 46281,
+      "slug": "best-credit-cards-for-newcomers-usa-2026",
+      "title": "Best Credit Cards for Newcomers in USA 2026 | No SSN Needed"
+    },
+    {
+      "id": 1641,
+      "slug": "cost-of-living-usa-2026",
+      "title": "Cost of Living in USA 2026 for New Immigrants &#038; Expats: City-by-City Guide"
+    },
+    {
+      "id": 1500,
+      "slug": "us-bank-interest-tax-nonresident-alien",
+      "title": "US Bank Interest Tax for Non-Resident Aliens 2026: HYSA &#038; Savings Guide"
+    }
+  ]
 }
 ```
 
@@ -48,7 +79,12 @@
   "pages": [
     {
       "slug": "best-banks-newcomers-canada-2026",
-      "status": "INTROUVABLE"
+      "post_id": 1620,
+      "status": "publish",
+      "title": "Best Banks for New Immigrants &#038; Newcomers to Canada 2026: Top Picks",
+      "word_count": 2805,
+      "h2_count": 13,
+      "table_count": 2
     },
     {
       "slug": "best-banks-newcomers-canada",
@@ -56,14 +92,46 @@
     },
     {
       "slug": "best-newcomer-bank-accounts-in-canada-complete-guide-for-canada-immigrants-2026",
-      "status": "INTROUVABLE"
+      "post_id": 48733,
+      "status": "publish",
+      "title": "Best Newcomer Bank Accounts In Canada: Complete Guide for Canada Immigrants (2026)",
+      "word_count": 4128,
+      "h2_count": 11,
+      "table_count": 2
     },
     {
       "slug": "rbc-vs-scotiabank-vs-td-newcomers-canada-2026",
-      "status": "INTROUVABLE"
+      "post_id": 47765,
+      "status": "publish",
+      "title": "RBC vs Scotiabank vs TD for Newcomers Canada 2026: Which Big Bank Wins?",
+      "word_count": 1244,
+      "h2_count": 8,
+      "table_count": 1
     }
   ],
-  "similarities": []
+  "similarities": [
+    {
+      "pair": [
+        "best-banks-newcomers-canada-2026",
+        "best-newcomer-bank-accounts-in-canada-complete-guide-for-canada-immigrants-2026"
+      ],
+      "jaccard_similarity": 0.275
+    },
+    {
+      "pair": [
+        "best-banks-newcomers-canada-2026",
+        "rbc-vs-scotiabank-vs-td-newcomers-canada-2026"
+      ],
+      "jaccard_similarity": 0.189
+    },
+    {
+      "pair": [
+        "best-newcomer-bank-accounts-in-canada-complete-guide-for-canada-immigrants-2026",
+        "rbc-vs-scotiabank-vs-td-newcomers-canada-2026"
+      ],
+      "jaccard_similarity": 0.136
+    }
+  ]
 }
 ```
 
@@ -72,55 +140,52 @@
 [
   {
     "slug": "taxes-for-new-immigrants-to-the-usa-2026",
-    "status": "INTROUVABLE",
-    "severity": "P1"
+    "post_id": 47692,
+    "word_count": 2532,
+    "h1_count": 0,
+    "suspicious_phrases_found": [],
+    "internal_leak_markers": [],
+    "severity": "P2"
   },
   {
     "slug": "how-to-build-credit-in-usa-without-ssn",
-    "status": "INTROUVABLE",
-    "severity": "P1"
+    "post_id": 47152,
+    "word_count": 6775,
+    "h1_count": 0,
+    "suspicious_phrases_found": [],
+    "internal_leak_markers": [],
+    "severity": "P2"
   },
   {
     "slug": "open-bank-account-newcomer-usa-2026",
-    "status": "INTROUVABLE",
-    "severity": "P1"
+    "post_id": 46779,
+    "word_count": 5751,
+    "h1_count": 0,
+    "suspicious_phrases_found": [],
+    "internal_leak_markers": [],
+    "severity": "P2"
   },
   {
     "slug": "us-expat-tax-filing-guide-2026",
-    "status": "INTROUVABLE",
-    "severity": "P1"
+    "post_id": 46817,
+    "word_count": 8531,
+    "h1_count": 0,
+    "suspicious_phrases_found": [],
+    "internal_leak_markers": [],
+    "severity": "P2"
   }
 ]
 ```
 
-## Detail Phase 5 — Audit global (0 posts scannes)
+## Detail Phase 5 — Audit global (51 posts scannes)
 ```json
 {
-  "total_posts_scanned": 0,
+  "total_posts_scanned": 51,
   "weak_pages": [],
   "internal_leak_pages": [],
   "suspicious_claim_pages": []
 }
 ```
-
-## Erreurs rencontrees pendant l'audit
-- phase0: HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-json/ (Caused by NewConnectionError("HTTPSConnection(host='moneyabroadguide.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
-- find_post_by_slug(best-banks-newcomers-usa-2026): HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-json/wp/v2/posts?slug=best-banks-newcomers-usa-2026 (Caused by NewConnectionError("HTTPSConnection(host='moneyabroadguide.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
-- phase2 curl: HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /best-us-banks-for-foreigners-2026-guide/ (Caused by NewConnectionError("HTTPSConnection(host='moneyabroadguide.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
-- phase2 search: HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-json/wp/v2/posts?search=best-us-banks-for-foreigners-2026-guide&per_page=50 (Caused by NewConnectionError("HTTPSConnection(host='moneyabroadguide.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
-- find_post_by_slug(best-banks-newcomers-canada-2026): HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-json/wp/v2/posts?slug=best-banks-newcomers-canada-2026 (Caused by NewConnectionError("HTTPSConnection(host='moneyabroadguide.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
-- find_post_by_slug(best-banks-newcomers-canada): HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-json/wp/v2/posts?slug=best-banks-newcomers-canada (Caused by NewConnectionError("HTTPSConnection(host='moneyabroadguide.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
-- find_post_by_slug(best-newcomer-bank-accounts-in-canada-complete-guide-for-canada-immigrants-2026): HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-json/wp/v2/posts?slug=best-newcomer-bank-accounts-in-canada-complete-guide-for-canada-immigrants-2026 (Caused by NewConnectionError("HTTPSConnection(host='moneyabroadguide.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
-- find_post_by_slug(rbc-vs-scotiabank-vs-td-newcomers-canada-2026): HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-json/wp/v2/posts?slug=rbc-vs-scotiabank-vs-td-newcomers-canada-2026 (Caused by NewConnectionError("HTTPSConnection(host='moneyabroadguide.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
-- find_post_by_slug(best-banks-newcomers-canada-2026): HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-json/wp/v2/posts?slug=best-banks-newcomers-canada-2026 (Caused by NewConnectionError("HTTPSConnection(host='moneyabroadguide.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
-- find_post_by_slug(best-banks-newcomers-canada): HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-json/wp/v2/posts?slug=best-banks-newcomers-canada (Caused by NewConnectionError("HTTPSConnection(host='moneyabroadguide.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
-- find_post_by_slug(best-newcomer-bank-accounts-in-canada-complete-guide-for-canada-immigrants-2026): HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-json/wp/v2/posts?slug=best-newcomer-bank-accounts-in-canada-complete-guide-for-canada-immigrants-2026 (Caused by NewConnectionError("HTTPSConnection(host='moneyabroadguide.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
-- find_post_by_slug(rbc-vs-scotiabank-vs-td-newcomers-canada-2026): HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-json/wp/v2/posts?slug=rbc-vs-scotiabank-vs-td-newcomers-canada-2026 (Caused by NewConnectionError("HTTPSConnection(host='moneyabroadguide.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
-- find_post_by_slug(taxes-for-new-immigrants-to-the-usa-2026): HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-json/wp/v2/posts?slug=taxes-for-new-immigrants-to-the-usa-2026 (Caused by NewConnectionError("HTTPSConnection(host='moneyabroadguide.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
-- find_post_by_slug(how-to-build-credit-in-usa-without-ssn): HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-json/wp/v2/posts?slug=how-to-build-credit-in-usa-without-ssn (Caused by NewConnectionError("HTTPSConnection(host='moneyabroadguide.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
-- find_post_by_slug(open-bank-account-newcomer-usa-2026): HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-json/wp/v2/posts?slug=open-bank-account-newcomer-usa-2026 (Caused by NewConnectionError("HTTPSConnection(host='moneyabroadguide.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
-- find_post_by_slug(us-expat-tax-filing-guide-2026): HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-json/wp/v2/posts?slug=us-expat-tax-filing-guide-2026 (Caused by NewConnectionError("HTTPSConnection(host='moneyabroadguide.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
-- all_posts page 1: HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-json/wp/v2/posts?per_page=50&page=1&status=publish (Caused by NewConnectionError("HTTPSConnection(host='moneyabroadguide.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable"))
 
 ---
 *Prochaine etape : lire ce rapport, puis lancer le Bloc 2 (sauvegardes + corrections) en session Claude Code supervisee — ce workflow ne corrige rien automatiquement.*
