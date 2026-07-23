@@ -51,7 +51,7 @@ TRUST_PAGE_SLUGS = {
 
 AUTHORITATIVE_DOMAINS = [
     "irs.gov", "cra-arc.gc.ca", "canada.ca", "uscis.gov", "fdic.gov",
-    "consumerfinance.gov", ".gov", "federalreserve.gov",
+    "consumerfinance.gov", ".gov", "federalreserve.gov", ".gc.ca",
 ]
 
 results = {
