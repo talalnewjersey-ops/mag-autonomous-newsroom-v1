@@ -217,9 +217,11 @@
       "category": "assur habitation",
       "monetization_score": 4,
       "traffic_score": 3,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null
+      "post_id": 48938,
+      "selected_at": "2026-07-23T12:40:45.447944Z",
+      "drafted_at": "2026-07-23T12:48:30.101283Z"
     },
     {
       "id": "us-personal-loans-no-credit-history",
@@ -271,7 +273,8 @@
       "traffic_score": 3,
       "status": "candidate",
       "published_at": null,
-      "post_id": null
+      "post_id": null,
+      "selected_at": null
     },
     {
       "id": "ca-mortgage-for-newcomers",
@@ -344,9 +347,11 @@
       "category": "credit builder",
       "monetization_score": 4,
       "traffic_score": 3,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null
+      "post_id": 48931,
+      "selected_at": "2026-07-23T12:32:38.058574Z",
+      "drafted_at": "2026-07-23T12:48:30.101143Z"
     },
     {
       "id": "ca-drivers-license-newcomer",
