@@ -329,7 +329,7 @@ class ImagePromptGeneratorAgent(BaseAgent):
         return {
             "image_type": "featured_image",
             "prompt": prompt,
-            "alt_text": f"Featured: {title[:80]}",
+            "alt_text": f"Editorial photo illustrating {subject} for newcomers",
             "caption": f"Complete guide to {subject}",
             "description": f"Publication-grade featured image for {title[:60]}",
             "keywords": [subject, market, "expat", "newcomer", "finance", "moneyabroadguide"],
@@ -356,7 +356,7 @@ class ImagePromptGeneratorAgent(BaseAgent):
         return {
             "image_type": "comparison_graphic",
             "prompt": prompt,
-            "alt_text": f"Comparison guide: {subject} options for newcomers",
+            "alt_text": f"Comparison chart of {subject} options for newcomers",
             "caption": f"Comparing the best {subject} options",
             "description": f"Professional comparison graphic for {subject} guide",
             "has_existing_table": has_table,
@@ -385,7 +385,7 @@ class ImagePromptGeneratorAgent(BaseAgent):
         return {
             "image_type": "checklist_graphic",
             "prompt": prompt,
-            "alt_text": f"Step-by-step checklist: {subject} guide for {market} newcomers",
+            "alt_text": f"Step-by-step checklist infographic for {subject}",
             "caption": f"Complete {subject} checklist",
             "description": f"Visual checklist infographic for {subject} newcomer guide",
             "steps": section_titles[:5],
@@ -413,7 +413,7 @@ class ImagePromptGeneratorAgent(BaseAgent):
         return {
             "image_type": "process_graphic",
             "prompt": prompt,
-            "alt_text": f"How to {subject}: step-by-step process for newcomers",
+            "alt_text": f"Diagram showing how the {subject} process works",
             "caption": f"How the {subject} process works",
             "description": f"Process flow diagram for {subject} guide",
             "steps": section_titles[:4],
@@ -447,7 +447,7 @@ class ImagePromptGeneratorAgent(BaseAgent):
         return {
             "image_type": "supporting_graphic",
             "prompt": prompt,
-            "alt_text": f"Supporting image: {subject} lifestyle for {market} newcomers",
+            "alt_text": f"Lifestyle photo of a newcomer navigating {subject}",
             "caption": f"Real stories: newcomers navigating {subject}",
             "description": f"Lifestyle supporting image for {subject} newcomer guide",
             "format": "jpg",
