@@ -46,12 +46,6 @@ EXTERNAL_CHECK_SESSION.headers.update({
 
 MARKER = "<!-- official-resources-block -->"
 
-# URLs verifiees MANUELLEMENT (fetch reel hors GitHub Actions, le 23/07/2026).
-# Canada.ca, consumerfinance.gov et fcc.gov bloquent au niveau IP les requetes
-# venant des serveurs GitHub Actions (Azure) — pas un probleme d'URL, un blocage
-# reseau cote gouvernement. Ces URLs sont donc acceptees sans nouvelle verification
-# en direct. Toute URL absente de cette liste continue d'etre verifiee en direct
-# (filet de securite pour les futurs ajouts).
 MANUALLY_VERIFIED_URLS = {
     "https://www.canada.ca/en/financial-consumer-agency.html",
     "https://www.canada.ca/en/financial-consumer-agency/services/banking.html",
@@ -280,4 +274,19 @@ def main():
         counts[r["status"]] = counts.get(r["status"], 0) + 1
         detail = ""
         if r["status"] == "applique":
-            detail = f
+            detail = f" (HTTP {r['http_check']}, section confirmee : {r['marker_confirmed_live']})"
+        elif r["status"] == "bloque_lien_casse":
+            detail = f" (liens casses : {r['broken_links']})"
+        print(f"- {r['slug']} : {r['status']}{detail}")
+
+    print("\n=== Totaux ===")
+    for status_name, count in counts.items():
+        print(f"{status_name} : {count}")
+
+    if apply_changes and counts.get("bloque_lien_casse", 0) > 0:
+        print("\n⚠️ ACTION REQUISE : corrige les URLs cassees dans SOURCES_MAP puis relance "
+              "pour traiter les articles bloques.")
+
+
+if __name__ == "__main__":
+    main()
