@@ -130,8 +130,17 @@ def test_placeholder_gate_cli_reads_image_prompts_flag(tmp_path):
     wp_report = tmp_path / "wordpress_report.json"
     wp_report.write_text(json.dumps({"title": "Best Banks for Newcomers to Canada 2026"}), encoding="utf-8")
     image_prompts = tmp_path / "image_prompts.json"
+    # "prompts" is a DICT keyed by image type (agent_09_image_prompt_generator.py:
+    # prompts = {}; prompts["comparison_graphic"] = ...), confirmed against a real
+    # image_prompts.json (2026-07-23) -- NOT a list. A first version of this
+    # fixture used a list, which matched a first (wrong) implementation and
+    # silently masked the bug; kept as the real shape now, locked in by
+    # test_placeholder_gate_cli_image_prompts_dict_shape_matches_real_agent_09_output
+    # below so this can't regress back to the wrong assumption unnoticed.
     image_prompts.write_text(json.dumps({
-        "prompts": [{"alt_text": "Comparison guide: renters insurance options for newcomers"}]
+        "prompts": {
+            "comparison_graphic": {"alt_text": "Comparison guide: renters insurance options for newcomers"},
+        }
     }), encoding="utf-8")
     output = tmp_path / "report.json"
 
@@ -149,6 +158,42 @@ def test_placeholder_gate_cli_reads_image_prompts_flag(tmp_path):
     report = json.loads(output.read_text())
     assert report["status"] == "FAIL"
     assert report["alt_text_findings"]
+
+
+def test_placeholder_gate_cli_image_prompts_dict_shape_matches_real_agent_09_output(tmp_path):
+    # Regression lock: real image_prompts.json (workflow run 30013499548,
+    # article_1) has "prompts" as a dict of exactly these 5 keys, each value
+    # itself a dict with an "alt_text" field -- this is the ACTUAL output
+    # shape scripts/placeholder_gate.py must handle, not an approximation.
+    article = tmp_path / "draft.md"
+    article.write_text("Clean sentence with no issues at all here.", encoding="utf-8")
+    wp_report = tmp_path / "wordpress_report.json"
+    wp_report.write_text(json.dumps({"title": "Best Banks for Newcomers to Canada 2026"}), encoding="utf-8")
+    image_prompts = tmp_path / "image_prompts.json"
+    image_prompts.write_text(json.dumps({
+        "prompts": {
+            "featured_image": {"alt_text": "Featured: Best Banks for Newcomers to Canada 2026"},
+            "comparison_graphic": {"alt_text": "Comparison guide: renters insurance options for newcomers"},
+            "checklist_graphic": {"alt_text": "Step-by-step checklist: renters insurance guide for usa newcomers"},
+            "process_graphic": {"alt_text": "How to renters insurance: step-by-step process for newcomers"},
+            "supporting_graphic": {"alt_text": "Supporting image: renters insurance lifestyle for usa newcomers"},
+        }
+    }), encoding="utf-8")
+    output = tmp_path / "report.json"
+
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(REPO_ROOT)
+    proc = subprocess.run(
+        [sys.executable, "scripts/placeholder_gate.py",
+         "--article", str(article),
+         "--wordpress-report", str(wp_report),
+         "--image-prompts", str(image_prompts),
+         "--output", str(output)],
+        cwd=str(REPO_ROOT), env=env, capture_output=True, text=True, timeout=30,
+    )
+    assert proc.returncode == 1
+    report = json.loads(output.read_text())
+    assert len(report["alt_text_findings"]) == 4   # every non-featured image type leaks
 
 
 def test_catches_empty_image_src():
@@ -183,6 +228,15 @@ FALSE_POSITIVE_FIXTURES = {
     "blockquote_no_terminal_period": "> See our companion guide: How to Rent Without Credit History in Canada 2026",
     "bolded_step_heading": "**Week 1-2: Identity and Status Foundation**",
     "colon_lead_in_before_list": "Here is what you will need to bring to the appointment:",
+    # 2026-07-23 additions, found on a FRESH live dry-run batch (workflow run
+    # 30013499548) right after the \s* widening landed -- preposition
+    # stranding at a relative clause's end is common, correct English and
+    # was never a template-bug shape; "unit" is "yoo-" pronounced like
+    # "unique"/"university", just missing from the exception list.
+    "preposition_stranding_for_period": "This is the financial footprint landlords and future lenders will look for.",
+    "preposition_stranding_for_comma": "Immigration status directly determines which license type you qualify for, and how long it takes.",
+    "unit_a_an": "Viewing a unit in person before signing anything is strongly recommended for newcomers.",
+    "unit_glued_to_em_dash": "Finding a unit—meaningfully compresses the process for newcomers with limited time.",
 }
 
 

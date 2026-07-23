@@ -75,7 +75,19 @@ def main():
         if img_path.exists():
             try:
                 img_data = json.loads(img_path.read_text(encoding="utf-8"))
-                alt_texts = [p.get("alt_text", "") for p in img_data.get("prompts", [])]
+                # agent_09_image_prompt_generator.py writes "prompts" as a
+                # DICT keyed by image type ({"featured_image": {...}, ...},
+                # confirmed against a real image_prompts.json, not a list --
+                # a first version of this wiring assumed a list, iterated the
+                # dict's string KEYS instead of its values, and crashed on
+                # every real run; the crash was silently swallowed by the
+                # try/except below, so the alt-text check never actually ran
+                # until this was caught (2026-07-23, workflow run
+                # 30013499548). isinstance guard kept for whichever shape a
+                # future agent_09 refactor produces.
+                prompts = img_data.get("prompts", {})
+                entries = prompts.values() if isinstance(prompts, dict) else prompts
+                alt_texts = [p.get("alt_text", "") for p in entries]
                 alt_findings = scan_alt_texts(alt_texts)
             except Exception:
                 alt_findings = []

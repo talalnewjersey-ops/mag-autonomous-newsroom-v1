@@ -47,29 +47,33 @@ from typing import Dict, List
 #    fine; "for" isn't dangling there because it's not followed by
 #    punctuation, but broader connector sets pulled in unrelated noise).
 #
-#    "exceeding"/"totaling"/"averaging"/"reaching" added 2026-07-23 (post
-#    48931 dry-run, "APRs exceeding, according to the CFPB." -- a number
-#    stripped by scripts/soften_claims.py's unsourced-claim removal, whose
-#    backward-only _QUANT list doesn't include these verb-form quantifiers).
-#    All four are transitive verbs that virtually always take a numeric
-#    object in this site's finance prose -- low false-positive risk, same
-#    rationale as the original list.
-_DANGLING_CONNECTORS = ["of", "to", "by", "for", "within", "up to", "at least", "plus",
-                         "exceeding", "totaling", "averaging", "reaching"]
-# Split by punctuation: comma/period scars were observed glued directly to
-# the connector with NO leftover space ("APRs exceeding, according...", added
-# 2026-07-23), so those allow \s*. Colon/semicolon/close-paren keep the
-# original \s+ (space required) -- a bare "word:" with no space is a common,
-# deliberate editorial lead-in on this site ("Best suited for:", "Eligible
-# for:"), confirmed as a real false positive when \s* was tried against the
-# live corpus (2026-07-23); widening it would have broken every comparison
-# section using that label style.
-_DANGLING_PATTERN_TIGHT = re.compile(
-    r"\b(" + "|".join(re.escape(p) for p in _DANGLING_CONNECTORS) + r")\s*[.,]",
+_DANGLING_CONNECTORS = ["of", "to", "by", "for", "within", "up to", "at least", "plus"]
+#
+# "exceeding"/"totaling"/"averaging"/"reaching" added 2026-07-23 (post 48931
+# dry-run, "APRs exceeding, according to the CFPB." -- a number stripped by
+# scripts/soften_claims.py's unsourced-claim removal, whose backward-only
+# _QUANT list didn't include these verb-form quantifiers -- since fixed
+# there too). Kept in a SEPARATE list, not merged into _DANGLING_CONNECTORS:
+# a first attempt widened the shared pattern to \s* (matching a scar glued
+# directly to punctuation with no space) for ALL 12 words and, tested
+# against a fresh live batch (2026-07-23, workflow run 30013499548), that
+# broke on ordinary preposition-stranding English -- "the license type you
+# qualify for.", "landlords will look for.", "which products you apply
+# for." are all grammatically CORRECT sentences ending in a bare
+# preposition (a relative clause with an implied "that/which"), and none of
+# them had a leading space before the period either. Prepositions strand at
+# a clause's end constantly in natural English; verb-form quantifiers like
+# "exceeding"/"totaling" essentially never do (there's no equivalent "what
+# was it exceeding." construction) -- so \s* is safe ONLY for the verb
+# list, not the preposition list, which keeps requiring \s+ (an actual
+# leftover space) exactly as originally designed.
+_DANGLING_VERB_QUANTIFIERS = ["exceeding", "totaling", "averaging", "reaching"]
+_DANGLING_PATTERN_LOOSE_SPACE = re.compile(
+    r"\b(" + "|".join(re.escape(p) for p in _DANGLING_CONNECTORS) + r")\s+[.,;:)]",
     re.IGNORECASE,
 )
-_DANGLING_PATTERN_LOOSE = re.compile(
-    r"\b(" + "|".join(re.escape(p) for p in _DANGLING_CONNECTORS) + r")\s+[;:)]",
+_DANGLING_PATTERN_TIGHT_SPACE = re.compile(
+    r"\b(" + "|".join(re.escape(p) for p in _DANGLING_VERB_QUANTIFIERS) + r")\s*[.,;:)]",
     re.IGNORECASE,
 )
 
@@ -158,7 +162,7 @@ def _has_nearby_digit(text: str, start: int, lookback: int = 40) -> bool:
 
 
 def _find_dangling_connectors(text: str) -> List[Dict]:
-    matches = list(_DANGLING_PATTERN_TIGHT.finditer(text)) + list(_DANGLING_PATTERN_LOOSE.finditer(text))
+    matches = list(_DANGLING_PATTERN_LOOSE_SPACE.finditer(text)) + list(_DANGLING_PATTERN_TIGHT_SPACE.finditer(text))
     return [{
         "type": "dangling_connector",
         "match": m.group(0).strip(),
@@ -284,8 +288,21 @@ _A_AN_EXCEPTIONS = {
     "usual", "usually", "user", "users", "utility", "utilities",
     "university", "universities", "universal", "one", "one-time", "once",
     "european", "europe", "u-visa", "usc",
+    # 2026-07-23 addition (real miss found on a fresh live batch, workflow run
+    # 30013499548): "unit"/"union"/"unify" etc. are also "yoo-" pronounced.
+    # Deliberately NOT a blanket "uni-" prefix rule -- "un-" + a real word
+    # (uninsured, unintended, unimportant, unidentified) is the negation
+    # prefix, genuinely vowel-sound, and must stay flaggable ("a uninsured
+    # driver" is a real bug this insurance-content site could produce).
+    "unit", "units", "union", "unions", "unify", "unified", "unicorn",
+    "unilateral",
 }
-_A_AN_PATTERN = re.compile(r"\ba\s+(\S+)")
+# [^\s—–]+ (not \S+): an em/en-dash used as punctuation is often glued
+# directly to the next word with no space ("a unit—meaningfully compresses
+# the process"), and \S+ would swallow it into the captured token, making
+# "unit—meaningfully" (not in any exception list) instead of "unit" (a
+# known exception) -- real miss found 2026-07-23, workflow run 30013499548.
+_A_AN_PATTERN = re.compile(r"\ba\s+([^\s—–]+)")
 
 
 def _is_a_an_exception(word_lower: str) -> bool:
