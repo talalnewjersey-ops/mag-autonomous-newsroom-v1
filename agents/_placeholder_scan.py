@@ -107,6 +107,33 @@ _VERB_CONNECTOR_PATTERN = re.compile(
 )
 
 # ---------------------------------------------------------------------------
+# 3b. "generates"/"produces" directly touching "of"/"to" -- added 2026-07-23
+#     (post 48931/article_2: "a credit builder loan generates of on-time
+#     payment history", scripts/soften_claims.py stripped a bare duration
+#     number -- e.g. "generates 6 months of X" -- with no preceding
+#     quantifier word to swallow backward, since "generates" isn't one).
+#
+#     Deliberately its OWN small list, NOT folded into _PERMISSION_VERBS:
+#     these two verbs never take a bare "of"/"to" complement in ordinary
+#     English regardless of case ("generates of X" / "produces to X" are
+#     always broken), unlike authorize/allow/permit/grant/provide, which
+#     legitimately take "to" without a number ("permits access to Y") --
+#     that's why detector 3 needs the capitalized-word restriction and this
+#     one doesn't. Stress-tested against 5 real published articles
+#     (2026-07-23): zero matches, so no known false-positive risk yet.
+_OF_TO_VERBS = ["generate", "generates", "produce", "produces"]
+_OF_TO_VERB_PATTERN = re.compile(r"\b(" + "|".join(_OF_TO_VERBS) + r")\s+(of|to)\s+")
+
+
+def _find_of_to_verb(text: str) -> List[Dict]:
+    return [{
+        "type": "missing_quantity_before_of",
+        "match": m.group(0).strip(),
+        "context": text[max(0, m.start() - 20):m.end() + 40].strip(),
+        "position": m.start(),
+    } for m in _OF_TO_VERB_PATTERN.finditer(text)]
+
+# ---------------------------------------------------------------------------
 # 4. A duration-related noun followed by "of" then a capitalized/hyphenated
 #    phrase with no digit anywhere in the next few words -- "authorization
 #    window of U.S.-sourced employment income" instead of "...window of up
@@ -479,6 +506,7 @@ def scan_body(text: str) -> List[Dict]:
     findings += _find_dangling_connectors(text)
     findings += _find_adjacent_connector_pairs(text)
     findings += _find_verb_connector_capitalized(text)
+    findings += _find_of_to_verb(text)
     findings += _find_duration_noun_missing_quantity(text)
     findings += _find_fused_link_sentences(text)
     findings += _find_empty_image_src(text)

@@ -58,6 +58,7 @@ REAL_48931_SENTENCES = {
         "The delayed-access design offers the opposite: delayed access to funds, "
         "but a foundation for"
     ),
+    "generates_of": "That same directed into a credit builder loan generates of on-time payment history",
 }
 
 
@@ -75,7 +76,7 @@ def test_catches_real_48733_bug_found_via_stress_testing():
     assert any(f["type"] == "adjacent_connector_pair" for f in findings)
 
 
-def test_catches_all_three_real_48931_body_bugs():
+def test_catches_all_real_48931_body_bugs():
     for label, sentence in REAL_48931_SENTENCES.items():
         findings = scan_body(sentence)
         assert findings, f"missed real 48931 bug ({label}): {sentence!r}"
