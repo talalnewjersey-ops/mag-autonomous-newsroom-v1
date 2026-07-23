@@ -36,6 +36,17 @@ SESSION = requests.Session()
 SESSION.auth = AUTH
 SESSION.headers.update({"User-Agent": "adsense-source-enrichment-bot/1.0"})
 
+# Session separee pour verifier les liens EXTERNES (.gov, canada.ca...).
+# Ces sites bloquent souvent les User-Agent "bot" avec de faux 404/403 —
+# on utilise donc un User-Agent de navigateur standard, sans l'auth WordPress.
+EXTERNAL_CHECK_SESSION = requests.Session()
+EXTERNAL_CHECK_SESSION.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+})
+
 MARKER = "<!-- official-resources-block -->"
 
 INTRO_VARIANTS = [
@@ -45,7 +56,6 @@ INTRO_VARIANTS = [
     "These government resources offer additional context and the most current official guidance:",
 ]
 
-# Mapping slug -> liste de (libelle, url). A VALIDER/AJUSTER avant --apply.
 SOURCES_MAP = {
     "best-money-transfer-apps-immigrants": [
         ("Consumer Financial Protection Bureau — International Money Transfers", "https://www.consumerfinance.gov/consumer-tools/international-money-transfers/"),
@@ -116,23 +126,28 @@ def find_post_by_slug(slug):
 
 def verify_all_source_links():
     """Verifie CHAQUE url unique du mapping AVANT tout traitement.
+    Utilise un User-Agent de navigateur (EXTERNAL_CHECK_SESSION) car beaucoup
+    de sites .gov bloquent les requetes avec un User-Agent generique de bot.
     Retourne un dict url -> (ok: bool, detail: str)."""
+    import time
+
     all_urls = set()
     for sources in SOURCES_MAP.values():
         for _, url in sources:
             all_urls.add(url)
 
     status = {}
-    print(f"=== Verification de {len(all_urls)} URLs sources uniques ===\n")
+    print(f"=== Verification de {len(all_urls)} URLs sources uniques (User-Agent navigateur) ===\n")
     for url in sorted(all_urls):
         try:
-            r = SESSION.get(url, timeout=20, allow_redirects=True)
+            r = EXTERNAL_CHECK_SESSION.get(url, timeout=25, allow_redirects=True)
             ok = r.status_code == 200
             status[url] = (ok, f"HTTP {r.status_code}" + (f" (apres {len(r.history)} redirection(s))" if r.history else ""))
         except Exception as e:
             status[url] = (False, f"erreur : {e}")
         marker = "✅" if status[url][0] else "❌"
         print(f"{marker} {url} — {status[url][1]}")
+        time.sleep(0.5)
     print("")
     return status
 
