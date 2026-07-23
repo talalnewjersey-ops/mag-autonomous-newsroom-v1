@@ -56,6 +56,7 @@ jobs:
           git config user.email "actions@github.com"
           git add backups/
           git diff --staged --quiet || git commit -m "chore(backup): avant ajout sources officielles (19 articles)"
+          git pull --rebase origin main
           git push
 
       - name: Apercu (dry-run) de ce qui sera ajoute
@@ -123,4 +124,5 @@ jobs:
           git config user.email "actions@github.com"
           git add audit/
           git diff --staged --quiet || git commit -m "chore(verify): controles post-ajout sources officielles $(date +%Y-%m-%d)"
+          git pull --rebase origin main
           git push
