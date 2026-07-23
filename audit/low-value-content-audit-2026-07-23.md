@@ -15,7 +15,7 @@ Google evalue explicitement leur presence pour juger de la fiabilite du site.
 
 ## 2. Profondeur du contenu (site entier)
 - 51 articles publies analyses
-- Longueur moyenne : 4539 mots
+- Longueur moyenne : 4540 mots
 - Min / Max : 1223 / 10620 mots
 - Articles sous le seuil de 800 mots : 0
 
@@ -25,11 +25,7 @@ Contrairement au Bloc 1 (limite aux pages Canada), ceci compare TOUS les article
 Aucune paire au-dessus du seuil de 0.45.
 
 ## 4. Signaux E-E-A-T (autorite / fiabilite)
-Articles sans aucun lien vers une source officielle (.gov, IRS, CRA, FDIC...) : 2
-
-### Articles sans source autoritaire citee
-- best-money-transfer-apps-immigrants
-- canada-budget-planner-2026
+Articles sans aucun lien vers une source officielle (.gov, IRS, CRA, FDIC...) : 0
 
 ---
 ### Checklist manuelle recommandee avant resoumission
