@@ -29,7 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from agents._placeholder_scan import scan_body, scan_title  # noqa: E402
+from agents._placeholder_scan import scan_body, scan_title, scan_alt_texts  # noqa: E402
 
 
 # ============================================================
@@ -48,6 +48,18 @@ REAL_48733_SENTENCE = (
     "to of first arriving in Canada, after which standard account pricing applies."
 )
 
+# 2026-07-23: post 48931 dry-run ("Payday Loans Vs Credit Builder Loans"),
+# scripts/soften_claims.py stripped unsourced numbers and left these three
+# distinct scars -- none caught by the gate as it existed before this fix.
+REAL_48931_SENTENCES = {
+    "dangling_exceeding": "Fees routinely translate to APRs exceeding, according to the CFPB.",
+    "a_an_disagreement": "a newcomer facing a emergency might use a payday loan",
+    "missing_terminal_punctuation": (
+        "The delayed-access design offers the opposite: delayed access to funds, "
+        "but a foundation for"
+    ),
+}
+
 
 def test_catches_all_four_real_48854_body_bugs():
     for label, sentence in REAL_48854_SENTENCES.items():
@@ -61,6 +73,81 @@ def test_catches_real_48733_bug_found_via_stress_testing():
     # still-live instance of the same bug class on a THIRD article.
     findings = scan_body(REAL_48733_SENTENCE)
     assert any(f["type"] == "adjacent_connector_pair" for f in findings)
+
+
+def test_catches_all_three_real_48931_body_bugs():
+    for label, sentence in REAL_48931_SENTENCES.items():
+        findings = scan_body(sentence)
+        assert findings, f"missed real 48931 bug ({label}): {sentence!r}"
+
+
+def test_catches_leaked_internal_label_in_alt_attribute():
+    html = ('<img src="x.jpeg" alt="Comparison guide: car insurance for foreign '
+            'drivers options for newcomers" class="wp-image-1">')
+    findings = scan_body(html)
+    assert any(f["type"] == "leaked_internal_label_alt" for f in findings)
+
+
+def test_catches_leaked_internal_label_in_figcaption():
+    html = ('<figure><img src="x.jpeg" alt="ok"><figcaption>Step-by-step checklist: '
+            'renters insurance guide for usa newcomers</figcaption></figure>')
+    findings = scan_body(html)
+    assert any(f["type"] == "leaked_internal_label_figcaption" for f in findings)
+
+
+def test_catches_duplicate_how_to():
+    findings = scan_body("How to how to rent an apartment without SSN or credit: step-by-step process for newcomers")
+    assert any(f["type"] == "duplicate_how_to" for f in findings)
+
+
+def test_scan_alt_texts_catches_all_four_real_leaked_labels():
+    # 2026-07-23: real agent_09 image_prompts.json alt_text values, verbatim
+    # from live published posts 48682/48870/48854/48878 -- this is the ONLY
+    # mechanism that catches them, since $DRAFT (what scan_body() actually
+    # scans in the real pipeline) never contains these strings at all.
+    alt_texts = [
+        "Comparison guide: renters insurance for newcomers options for newcomers",
+        "Step-by-step checklist: renters insurance for newcomers guide for usa newcomers",
+        "How to renters insurance for newcomers: step-by-step process for newcomers",
+        "Supporting image: renters insurance for newcomers lifestyle for usa newcomers",
+    ]
+    findings = scan_alt_texts(alt_texts)
+    assert len(findings) == 4
+
+
+def test_scan_alt_texts_no_false_positive_on_natural_alt_text():
+    findings = scan_alt_texts([
+        "A newcomer reviewing a renters insurance policy at a kitchen table",
+        "",
+    ])
+    assert not findings
+
+
+def test_placeholder_gate_cli_reads_image_prompts_flag(tmp_path):
+    article = tmp_path / "draft.md"
+    article.write_text("Clean sentence with no issues at all here.", encoding="utf-8")
+    wp_report = tmp_path / "wordpress_report.json"
+    wp_report.write_text(json.dumps({"title": "Best Banks for Newcomers to Canada 2026"}), encoding="utf-8")
+    image_prompts = tmp_path / "image_prompts.json"
+    image_prompts.write_text(json.dumps({
+        "prompts": [{"alt_text": "Comparison guide: renters insurance options for newcomers"}]
+    }), encoding="utf-8")
+    output = tmp_path / "report.json"
+
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(REPO_ROOT)
+    proc = subprocess.run(
+        [sys.executable, "scripts/placeholder_gate.py",
+         "--article", str(article),
+         "--wordpress-report", str(wp_report),
+         "--image-prompts", str(image_prompts),
+         "--output", str(output)],
+        cwd=str(REPO_ROOT), env=env, capture_output=True, text=True, timeout=30,
+    )
+    assert proc.returncode == 1
+    report = json.loads(output.read_text())
+    assert report["status"] == "FAIL"
+    assert report["alt_text_findings"]
 
 
 def test_catches_empty_image_src():
@@ -87,6 +174,14 @@ FALSE_POSITIVE_FIXTURES = {
     "at_fault_compound": "Minimum-only coverage leaves exposure in at-fault states like Texas.",
     "demonym_after_duration_noun": "The CRA expects a final-year tax filing covering the period of Canadian residency.",
     "quantity_already_present": "USCIS may authorize up to 12 months of Optional Practical Training.",
+    # 2026-07-23 additions, validated against 5 real published articles:
+    "us_equivalent_compound": "Convert your foreign credit history into a U.S.-equivalent format before applying.",
+    "u_s_bank_account": "Open a U.S. bank account within your first week to start building payment history.",
+    "one_time_fee": "Most providers charge a one-time setup fee for new accounts.",
+    "university_word": "Enrolling at a university in the U.S. often requires proof of funds.",
+    "blockquote_no_terminal_period": "> See our companion guide: How to Rent Without Credit History in Canada 2026",
+    "bolded_step_heading": "**Week 1-2: Identity and Status Foundation**",
+    "colon_lead_in_before_list": "Here is what you will need to bring to the appointment:",
 }
 
 

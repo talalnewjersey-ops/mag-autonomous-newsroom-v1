@@ -46,9 +46,30 @@ from typing import Dict, List
 #    ("Registered Retirement Savings Plan (RRSP), for example, ..." reads
 #    fine; "for" isn't dangling there because it's not followed by
 #    punctuation, but broader connector sets pulled in unrelated noise).
-_DANGLING_CONNECTORS = ["of", "to", "by", "for", "within", "up to", "at least", "plus"]
-_DANGLING_PATTERN = re.compile(
-    r"\b(" + "|".join(re.escape(p) for p in _DANGLING_CONNECTORS) + r")\s+[.,;:)]",
+#
+#    "exceeding"/"totaling"/"averaging"/"reaching" added 2026-07-23 (post
+#    48931 dry-run, "APRs exceeding, according to the CFPB." -- a number
+#    stripped by scripts/soften_claims.py's unsourced-claim removal, whose
+#    backward-only _QUANT list doesn't include these verb-form quantifiers).
+#    All four are transitive verbs that virtually always take a numeric
+#    object in this site's finance prose -- low false-positive risk, same
+#    rationale as the original list.
+_DANGLING_CONNECTORS = ["of", "to", "by", "for", "within", "up to", "at least", "plus",
+                         "exceeding", "totaling", "averaging", "reaching"]
+# Split by punctuation: comma/period scars were observed glued directly to
+# the connector with NO leftover space ("APRs exceeding, according...", added
+# 2026-07-23), so those allow \s*. Colon/semicolon/close-paren keep the
+# original \s+ (space required) -- a bare "word:" with no space is a common,
+# deliberate editorial lead-in on this site ("Best suited for:", "Eligible
+# for:"), confirmed as a real false positive when \s* was tried against the
+# live corpus (2026-07-23); widening it would have broken every comparison
+# section using that label style.
+_DANGLING_PATTERN_TIGHT = re.compile(
+    r"\b(" + "|".join(re.escape(p) for p in _DANGLING_CONNECTORS) + r")\s*[.,]",
+    re.IGNORECASE,
+)
+_DANGLING_PATTERN_LOOSE = re.compile(
+    r"\b(" + "|".join(re.escape(p) for p in _DANGLING_CONNECTORS) + r")\s+[;:)]",
     re.IGNORECASE,
 )
 
@@ -110,12 +131,13 @@ def _has_nearby_digit(text: str, start: int, lookback: int = 40) -> bool:
 
 
 def _find_dangling_connectors(text: str) -> List[Dict]:
+    matches = list(_DANGLING_PATTERN_TIGHT.finditer(text)) + list(_DANGLING_PATTERN_LOOSE.finditer(text))
     return [{
         "type": "dangling_connector",
         "match": m.group(0).strip(),
         "context": text[max(0, m.start() - 60):m.end() + 20].strip(),
         "position": m.start(),
-    } for m in _DANGLING_PATTERN.finditer(text)]
+    } for m in matches]
 
 
 def _find_adjacent_connector_pairs(text: str) -> List[Dict]:
@@ -215,6 +237,226 @@ _KNOWN_ACRONYMS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# 8. "a" immediately followed by a vowel-sound word ("a emergency" instead of
+#    "an emergency") -- added 2026-07-23 (post 48931: "a newcomer facing a
+#    emergency might use a payday loan"). This is a reliable fingerprint of a
+#    deleted word: the original almost certainly had a quantity between them
+#    ("a $400 emergency"), and removing it left the article's a/an agreement
+#    broken against the next word's actual sound.
+#
+#    Exceptions are words that START with a vowel LETTER but a consonant
+#    SOUND ("a university", "a U.S. bank", "a one-time fee") -- English a/an
+#    agreement follows pronunciation, not spelling. Curated + validated
+#    against 5 real published articles (2026-07-23): the only real hits were
+#    "U.S.-equivalent/-readable/-compatible" compounds, all correctly using
+#    "a" -- covered by the u.s.-prefix rule below, not a fixed word list.
+_A_AN_EXCEPTIONS = {
+    "us", "usa", "uk", "uae",
+    "united", "unique", "uniform", "uniformed", "unanimous",
+    "usual", "usually", "user", "users", "utility", "utilities",
+    "university", "universities", "universal", "one", "one-time", "once",
+    "european", "europe", "u-visa", "usc",
+}
+_A_AN_PATTERN = re.compile(r"\ba\s+(\S+)")
+
+
+def _is_a_an_exception(word_lower: str) -> bool:
+    if word_lower.startswith("u.s") or word_lower.startswith("us-"):
+        return True
+    return word_lower in _A_AN_EXCEPTIONS
+
+
+def _find_a_an_disagreement(text: str) -> List[Dict]:
+    findings = []
+    for m in _A_AN_PATTERN.finditer(text):
+        word = m.group(1)
+        low = re.sub(r"^[^a-zA-Z]+|[^a-zA-Z.\-]+$", "", word).lower()
+        if not low or low[0] not in "aeiou":
+            continue
+        if _is_a_an_exception(low):
+            continue
+        findings.append({
+            "type": "a_an_disagreement",
+            "match": f"a {word}",
+            "context": text[max(0, m.start() - 40):m.end() + 20].strip(),
+            "position": m.start(),
+        })
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# 9. A prose paragraph that ends with no terminal punctuation at all -- the
+#    fingerprint of scripts/soften_claims.py's CASE-4 appositive strip, which
+#    can delete from an opening em-dash through the rest of the line
+#    (including the final period) when the residual clause is short enough.
+#    Added 2026-07-23 (post 48931: "...but a foundation for" -- nothing
+#    after "for", not even a period).
+#
+#    Deliberately narrow to avoid false-positives on markdown structure that
+#    legitimately has no terminal punctuation: headers, list items, table
+#    rows, blockquotes, and bolded pseudo-headings ("**Week 1-2: Identity
+#    and Status Foundation**"). Validated against 5 real published articles
+#    (2026-07-23) after two false positives were found and excluded: a
+#    blockquote-style internal-link callout, and a bolded step-header line.
+_LIST_OR_HEADER_PREFIX = re.compile(r"^\s*(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|\|)")
+_TRAILING_EMPHASIS = re.compile(r"[*_]+$")
+_ACCEPTABLE_TERMINAL_CHARS = '.!?"\')”’:'
+_STOPWORDS_FOR_HEADING_CHECK = {
+    "a", "an", "the", "and", "or", "of", "to", "in", "on", "for", "with",
+    "at", "by", "from", "your", "you",
+}
+
+
+def _looks_like_heading(stripped_para: str) -> bool:
+    """Title-Case-throughout short line -- a bolded/plain pseudo-heading
+    rather than real prose, even without markdown '#' syntax."""
+    words = stripped_para.split()
+    if len(words) > 12:
+        return False
+    for w in words:
+        core = re.sub(r"[^a-zA-Z]", "", w)
+        if not core:
+            continue  # pure numbers/punctuation tokens ("1-2:") don't count
+        if core.lower() in _STOPWORDS_FOR_HEADING_CHECK:
+            continue
+        if not core[0].isupper():
+            return False
+    return True
+
+
+_CONTAINS_HTML_TAG = re.compile(r"</?[a-zA-Z][^>]*>")
+
+
+def _find_missing_terminal_punctuation(text: str) -> List[Dict]:
+    findings = []
+    for para in re.split(r"\n\s*\n", text):
+        raw = para.strip()
+        if not raw or _LIST_OR_HEADER_PREFIX.match(raw):
+            continue
+        # A header/list/table line fused onto a real paragraph with no blank
+        # line between them (malformed markdown, or an artifact of whatever
+        # produced $DRAFT) would otherwise make this function judge the
+        # PARAGRAPH's punctuation by the HEADER's last word. Bail rather
+        # than risk a false positive on a blocking gate.
+        lines = raw.splitlines()
+        if len(lines) > 1 and any(_LIST_OR_HEADER_PREFIX.match(ln) for ln in lines[1:]):
+            continue
+        # Structured markup (raw HTML tables/figures/spans some pipeline
+        # steps embed directly in the draft) isn't prose and legitimately
+        # has no terminal punctuation -- skip it rather than risk flagging a
+        # <table>/<td> fragment. Confirmed necessary testing against real
+        # WordPress output (2026-07-23): TOC spans and table cells produced
+        # exactly this kind of false positive.
+        if _CONTAINS_HTML_TAG.search(raw):
+            continue
+        stripped = _TRAILING_EMPHASIS.sub("", raw).rstrip()
+        if not stripped or len(stripped.split()) < 6:
+            continue
+        if _looks_like_heading(stripped):
+            continue
+        if stripped[-1] not in _ACCEPTABLE_TERMINAL_CHARS:
+            findings.append({
+                "type": "missing_terminal_punctuation",
+                "match": stripped[-80:],
+                "context": stripped[-120:],
+                "position": text.find(para),
+            })
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# 10. Internal image-prompt labels (agents/agent_09_image_prompt_generator.py
+#     alt_text f-strings: "Comparison guide: ...", "Step-by-step checklist:
+#     ...", "Supporting image: ...", "How to X: step-by-step process for
+#     newcomers") leaking somewhere they'd be reader-visible.
+#
+#     IMPORTANT: $DRAFT (what scan_body actually receives in the real
+#     pipeline, agent_04/article_draft.md) never contains these strings --
+#     agent_09 only ever writes them to image_prompts.json, and agent_11
+#     writes them straight into the WordPress media alt="" attribute without
+#     ever touching $DRAFT. The alt="" and <figcaption> regexes below are
+#     dead weight against today's real body_text input; they exist only as
+#     defense-in-depth (a future refactor that inlines images into $DRAFT, or
+#     the still-live legacy scripts/produce_article.py::inject_4_body_images
+#     figcaption path, both flow through this same scan_body()). The
+#     mechanism that actually catches today's real bug is scan_alt_texts()
+#     below, wired into scripts/placeholder_gate.py's --image-prompts flag,
+#     which reads image_prompts.json directly. Added 2026-07-23.
+_INTERNAL_LABEL_PREFIXES = (
+    "comparison guide:",
+    "step-by-step checklist:",
+    "supporting image:",
+)
+_PROCESS_LABEL_PATTERN = re.compile(r"^how to .+:\s*step-by-step process for", re.IGNORECASE)
+_ALT_ATTR_PATTERN = re.compile(r'alt=["\']([^"\']*)["\']', re.IGNORECASE)
+_FIGCAPTION_PATTERN = re.compile(r"<figcaption[^>]*>(.*?)</figcaption>", re.IGNORECASE | re.DOTALL)
+_DUPLICATE_HOWTO_PATTERN = re.compile(r"\bhow to how to\b", re.IGNORECASE)
+
+
+def _is_leaked_internal_label(value: str) -> bool:
+    low = value.strip().strip('"\'').lower()
+    return low.startswith(_INTERNAL_LABEL_PREFIXES) or bool(_PROCESS_LABEL_PATTERN.match(value.strip()))
+
+
+def scan_alt_texts(alt_texts: List[str]) -> List[Dict]:
+    """Check agent_09's image_prompts.json alt_text values directly, rather
+    than relying on finding them inline in body text -- the current pipeline
+    never writes alt_text into $DRAFT (the file scan_body actually runs on):
+    agent_09 stores it in image_prompts.json and agent_11 writes it straight
+    into the WordPress media alt="" attribute, a step scan_body never sees.
+    Wired into scripts/placeholder_gate.py via the optional --image-prompts
+    flag (2026-07-23)."""
+    findings = []
+    for i, alt in enumerate(alt_texts):
+        if alt and _is_leaked_internal_label(alt):
+            findings.append({
+                "type": "leaked_internal_label_alt",
+                "match": alt[:100],
+                "context": f"image_prompts[{i}].alt_text = {alt!r}"[:150],
+                "position": i,
+            })
+    return findings
+
+
+def _find_leaked_internal_labels(text: str) -> List[Dict]:
+    findings = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped and _is_leaked_internal_label(stripped):
+            findings.append({
+                "type": "leaked_internal_label",
+                "match": stripped[:100],
+                "context": stripped[:150],
+                "position": text.find(line),
+            })
+    for m in _ALT_ATTR_PATTERN.finditer(text):
+        if _is_leaked_internal_label(m.group(1)):
+            findings.append({
+                "type": "leaked_internal_label_alt",
+                "match": m.group(1)[:100],
+                "context": m.group(0)[:150],
+                "position": m.start(),
+            })
+    for m in _FIGCAPTION_PATTERN.finditer(text):
+        inner = re.sub(r"<[^>]+>", "", m.group(1))
+        if _is_leaked_internal_label(inner):
+            findings.append({
+                "type": "leaked_internal_label_figcaption",
+                "match": inner.strip()[:100],
+                "context": m.group(0)[:150],
+                "position": m.start(),
+            })
+    for m in _DUPLICATE_HOWTO_PATTERN.finditer(text):
+        findings.append({
+            "type": "duplicate_how_to",
+            "match": m.group(0),
+            "context": text[max(0, m.start() - 20):m.end() + 60].strip(),
+            "position": m.start(),
+        })
+    return findings
+
+
 def scan_title(title: str) -> List[Dict]:
     """Flag a known acronym rendered in broken Title Case within a post title."""
     findings = []
@@ -240,6 +482,9 @@ def scan_body(text: str) -> List[Dict]:
     findings += _find_duration_noun_missing_quantity(text)
     findings += _find_fused_link_sentences(text)
     findings += _find_empty_image_src(text)
+    findings += _find_a_an_disagreement(text)
+    findings += _find_missing_terminal_punctuation(text)
+    findings += _find_leaked_internal_labels(text)
     return sorted(findings, key=lambda f: f["position"])
 
 
