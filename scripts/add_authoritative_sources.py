@@ -58,7 +58,7 @@ INTRO_VARIANTS = [
 
 SOURCES_MAP = {
     "best-money-transfer-apps-immigrants": [
-        ("Consumer Financial Protection Bureau — International Money Transfers", "https://www.consumerfinance.gov/consumer-tools/international-money-transfers/"),
+        ("Consumer Financial Protection Bureau — Money Transfers", "https://www.consumerfinance.gov/consumer-tools/money-transfers/"),
     ],
     "student-bank-account-canada-newcomers-2026": [
         ("Government of Canada — Banking for Newcomers", "https://www.canada.ca/en/financial-consumer-agency/services/banking.html"),
@@ -106,22 +106,32 @@ SOURCES_MAP = {
         ("Government of Canada — Cost of Living for Newcomers", "https://www.canada.ca/en/immigration-refugees-citizenship/services/new-immigrants/new-life-canada/living-costs.html"),
     ],
     "cost-of-living-usa-2026": [
-        ("Consumer Financial Protection Bureau — Budgeting", "https://www.consumerfinance.gov/consumer-tools/budgeting/"),
+        ("Consumer Financial Protection Bureau — Consumer Resources", "https://www.consumerfinance.gov/consumer-tools/"),
     ],
     "canada-budget-planner-2026": [
         ("Government of Canada — Budget Planner", "https://itools-ioutils.fcac-acfc.gc.ca/BP-PB/budget-planner"),
     ],
     "usa-budget-planner-2026": [
-        ("Consumer Financial Protection Bureau — Budgeting Tools", "https://www.consumerfinance.gov/consumer-tools/budgeting/"),
+        ("Consumer Financial Protection Bureau — Consumer Resources", "https://www.consumerfinance.gov/consumer-tools/"),
     ],
 }
 
 
 def find_post_by_slug(slug):
-    r = SESSION.get(f"{WP_URL}/wp-json/wp/v2/posts", params={"slug": slug}, timeout=30)
-    r.raise_for_status()
-    results = r.json()
-    return results[0] if results else None
+    """Reessaie jusqu'a 3 fois en cas de probleme reseau transitoire vers WordPress."""
+    import time
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            r = SESSION.get(f"{WP_URL}/wp-json/wp/v2/posts", params={"slug": slug}, timeout=30)
+            r.raise_for_status()
+            results = r.json()
+            return results[0] if results else None
+        except Exception as e:
+            last_error = e
+            if attempt < 3:
+                time.sleep(3 * attempt)
+    raise last_error
 
 
 def verify_all_source_links():
@@ -139,15 +149,23 @@ def verify_all_source_links():
     status = {}
     print(f"=== Verification de {len(all_urls)} URLs sources uniques (User-Agent navigateur) ===\n")
     for url in sorted(all_urls):
-        try:
-            r = EXTERNAL_CHECK_SESSION.get(url, timeout=25, allow_redirects=True)
-            ok = r.status_code == 200
-            status[url] = (ok, f"HTTP {r.status_code}" + (f" (apres {len(r.history)} redirection(s))" if r.history else ""))
-        except Exception as e:
-            status[url] = (False, f"erreur : {e}")
+        last_error = None
+        for attempt in range(1, 4):
+            try:
+                r = EXTERNAL_CHECK_SESSION.get(url, timeout=30, allow_redirects=True)
+                ok = r.status_code == 200
+                status[url] = (ok, f"HTTP {r.status_code}" + (f" (apres {len(r.history)} redirection(s))" if r.history else ""))
+                last_error = None
+                break
+            except Exception as e:
+                last_error = e
+                if attempt < 3:
+                    time.sleep(3 * attempt)
+        if last_error is not None:
+            status[url] = (False, f"erreur apres 3 tentatives : {last_error}")
         marker = "✅" if status[url][0] else "❌"
         print(f"{marker} {url} — {status[url][1]}")
-        time.sleep(0.5)
+        time.sleep(0.5)  # evite de declencher un rate-limit sur les sites .gov
     print("")
     return status
 
@@ -228,7 +246,11 @@ def main():
 
     results = []
     for slug, sources in SOURCES_MAP.items():
-        result = process_slug(slug, sources, apply_changes, link_status)
+        try:
+            result = process_slug(slug, sources, apply_changes, link_status)
+        except Exception as e:
+            print(f"[ERREUR] {slug} — echec apres plusieurs tentatives, article ignore : {e}")
+            result = {"slug": slug, "status": "erreur_reseau", "error": str(e)}
         results.append(result)
         print("")
 
