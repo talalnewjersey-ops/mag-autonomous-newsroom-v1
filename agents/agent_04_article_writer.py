@@ -313,6 +313,32 @@ EEAT REQUIREMENTS (Google E-E-A-T compliance — achieve score 90+/100):
 - TRUST: Reference official regulatory oversight and mention licensed/regulated providers.
 OUTPUT: Raw Markdown only — articles must score 85+ on EEAT validation."""
 
+# QUICK ANSWER OVERCLAIM GUARD (2026-07-24): the intro -- which contains the
+# Quick Answer box -- is written in ONE isolated call, BEFORE any body
+# section exists (see the loop below, which only starts after `intro` is
+# returned). The Eligibility/body sections get cumulative context of the
+# intro + everything written before them via `_build_digest`, but nothing
+# flows the other way -- the intro is never revised once the nuanced detail
+# in later sections is known. Real, human-review-caught bug (post 49047):
+# the Quick Answer flatly asserted "No SSN alternative exists", while
+# Section 3 (written afterward, with real sourcing) correctly explains the
+# ITIN and mail-in identity-verification paths -- a direct contradiction
+# inside the same article. This is a PROMPT MITIGATION, not a structural
+# fix (the sequential, one-way-context architecture is unchanged) and,
+# unlike this session's other fixes, has no offline pytest coverage --
+# verifying it actually reduces the real rate requires live generation,
+# which local/CI environments here don't have API keys for (see PR
+# discussion). Tracked as a known limitation, not a false completeness claim.
+_QUICK_ANSWER_OVERCLAIM_GUARD = (
+    "\nQUICK ANSWER CAUTION: state the PRIMARY path only. Do NOT make an absolute claim "
+    "about alternatives, exceptions, or eligibility (\"no alternative exists\", \"only way "
+    "is\", \"must have X\", \"impossible without Y\") -- the article's later sections may "
+    "cover a legitimate alternative path in detail (e.g. an ITIN route where the Quick "
+    "Answer only considered SSN), and a categorical claim here that a later section "
+    "contradicts is a factual error in the article, not a style choice. If in doubt, hedge "
+    "(\"typically requires X\") rather than assert an absolute."
+)
+
 # EXPERIENCE DENSITY ENRICHMENT (2026-07-11, follow-up to PR #85's density
 # recalibration): real measurement on witness run 9's article 1 (see
 # AUDIT-LOG.md) found its 3 body sections -- ~65% of the article's total
@@ -889,6 +915,7 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
     intro = await _call_claude(api_key,
         f"Write introduction: {title} | {keyword} | {market} | Tier: {tier['tier']}\n"
         f"300-400w. Quick Answer box (40-60w). {_intro_links_instruction}\nBe concise.\n"
+        f"{_QUICK_ANSWER_OVERCLAIM_GUARD}\n"
         f"{sourcing_block}{_retry_block}\n",
         SYSTEM_PROMPT, max_tokens=1200)
 

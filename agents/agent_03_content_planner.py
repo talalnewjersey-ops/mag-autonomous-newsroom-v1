@@ -19,6 +19,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any
 
+from agents._placeholder_scan import smart_title_case  # acronym-aware .title(), shared source of truth with GATE D's own scan_title() (2026-07-24)
+
 logger = logging.getLogger(__name__)
 
 CLAUDE_MODELS = [
@@ -196,7 +198,14 @@ async def _plan_outline_standalone(topic: Dict, api_key: str) -> Dict:
 def _norm_kw(keyword: str) -> str:
     """Title-case a keyword and strip a leading 'Best' so titles never read 'Best Best ...'."""
     kw = (keyword or "").strip()
-    titled = kw.title()
+    # smart_title_case, not bare str.title() (2026-07-24): a keyword containing
+    # an acronym ("...sin", "...ssn itin", "...usa") was rendered "Sin"/"Ssn
+    # Itin"/"Usa" by Python's naive .title(), the confirmed root cause of the
+    # broken-title-case-acronym bug on posts 48997/49005/48870/48854 -- GATE D
+    # (agents/_placeholder_scan.py::scan_title) was only ever the detector for
+    # this, never the fix; this is the actual generation-side fix, sharing the
+    # exact same acronym list so the two can't drift apart.
+    titled = smart_title_case(kw)
     # Remove a leading "Best " (case-insensitive) to avoid duplication with the title prefix
     titled = re.sub(r"^[Bb]est\s+", "", titled).strip()
     # Collapse any accidental consecutive duplicate words (e.g. "Bank Bank")
@@ -204,12 +213,31 @@ def _norm_kw(keyword: str) -> str:
     return titled
 
 
+# "Best {keyword}" reads naturally for a plain noun phrase ("Best Renters
+# Insurance") but not when the keyword is already a question or instruction
+# ("Best How To Get Your Free Credit Report In The USA", "Best Does My Home
+# Country Credit Score Transfer" -- both real, post 49047/48982) -- the same
+# question-form-subject problem already fixed for agent_09's image alt_text
+# (2026-07-23, PR #95), here on titles instead. Detecting and simply omitting
+# "Best " for these forms reads naturally either way, exactly like #95's
+# em-dash caption trick sidestepped the same ambiguity for alt_text.
+_QUESTION_LEAD_PATTERN = re.compile(
+    r"^(how to|does|do|is|are|can|will|should|what|why|when|where|which)\b", re.IGNORECASE
+)
+
+
+def _title_lead(normalized_kw: str) -> str:
+    if _QUESTION_LEAD_PATTERN.match(normalized_kw.strip()):
+        return normalized_kw
+    return f"Best {normalized_kw}"
+
+
 def _build_fallback_outline(topic: Dict) -> Dict:
     keyword = topic.get("keyword", "expat banking")
     market = topic.get("market", "USA")
     year = datetime.utcnow().year
     return {
-        "title": f"Best {_norm_kw(keyword)}: Complete Guide for {market} Immigrants ({year})",
+        "title": f"{_title_lead(_norm_kw(keyword))}: Complete Guide for {market} Immigrants ({year})",
         "meta_description": f"Complete guide to {keyword} for {market} immigrants in {year}. Compare top options, fees, and requirements.",
         "primary_keyword": keyword,
         "secondary_keywords": [f"{keyword} guide", f"best {keyword}", f"{keyword} {market}", f"{keyword} immigrants", f"{keyword} no credit history"],
@@ -223,15 +251,15 @@ def _build_fallback_outline(topic: Dict) -> Dict:
             "question": f"What is the best {keyword} for new immigrants in {market} with no credit history?"
         },
         "sections": [
-            {"h2": f"Best {_norm_kw(keyword)} for {market} Immigrants in {year}: Quick Overview", "h3": ["Top 5 Picks at a Glance", "How We Evaluated", "Who This Guide Is For"], "data": []},
-            {"h2": f"What Is {keyword.title()} and Why Do Immigrants Need It?", "h3": ["Definition and Purpose", "Unique Challenges for Immigrants", "Benefits of Getting One Early"], "data": []},
+            {"h2": f"{_title_lead(_norm_kw(keyword))} for {market} Immigrants in {year}: Quick Overview", "h3": ["Top 5 Picks at a Glance", "How We Evaluated", "Who This Guide Is For"], "data": []},
+            {"h2": f"What Is {smart_title_case(keyword)} and Why Do Immigrants Need It?", "h3": ["Definition and Purpose", "Unique Challenges for Immigrants", "Benefits of Getting One Early"], "data": []},
             {"h2": "Eligibility Requirements for Immigrants", "h3": ["Visa Types Accepted", "Required Documents", "Credit History Requirements", "Alternative Verification Methods"], "data": []},
-            {"h2": f"Top {keyword.title()} Options Reviewed", "h3": ["Option 1: Best Overall", "Option 2: Best for No Credit History", "Option 3: Best Rewards", "Option 4: Best Secured"], "data": []},
+            {"h2": f"Top {smart_title_case(keyword)} Options Reviewed", "h3": ["Option 1: Best Overall", "Option 2: Best for No Credit History", "Option 3: Best Rewards", "Option 4: Best Secured"], "data": []},
             {"h2": "Step-by-Step Application Guide", "h3": ["Before You Apply", "Application Process", "What to Expect After Applying", "Timeline"], "data": []},
             {"h2": "Fees, Rates, and Costs Explained", "h3": ["Annual Fees Compared", "APR and Interest Rates", "Foreign Transaction Fees", "Penalty Fees"], "data": []},
             {"h2": "Building Credit as a New Immigrant", "h3": ["How Credit Scores Work in USA", "Credit Building Strategies", "Timeline to Good Credit", "Common Mistakes"], "data": []},
             {"h2": "Secured vs Unsecured Options", "h3": ["What Is a Secured Option", "Pros and Cons", "When to Upgrade", "Transition Tips"], "data": []},
-            {"h2": f"{keyword.title()} for Specific Visa Types", "h3": ["H-1B Visa Holders", "F-1 Student Visa", "Green Card Holders", "ITIN Holders"], "data": []},
+            {"h2": f"{smart_title_case(keyword)} for Specific Visa Types", "h3": ["H-1B Visa Holders", "F-1 Student Visa", "Green Card Holders", "ITIN Holders"], "data": []},
             {"h2": "Common Mistakes to Avoid", "h3": ["Application Mistakes", "Usage Mistakes", "Building Credit Mistakes", "Expert Tips"], "data": []},
             {"h2": "Alternatives If You Get Rejected", "h3": ["Secured Deposit Options", "Credit Builder Loans", "Authorized User Strategy", "ITIN Options"], "data": []},
             {"h2": "Frequently Asked Questions About Approval", "h3": ["Approval Rates", "Score Requirements", "Reconsideration Tips"], "data": []},

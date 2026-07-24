@@ -492,6 +492,38 @@ _KNOWN_ACRONYMS = {
     "fica", "tfsa", "rrsp", "ofx", "faq", "eeat", "seo", "gst", "hst", "sin",
     "cpp", "ei", "uscis", "ice", "stem",
 }
+_WORD_CHARS = re.compile(r"[a-zA-Z]+")
+
+
+def smart_title_case(s: str) -> str:
+    """str.title(), but a word matching _KNOWN_ACRONYMS is forced to full
+    upper-case instead of Title-Case ("ssn" -> "SSN", not "Ssn").
+
+    Added 2026-07-24: root cause of the broken-title-case-acronym bug
+    scan_title() above was built to CATCH (48854's "Checklist Usa", later
+    also "...Sin", "...Ssn Itin" on posts 48997/49005) -- agents/agent_03_
+    content_planner.py's title-building used Python's bare str.title(),
+    which has no concept of acronyms and breaks every one of them. This is
+    the single source of truth both for scan_title()'s detection (below)
+    and for agent_03/agent_01's title GENERATION, so fixing the acronym
+    list in one place can never let the two drift out of sync again.
+
+    Handles a trailing possessive/plural 's ("Ssns" -> "SSNs" is NOT
+    attempted -- _KNOWN_ACRONYMS entries are exact singular forms and this
+    project's titles don't currently pluralize an acronym; only the
+    apostrophe-s possessive is common enough to guard, e.g. "Ssn'S" ->
+    "SSN's") by upper-casing only the leading run of letters in each word,
+    not the whole token.
+    """
+    titled = (s or "").title()
+    words = titled.split(" ")
+    fixed = []
+    for w in words:
+        m = _WORD_CHARS.match(w)
+        if m and m.group(0).lower() in _KNOWN_ACRONYMS:
+            w = m.group(0).upper() + w[m.end():]
+        fixed.append(w)
+    return " ".join(fixed)
 
 
 # ---------------------------------------------------------------------------
