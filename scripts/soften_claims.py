@@ -331,7 +331,23 @@ def _soften_prose(line, spans_local, min_words, report, official=frozenset(), ma
         # drop the whole sentence if the repaired clause still reads broken.
         # Safe here specifically because this pass is NON-BLOCKING: worst case
         # is one extra deleted sentence, never a corrupted one reaching GATE D.
-        if not is_list_line and scan_body(cleaned):
+        #
+        # EXCEPT "adjacent_connector_pair" (2026-07-24): _scaffold_span's own
+        # CASE 4 deliberately KEEPS a long em-dash appositive rather than
+        # deleting it, accepting a minor residue scar as the tradeoff for not
+        # losing real informative content (e.g. "at 35 percentage points of
+        # your score" -> "at of your score" once the unsourced number is
+        # stripped -- tests/test_lot_soften_scaffold.py locks this exact
+        # tradeoff in by name). That "at of" shape is exactly what GATE D's
+        # generic adjacent-connector-pair detector now catches -- correct
+        # for GATE D's job, but it would silently overrule CASE 4's own
+        # keep-the-content decision if reused here unfiltered. GATE D itself
+        # still runs, unfiltered, as the real blocking check on the finished
+        # draft afterward -- this filter only affects whether soften nukes
+        # the sentence preemptively, not whether the scar can reach
+        # WordPress.
+        _grammar_findings = [f for f in scan_body(cleaned) if f["type"] != "adjacent_connector_pair"]
+        if not is_list_line and _grammar_findings:
             report["sentences_deleted"] += 1
             report["grammar_check_deletions"] = report.get("grammar_check_deletions", 0) + 1
             continue
