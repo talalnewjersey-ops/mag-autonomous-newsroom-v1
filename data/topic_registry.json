@@ -412,6 +412,30 @@
       "post_id": 49047,
       "selected_at": "2026-07-24T13:46:38.757768Z",
       "drafted_at": "2026-07-24T13:55:40.755779Z"
+    },
+    {
+      "id": "us-hard-inquiry-credit-card-newcomer",
+      "title": "Does Applying for a Credit Card Hurt Your Score as a New Immigrant",
+      "keyword": "does applying for a credit card hurt your score as a new immigrant",
+      "market": "USA",
+      "category": "credit",
+      "monetization_score": 3,
+      "traffic_score": 4,
+      "status": "candidate",
+      "published_at": null,
+      "post_id": null
+    },
+    {
+      "id": "us-itin-banking-fdic-no-ssn",
+      "title": "ITIN-Only Banking: FDIC-Insured Accounts Without an SSN",
+      "keyword": "itin only banking fdic insured accounts without an ssn",
+      "market": "USA",
+      "category": "banques",
+      "monetization_score": 3,
+      "traffic_score": 4,
+      "status": "candidate",
+      "published_at": null,
+      "post_id": null
     }
   ]
 }
