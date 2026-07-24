@@ -61,6 +61,28 @@ REAL_48931_SENTENCES = {
     "generates_of": "That same directed into a credit builder loan generates of on-time payment history",
 }
 
+# 2026-07-24: 6 real scars found by human review of posts 48972/48982
+# (workflow run 30021353265) that survived a 0-finding GATE D run -- exact
+# verbatim text from the real drafts, not paraphrased.
+REAL_48972_48982_SENTENCES = {
+    "from_to_range": "5. **Pay the applicable fee** —ranges from to depending on the state",
+    "within_at_eol": "6. **Receive a temporary paper license** —the physical card arrives by mail within",
+    "sentence_initial_after": (
+        "begins accumulating positive payment history immediately. After, that single "
+        "account already gives length-of-history data"
+    ),
+    "within_before_dash": (
+        "will have three tradelines reporting within —significantly accelerating "
+        "eligibility for unsecured products."
+    ),
+    "have_of": "Once you have of clean history, apply for one unsecured card.",
+    "duplicate_country": (
+        "translating credit histories from select countries — including Canada, the UK, "
+        "India, Mexico, Australia, Australia, and the Philippines — into a "
+        "U.S.-equivalent format."
+    ),
+}
+
 
 def test_catches_all_four_real_48854_body_bugs():
     for label, sentence in REAL_48854_SENTENCES.items():
@@ -80,6 +102,14 @@ def test_catches_all_real_48931_body_bugs():
     for label, sentence in REAL_48931_SENTENCES.items():
         findings = scan_body(sentence)
         assert findings, f"missed real 48931 bug ({label}): {sentence!r}"
+
+
+def test_catches_all_real_48972_48982_body_bugs():
+    # These 6 survived a 0-finding GATE D run and were only caught by human
+    # review (2026-07-24) -- the exact gap this test set closes.
+    for label, sentence in REAL_48972_48982_SENTENCES.items():
+        findings = scan_body(sentence)
+        assert findings, f"missed real 48972/48982 bug ({label}): {sentence!r}"
 
 
 def test_catches_leaked_internal_label_in_alt_attribute():
@@ -237,6 +267,15 @@ FALSE_POSITIVE_FIXTURES = {
     "preposition_stranding_for_comma": "Immigration status directly determines which license type you qualify for, and how long it takes.",
     "unit_a_an": "Viewing a unit in person before signing anything is strongly recommended for newcomers.",
     "unit_glued_to_em_dash": "Finding a unit—meaningfully compresses the process for newcomers with limited time.",
+    # 2026-07-24 additions, added alongside the 6-bug fix set above:
+    "after_that_comma": "After that, she called the DMV to confirm her appointment time.",
+    "after_the_interview": "After the interview, most applicants receive a decision within a week.",
+    "header_ending_in_for": "### Who This Checklist Is Built For",
+    "short_label_list_item": "- Fast processing and same-day approval",
+    "numbered_label_list_item": "1. Submit your completed application form",
+    "no_no_emphatic_repeat": "No, no, I insist on paying for the appointment myself.",
+    "have_to_modal": "You have to apply in person; mailed applications are not accepted at this DMV.",
+    "has_to_modal": "Every applicant has to bring a valid passport and proof of address.",
 }
 
 

@@ -68,13 +68,46 @@ _DANGLING_CONNECTORS = ["of", "to", "by", "for", "within", "up to", "at least", 
 # list, not the preposition list, which keeps requiring \s+ (an actual
 # leftover space) exactly as originally designed.
 _DANGLING_VERB_QUANTIFIERS = ["exceeding", "totaling", "averaging", "reaching"]
+#
+# em-dash/en-dash (—/–) added to BOTH punctuation classes 2026-07-24 (post
+# 48982, real batch after #93/#94/#95: "will have three tradelines reporting
+# within —significantly accelerating eligibility" -- soften_claims.py uses
+# an em-dash appositive as scaffolding constantly, see scripts/soften_
+# claims.py's own CASE-4 docstring, so a connector left dangling right
+# before one is exactly as diagnostic as before a comma/period. Plain ASCII
+# "-" deliberately NOT added: this site's finance prose uses a bare hyphen
+# as a negative-number sign ("by -5% year over year" after a rate drop),
+# and "by -" would false-positive on that -- no real bug has needed it, so
+# it's left out rather than guessed at.
 _DANGLING_PATTERN_LOOSE_SPACE = re.compile(
-    r"\b(" + "|".join(re.escape(p) for p in _DANGLING_CONNECTORS) + r")\s+[.,;:)]",
+    r"\b(" + "|".join(re.escape(p) for p in _DANGLING_CONNECTORS) + r")\s+[.,;:)—–]",
     re.IGNORECASE,
 )
 _DANGLING_PATTERN_TIGHT_SPACE = re.compile(
-    r"\b(" + "|".join(re.escape(p) for p in _DANGLING_VERB_QUANTIFIERS) + r")\s*[.,;:)]",
+    r"\b(" + "|".join(re.escape(p) for p in _DANGLING_VERB_QUANTIFIERS) + r")\s*[.,;:)—–]",
     re.IGNORECASE,
+)
+
+# ---------------------------------------------------------------------------
+# 1b. Sentence-initial "After" immediately followed by a comma/period with
+#     nothing between -- "After, that single account already gives..."
+#     (real bug, post 48982, 2026-07-24: soften_claims.py stripped a bare
+#     duration -- "After 6 months, that single account..." -- with no
+#     quantifier word for _QUANT to swallow, since "After" at a sentence's
+#     own start isn't one).
+#
+#     Deliberately NOT folded into _DANGLING_CONNECTORS/_DANGLING_VERB_
+#     QUANTIFIERS: "after" strands at a CLAUSE's end constantly in natural
+#     English ("I'll deal with it after."), the same reason the original 8
+#     prepositions couldn't take \s* -- but a sentence-initial "After" is a
+#     different grammatical position (introducing a new clause, not ending
+#     one) where a bare comma/period directly after it is not a natural
+#     English construction either way. Restricting to sentence-initial
+#     position (start of text, or right after a sentence-ending [.!?] and
+#     whitespace) keeps this narrow instead of flagging every mid-sentence
+#     "after," which the confirmed bug never actually needed.
+_SENTENCE_INITIAL_AFTER_PATTERN = re.compile(
+    r"(?:\A|(?<=[.!?])\s+)After\s*[.,]"
 )
 
 # ---------------------------------------------------------------------------
@@ -94,7 +127,12 @@ _DANGLING_PATTERN_TIGHT_SPACE = re.compile(
 #    bugs (48854's "to on", 48733's "to of") rather than a generative
 #    cross-product -- precision over recall, since this is a hard-blocking
 #    gate and a false positive halts autonomous publishing.
-_KNOWN_BAD_ADJACENT_PAIRS = ["to on", "to of", "with of", "of to", "for to"]
+#    "from to" added 2026-07-24 (post 48972: "Pay the applicable fee --
+#    ranges from to depending on the state", two dropped dollar figures
+#    either side of "to"). Same rationale as the rest of this list -- "from"
+#    and "to" bracket a range and neither means anything without a number
+#    on each side, so stacking them bare is never legitimate English.
+_KNOWN_BAD_ADJACENT_PAIRS = ["to on", "to of", "with of", "of to", "for to", "from to"]
 _ADJACENT_PAIR_PATTERN = re.compile(
     r"\b(" + "|".join(re.escape(p) for p in _KNOWN_BAD_ADJACENT_PAIRS) + r")\b",
     re.IGNORECASE,
@@ -137,6 +175,32 @@ def _find_of_to_verb(text: str) -> List[Dict]:
         "position": m.start(),
     } for m in _OF_TO_VERB_PATTERN.finditer(text)]
 
+
+# ---------------------------------------------------------------------------
+# 3c. "have"/"has" directly touching "of" -- added 2026-07-24 (post 48982:
+#     "Once you have of clean history, apply for one unsecured card", a bare
+#     duration -- "have 6 months of clean history" -- stripped with no
+#     quantifier word before it, same failure shape as 3b).
+#
+#     "of" ONLY, deliberately NOT "to" like 3b's verbs: "have to"/"has to"
+#     is the ordinary modal-necessity construction ("you have to apply") and
+#     is extremely common, correct English -- folding "to" in here would
+#     false-positive constantly. "have of"/"has of" has no such legitimate
+#     use; "have" is a transitive verb that needs a direct object before
+#     "of" can attach to it ("have SIX MONTHS of clean history"), never "of"
+#     immediately.
+_OF_ONLY_VERBS = ["have", "has"]
+_OF_ONLY_VERB_PATTERN = re.compile(r"\b(" + "|".join(_OF_ONLY_VERBS) + r")\s+of\s+")
+
+
+def _find_of_only_verb(text: str) -> List[Dict]:
+    return [{
+        "type": "missing_quantity_before_of",
+        "match": m.group(0).strip(),
+        "context": text[max(0, m.start() - 20):m.end() + 40].strip(),
+        "position": m.start(),
+    } for m in _OF_ONLY_VERB_PATTERN.finditer(text)]
+
 # ---------------------------------------------------------------------------
 # 4. A duration-related noun followed by "of" then a capitalized/hyphenated
 #    phrase with no digit anywhere in the next few words -- "authorization
@@ -169,6 +233,88 @@ def _find_dangling_connectors(text: str) -> List[Dict]:
         "context": text[max(0, m.start() - 60):m.end() + 20].strip(),
         "position": m.start(),
     } for m in matches]
+
+
+def _find_sentence_initial_after(text: str) -> List[Dict]:
+    return [{
+        "type": "dangling_connector",
+        "match": m.group(0).strip(),
+        "context": text[max(0, m.start() - 20):m.end() + 40].strip(),
+        "position": m.start(),
+    } for m in _SENTENCE_INITIAL_AFTER_PATTERN.finditer(text)]
+
+
+# ---------------------------------------------------------------------------
+# 1c. A connector word sitting at the literal END OF A LINE with nothing
+#     after it at all -- not even punctuation -- added 2026-07-24 (post
+#     48972, a numbered list item: "**Receive a temporary paper license**
+#     --the physical card arrives by mail within", nothing after "within").
+#     Detector 1's connector-before-punctuation check can't catch this: there
+#     IS no punctuation, the line just stops. Detector 9 (missing terminal
+#     punctuation) can't either, by design -- it deliberately exempts list
+#     items entirely (see its docstring), because most list items in this
+#     site's articles are short label phrases that never carry a period
+#     ("- Fast processing", "1. Submit application") and flagging every one
+#     of those would be constant noise on legitimate content.
+#
+#     This is narrower and safer than loosening detector 9's list exemption:
+#     it only fires when the LAST WORD on the line is itself one of the
+#     known-dangling connector/verb words, which a short label phrase
+#     essentially never ends on ("Fast processing" ends on a noun, not "of"/
+#     "within"/"to"). Confirmed against real drafts (2026-07-24): every
+#     other list item in the same numbered list as the real bug -- "Gather
+#     identity and status documents", "Pass a knowledge test", etc. -- ends
+#     on an ordinary noun and is correctly left alone.
+#
+#     Header lines are excluded: editorial headings legitimately end on a
+#     stranded preposition constantly ("Who This Checklist Is Built For",
+#     "What You'll Need") -- a real false positive hit testing this against
+#     post 48854's own "### Who This Checklist Is Built For" heading.
+_EOL_CONNECTOR_WORDS = (_DANGLING_CONNECTORS + _DANGLING_VERB_QUANTIFIERS + ["after"])
+_DANGLING_AT_EOL_PATTERN = re.compile(
+    r"\b(" + "|".join(re.escape(p) for p in _EOL_CONNECTOR_WORDS) + r")\s*$",
+    re.IGNORECASE,
+)
+_HEADER_PREFIX = re.compile(r"^\s*#{1,6}\s")
+
+
+def _find_dangling_connector_at_eol(text: str) -> List[Dict]:
+    findings = []
+    pos = 0
+    for line in text.split("\n"):
+        if not _HEADER_PREFIX.match(line):
+            m = _DANGLING_AT_EOL_PATTERN.search(line)
+            if m:
+                findings.append({
+                    "type": "dangling_connector",
+                    "match": m.group(0).strip(),
+                    "context": line.strip()[-100:],
+                    "position": pos + m.start(),
+                })
+        pos += len(line) + 1
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# 1d. The same word/phrase repeated back-to-back in a comma-separated list --
+#     "including Canada, the UK, India, Mexico, Australia, Australia, and
+#     the Philippines" (real bug, post 48982, 2026-07-24). Restricted to
+#     CAPITALIZED tokens with an exact (case-sensitive) repeat: emphatic
+#     mid-sentence reduplication in real English ("very, very good", "no,
+#     no, I insist") is virtually always lowercase-lowercase, since only the
+#     first word of a sentence is capitalized -- so this can't confuse a
+#     deliberate stylistic repeat with a generation-loop duplicate the way a
+#     case-insensitive or lowercase-inclusive version would.
+_DUPLICATE_CAPITALIZED_PATTERN = re.compile(r"\b([A-Z][a-zA-Z]{2,}),\s+\1\b")
+
+
+def _find_duplicate_capitalized_word(text: str) -> List[Dict]:
+    return [{
+        "type": "duplicate_list_item",
+        "match": m.group(0),
+        "context": text[max(0, m.start() - 40):m.end() + 40].strip(),
+        "position": m.start(),
+    } for m in _DUPLICATE_CAPITALIZED_PATTERN.finditer(text)]
 
 
 def _find_adjacent_connector_pairs(text: str) -> List[Dict]:
@@ -521,9 +667,13 @@ def scan_body(text: str) -> List[Dict]:
     position in the text."""
     findings = []
     findings += _find_dangling_connectors(text)
+    findings += _find_sentence_initial_after(text)
+    findings += _find_dangling_connector_at_eol(text)
+    findings += _find_duplicate_capitalized_word(text)
     findings += _find_adjacent_connector_pairs(text)
     findings += _find_verb_connector_capitalized(text)
     findings += _find_of_to_verb(text)
+    findings += _find_of_only_verb(text)
     findings += _find_duration_noun_missing_quantity(text)
     findings += _find_fused_link_sentences(text)
     findings += _find_empty_image_src(text)
