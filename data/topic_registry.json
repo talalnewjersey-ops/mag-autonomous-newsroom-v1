@@ -271,10 +271,11 @@
       "category": "assur habitation",
       "monetization_score": 4,
       "traffic_score": 3,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null,
-      "selected_at": null
+      "post_id": 48990,
+      "selected_at": "2026-07-24T02:28:21.776071Z",
+      "drafted_at": "2026-07-24T02:54:05.563466Z"
     },
     {
       "id": "ca-mortgage-for-newcomers",
@@ -298,9 +299,11 @@
       "category": "assurance auto",
       "monetization_score": 3,
       "traffic_score": 5,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null
+      "post_id": 48972,
+      "selected_at": "2026-07-23T15:44:32.137357Z",
+      "drafted_at": "2026-07-23T16:01:27.845642Z"
     },
     {
       "id": "us-home-country-credit-score-transfer",
@@ -310,9 +313,11 @@
       "category": "credit",
       "monetization_score": 3,
       "traffic_score": 4,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null
+      "post_id": 48982,
+      "selected_at": "2026-07-23T15:52:45.762054Z",
+      "drafted_at": "2026-07-23T16:01:27.845797Z"
     },
     {
       "id": "us-essential-documents-ssn-itin",
@@ -322,9 +327,11 @@
       "category": "banques",
       "monetization_score": 3,
       "traffic_score": 4,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null
+      "post_id": 49005,
+      "selected_at": "2026-07-24T02:45:15.614560Z",
+      "drafted_at": "2026-07-24T02:54:05.563755Z"
     },
     {
       "id": "us-intl-students-money-checklist",
@@ -373,9 +380,11 @@
       "category": "banques",
       "monetization_score": 3,
       "traffic_score": 4,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null
+      "post_id": 48997,
+      "selected_at": "2026-07-24T02:36:38.331692Z",
+      "drafted_at": "2026-07-24T02:54:05.563625Z"
     },
     {
       "id": "ca-intl-students-money-checklist",
