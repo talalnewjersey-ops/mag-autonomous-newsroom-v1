@@ -29,7 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from agents._placeholder_scan import scan_body, scan_title  # noqa: E402
+from agents._placeholder_scan import scan_body, scan_title, scan_alt_texts  # noqa: E402
 
 
 # ============================================================
@@ -48,6 +48,65 @@ REAL_48733_SENTENCE = (
     "to of first arriving in Canada, after which standard account pricing applies."
 )
 
+# 2026-07-23: post 48931 dry-run ("Payday Loans Vs Credit Builder Loans"),
+# scripts/soften_claims.py stripped unsourced numbers and left these three
+# distinct scars -- none caught by the gate as it existed before this fix.
+REAL_48931_SENTENCES = {
+    "dangling_exceeding": "Fees routinely translate to APRs exceeding, according to the CFPB.",
+    "a_an_disagreement": "a newcomer facing a emergency might use a payday loan",
+    "missing_terminal_punctuation": (
+        "The delayed-access design offers the opposite: delayed access to funds, "
+        "but a foundation for"
+    ),
+    "generates_of": "That same directed into a credit builder loan generates of on-time payment history",
+}
+
+# 2026-07-24: 6 real scars found by human review of posts 48972/48982
+# (workflow run 30021353265) that survived a 0-finding GATE D run -- exact
+# verbatim text from the real drafts, not paraphrased.
+REAL_48972_48982_SENTENCES = {
+    "from_to_range": "5. **Pay the applicable fee** —ranges from to depending on the state",
+    "within_at_eol": "6. **Receive a temporary paper license** —the physical card arrives by mail within",
+    "sentence_initial_after": (
+        "begins accumulating positive payment history immediately. After, that single "
+        "account already gives length-of-history data"
+    ),
+    "within_before_dash": (
+        "will have three tradelines reporting within —significantly accelerating "
+        "eligibility for unsecured products."
+    ),
+    "have_of": "Once you have of clean history, apply for one unsecured card.",
+    "duplicate_country": (
+        "translating credit histories from select countries — including Canada, the UK, "
+        "India, Mexico, Australia, Australia, and the Philippines — into a "
+        "U.S.-equivalent format."
+    ),
+}
+
+# 2026-07-24 (round 3): 5 real scars from post 48990 (workflow run
+# 30061690310, genuinely post the round-2 6-bug patch) found by human review
+# after a second 0-finding GATE D run -- exact verbatim text.
+REAL_48990_SENTENCES = {
+    "showing_of": "- **Proof of funds:** Bank statements showing of rent in a Canadian or foreign account",
+    "with_in": (
+        "a newcomer arriving in Toronto with in a Canadian chequing account and a signed "
+        "employment offer letter is in a materially stronger negotiating position than one "
+        "relying on verbal assurances alone."
+    ),
+    "within_of": (
+        "Most newcomers secure their first independent rental within of arrival, depending "
+        "on the city, rental market tightness, and document preparation."
+    ),
+    "fused_list_continuation": (
+        "- **Pre-authorized payment setup:** Offering automatic rent withdrawal signals "
+        "reliability\nBritish Columbia allows first and last month"
+    ),
+    "orphaned_anaphora": (
+        "### How much money should I set aside before signing a lease?\n\n"
+        "Beyond that, budget for utility connection fees, tenant insurance, and moving costs."
+    ),
+}
+
 
 def test_catches_all_four_real_48854_body_bugs():
     for label, sentence in REAL_48854_SENTENCES.items():
@@ -61,6 +120,143 @@ def test_catches_real_48733_bug_found_via_stress_testing():
     # still-live instance of the same bug class on a THIRD article.
     findings = scan_body(REAL_48733_SENTENCE)
     assert any(f["type"] == "adjacent_connector_pair" for f in findings)
+
+
+def test_catches_all_real_48931_body_bugs():
+    for label, sentence in REAL_48931_SENTENCES.items():
+        findings = scan_body(sentence)
+        assert findings, f"missed real 48931 bug ({label}): {sentence!r}"
+
+
+def test_catches_all_real_48972_48982_body_bugs():
+    # These 6 survived a 0-finding GATE D run and were only caught by human
+    # review (2026-07-24) -- the exact gap this test set closes.
+    for label, sentence in REAL_48972_48982_SENTENCES.items():
+        findings = scan_body(sentence)
+        assert findings, f"missed real 48972/48982 bug ({label}): {sentence!r}"
+
+
+def test_catches_all_real_48990_body_bugs():
+    # Round 3: found on a genuinely-post-patch article, after round 2's
+    # 6-bug fix was already live -- the gate is not exhaustive by
+    # construction and each round finds a new corner of the same family.
+    for label, sentence in REAL_48990_SENTENCES.items():
+        findings = scan_body(sentence)
+        assert findings, f"missed real 48990 bug ({label}): {sentence!r}"
+
+
+def test_catches_leaked_internal_label_in_alt_attribute():
+    html = ('<img src="x.jpeg" alt="Comparison guide: car insurance for foreign '
+            'drivers options for newcomers" class="wp-image-1">')
+    findings = scan_body(html)
+    assert any(f["type"] == "leaked_internal_label_alt" for f in findings)
+
+
+def test_catches_leaked_internal_label_in_figcaption():
+    html = ('<figure><img src="x.jpeg" alt="ok"><figcaption>Step-by-step checklist: '
+            'renters insurance guide for usa newcomers</figcaption></figure>')
+    findings = scan_body(html)
+    assert any(f["type"] == "leaked_internal_label_figcaption" for f in findings)
+
+
+def test_catches_duplicate_how_to():
+    findings = scan_body("How to how to rent an apartment without SSN or credit: step-by-step process for newcomers")
+    assert any(f["type"] == "duplicate_how_to" for f in findings)
+
+
+def test_scan_alt_texts_catches_all_four_real_leaked_labels():
+    # 2026-07-23: real agent_09 image_prompts.json alt_text values, verbatim
+    # from live published posts 48682/48870/48854/48878 -- this is the ONLY
+    # mechanism that catches them, since $DRAFT (what scan_body() actually
+    # scans in the real pipeline) never contains these strings at all.
+    alt_texts = [
+        "Comparison guide: renters insurance for newcomers options for newcomers",
+        "Step-by-step checklist: renters insurance for newcomers guide for usa newcomers",
+        "How to renters insurance for newcomers: step-by-step process for newcomers",
+        "Supporting image: renters insurance for newcomers lifestyle for usa newcomers",
+    ]
+    findings = scan_alt_texts(alt_texts)
+    assert len(findings) == 4
+
+
+def test_scan_alt_texts_no_false_positive_on_natural_alt_text():
+    findings = scan_alt_texts([
+        "A newcomer reviewing a renters insurance policy at a kitchen table",
+        "",
+    ])
+    assert not findings
+
+
+def test_placeholder_gate_cli_reads_image_prompts_flag(tmp_path):
+    article = tmp_path / "draft.md"
+    article.write_text("Clean sentence with no issues at all here.", encoding="utf-8")
+    wp_report = tmp_path / "wordpress_report.json"
+    wp_report.write_text(json.dumps({"title": "Best Banks for Newcomers to Canada 2026"}), encoding="utf-8")
+    image_prompts = tmp_path / "image_prompts.json"
+    # "prompts" is a DICT keyed by image type (agent_09_image_prompt_generator.py:
+    # prompts = {}; prompts["comparison_graphic"] = ...), confirmed against a real
+    # image_prompts.json (2026-07-23) -- NOT a list. A first version of this
+    # fixture used a list, which matched a first (wrong) implementation and
+    # silently masked the bug; kept as the real shape now, locked in by
+    # test_placeholder_gate_cli_image_prompts_dict_shape_matches_real_agent_09_output
+    # below so this can't regress back to the wrong assumption unnoticed.
+    image_prompts.write_text(json.dumps({
+        "prompts": {
+            "comparison_graphic": {"alt_text": "Comparison guide: renters insurance options for newcomers"},
+        }
+    }), encoding="utf-8")
+    output = tmp_path / "report.json"
+
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(REPO_ROOT)
+    proc = subprocess.run(
+        [sys.executable, "scripts/placeholder_gate.py",
+         "--article", str(article),
+         "--wordpress-report", str(wp_report),
+         "--image-prompts", str(image_prompts),
+         "--output", str(output)],
+        cwd=str(REPO_ROOT), env=env, capture_output=True, text=True, timeout=30,
+    )
+    assert proc.returncode == 1
+    report = json.loads(output.read_text())
+    assert report["status"] == "FAIL"
+    assert report["alt_text_findings"]
+
+
+def test_placeholder_gate_cli_image_prompts_dict_shape_matches_real_agent_09_output(tmp_path):
+    # Regression lock: real image_prompts.json (workflow run 30013499548,
+    # article_1) has "prompts" as a dict of exactly these 5 keys, each value
+    # itself a dict with an "alt_text" field -- this is the ACTUAL output
+    # shape scripts/placeholder_gate.py must handle, not an approximation.
+    article = tmp_path / "draft.md"
+    article.write_text("Clean sentence with no issues at all here.", encoding="utf-8")
+    wp_report = tmp_path / "wordpress_report.json"
+    wp_report.write_text(json.dumps({"title": "Best Banks for Newcomers to Canada 2026"}), encoding="utf-8")
+    image_prompts = tmp_path / "image_prompts.json"
+    image_prompts.write_text(json.dumps({
+        "prompts": {
+            "featured_image": {"alt_text": "Featured: Best Banks for Newcomers to Canada 2026"},
+            "comparison_graphic": {"alt_text": "Comparison guide: renters insurance options for newcomers"},
+            "checklist_graphic": {"alt_text": "Step-by-step checklist: renters insurance guide for usa newcomers"},
+            "process_graphic": {"alt_text": "How to renters insurance: step-by-step process for newcomers"},
+            "supporting_graphic": {"alt_text": "Supporting image: renters insurance lifestyle for usa newcomers"},
+        }
+    }), encoding="utf-8")
+    output = tmp_path / "report.json"
+
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(REPO_ROOT)
+    proc = subprocess.run(
+        [sys.executable, "scripts/placeholder_gate.py",
+         "--article", str(article),
+         "--wordpress-report", str(wp_report),
+         "--image-prompts", str(image_prompts),
+         "--output", str(output)],
+        cwd=str(REPO_ROOT), env=env, capture_output=True, text=True, timeout=30,
+    )
+    assert proc.returncode == 1
+    report = json.loads(output.read_text())
+    assert len(report["alt_text_findings"]) == 4   # every non-featured image type leaks
 
 
 def test_catches_empty_image_src():
@@ -87,6 +283,48 @@ FALSE_POSITIVE_FIXTURES = {
     "at_fault_compound": "Minimum-only coverage leaves exposure in at-fault states like Texas.",
     "demonym_after_duration_noun": "The CRA expects a final-year tax filing covering the period of Canadian residency.",
     "quantity_already_present": "USCIS may authorize up to 12 months of Optional Practical Training.",
+    # 2026-07-23 additions, validated against 5 real published articles:
+    "us_equivalent_compound": "Convert your foreign credit history into a U.S.-equivalent format before applying.",
+    "u_s_bank_account": "Open a U.S. bank account within your first week to start building payment history.",
+    "one_time_fee": "Most providers charge a one-time setup fee for new accounts.",
+    "university_word": "Enrolling at a university in the U.S. often requires proof of funds.",
+    "blockquote_no_terminal_period": "> See our companion guide: How to Rent Without Credit History in Canada 2026",
+    "bolded_step_heading": "**Week 1-2: Identity and Status Foundation**",
+    "colon_lead_in_before_list": "Here is what you will need to bring to the appointment:",
+    # 2026-07-23 additions, found on a FRESH live dry-run batch (workflow run
+    # 30013499548) right after the \s* widening landed -- preposition
+    # stranding at a relative clause's end is common, correct English and
+    # was never a template-bug shape; "unit" is "yoo-" pronounced like
+    # "unique"/"university", just missing from the exception list.
+    "preposition_stranding_for_period": "This is the financial footprint landlords and future lenders will look for.",
+    "preposition_stranding_for_comma": "Immigration status directly determines which license type you qualify for, and how long it takes.",
+    "unit_a_an": "Viewing a unit in person before signing anything is strongly recommended for newcomers.",
+    "unit_glued_to_em_dash": "Finding a unit—meaningfully compresses the process for newcomers with limited time.",
+    # 2026-07-24 additions, added alongside the 6-bug fix set above:
+    "after_that_comma": "After that, she called the DMV to confirm her appointment time.",
+    "after_the_interview": "After the interview, most applicants receive a decision within a week.",
+    "header_ending_in_for": "### Who This Checklist Is Built For",
+    "short_label_list_item": "- Fast processing and same-day approval",
+    "numbered_label_list_item": "1. Submit your completed application form",
+    "no_no_emphatic_repeat": "No, no, I insist on paying for the appointment myself.",
+    "have_to_modal": "You have to apply in person; mailed applications are not accepted at this DMV.",
+    "has_to_modal": "Every applicant has to bring a valid passport and proof of address.",
+    # 2026-07-24 (round 3) additions:
+    "aim_for_on": "### What credit utilization rate should I aim for on my first U.S. credit card?",
+    "qualify_for_in": (
+        "This includes tax refunds and credits that many newcomers qualify for in their "
+        "first year of Canadian residency."
+    ),
+    "showing_noun_with_article": "The rally was a showing of solidarity among newcomers facing similar barriers.",
+    "clean_bulleted_list_no_continuation": (
+        "- **Proof of funds:** Bank statements showing 3 months of rent in an account\n"
+        "- **Foreign income documentation:** Employer letters, translated and notarized\n"
+        "- **Pre-authorized payment setup:** Offering automatic rent withdrawal signals reliability"
+    ),
+    "additionally_between_ordinary_paragraphs": (
+        "Newcomers should open a chequing account within the first week.\n\n"
+        "Additionally, a secured credit card helps establish local payment history."
+    ),
 }
 
 

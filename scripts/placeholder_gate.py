@@ -41,7 +41,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from agents._placeholder_scan import scan_body, scan_title
+from agents._placeholder_scan import scan_body, scan_title, scan_alt_texts
 
 
 def main():
@@ -49,6 +49,12 @@ def main():
     ap.add_argument("--article", required=True, help="agent_04 article draft (markdown)")
     ap.add_argument("--wordpress-report", required=True,
                      help="agent_11 wordpress_report.json (source of the REAL published title)")
+    ap.add_argument("--image-prompts", required=False, default="",
+                     help="agent_09 image_prompts.json -- optional; checks alt_text values for "
+                          "leaked internal labels (e.g. 'Comparison guide: ...'). $DRAFT never "
+                          "contains these strings (agent_11 writes them straight into WordPress "
+                          "media alt=\"\", bypassing the draft entirely), so this is the only place "
+                          "in the pipeline that can catch that specific bug (added 2026-07-23).")
     ap.add_argument("--output", required=True, help="Path to write the gate's JSON report")
     args = ap.parse_args()
 
@@ -63,9 +69,32 @@ def main():
             wp_report = {}
     title = wp_report.get("title", "")
 
+    alt_findings = []
+    if args.image_prompts:
+        img_path = Path(args.image_prompts)
+        if img_path.exists():
+            try:
+                img_data = json.loads(img_path.read_text(encoding="utf-8"))
+                # agent_09_image_prompt_generator.py writes "prompts" as a
+                # DICT keyed by image type ({"featured_image": {...}, ...},
+                # confirmed against a real image_prompts.json, not a list --
+                # a first version of this wiring assumed a list, iterated the
+                # dict's string KEYS instead of its values, and crashed on
+                # every real run; the crash was silently swallowed by the
+                # try/except below, so the alt-text check never actually ran
+                # until this was caught (2026-07-23, workflow run
+                # 30013499548). isinstance guard kept for whichever shape a
+                # future agent_09 refactor produces.
+                prompts = img_data.get("prompts", {})
+                entries = prompts.values() if isinstance(prompts, dict) else prompts
+                alt_texts = [p.get("alt_text", "") for p in entries]
+                alt_findings = scan_alt_texts(alt_texts)
+            except Exception:
+                alt_findings = []
+
     body_findings = scan_body(body_text)
     title_findings = scan_title(title) if title else []
-    all_findings = body_findings + title_findings
+    all_findings = body_findings + title_findings + alt_findings
 
     report = {
         "gate": "placeholder_gate",
@@ -73,6 +102,7 @@ def main():
         "title_checked": title,
         "body_findings": body_findings,
         "title_findings": title_findings,
+        "alt_text_findings": alt_findings,
         "finding_count": len(all_findings),
         "status": "PASS" if not all_findings else "FAIL",
     }
