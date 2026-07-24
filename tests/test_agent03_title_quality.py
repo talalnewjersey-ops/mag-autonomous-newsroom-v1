@@ -41,6 +41,24 @@ def test_smart_title_case_leaves_ordinary_words_alone():
     assert smart_title_case("renters insurance") == "Renters Insurance"
 
 
+def test_smart_title_case_fixes_fdic_real_break_post_49056():
+    # Real bug, workflow run 30104008120: "Best ITIN Only Banking Fdic
+    # Insured Accounts Without An SSN..." -- FDIC was missing from
+    # _KNOWN_ACRONYMS the moment a us_banking-vertical topic was tried.
+    out = smart_title_case("itin only banking fdic insured accounts without an ssn")
+    assert "FDIC" in out.split()
+    assert "Fdic" not in out.split()
+
+
+def test_smart_title_case_covers_the_full_vertical_facts_acronym_audit():
+    # Every genuine acronym found auditing agents/_vertical_facts.py's
+    # engraved claims/source_urls (2026-07-24), not just the ones a title
+    # happened to break on so far.
+    for acronym in ("cfpb", "fdic", "fico", "fha", "hud", "ncua", "cdic", "naic", "sevp", "ohip", "ramq"):
+        out = smart_title_case(f"a guide to {acronym} rules")
+        assert acronym.upper() in out.split(), f"{acronym!r} not corrected: {out!r}"
+
+
 def test_smart_title_case_output_never_trips_gate_d_title_scan():
     # closes the loop: the generator's own output must satisfy the detector
     # scan_title() was built to catch this bug class in the first place.

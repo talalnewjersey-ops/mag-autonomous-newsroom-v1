@@ -491,6 +491,27 @@ _KNOWN_ACRONYMS = {
     "usa", "ssn", "itin", "opt", "sevis", "dhs", "cra", "irs", "cpt", "dso",
     "fica", "tfsa", "rrsp", "ofx", "faq", "eeat", "seo", "gst", "hst", "sin",
     "cpp", "ei", "uscis", "ice", "stem",
+    # 2026-07-24 additions: found by real title breakage the moment a topic
+    # outside the original set was tried -- "Best ITIN Only Banking Fdic
+    # Insured Accounts Without An SSN..." (post 49056, workflow run
+    # 30104008120) proved "fdic" was missing the instant a us_banking topic
+    # was generated. Audited agents/_vertical_facts.py's engraved claims/
+    # source_urls for every other genuine acronym (grep -oE '\b[A-Z]{2,6}\b')
+    # to add the rest proactively instead of waiting for each to break a
+    # title one at a time -- this list has now been extended reactively
+    # three separate times in one session, which is exactly the "whack-a-
+    # mole" pattern the adjacent-connector-pair detector's own genericization
+    # (2026-07-24, same day) was built to stop; a full audit closes the gap
+    # in one pass instead of the fourth mole popping up next.
+    "cfpb", "fdic", "fico", "fha", "hud", "ncua", "cdic", "naic", "sevp",
+    "ohip", "ramq",
+    # Deliberately EXCLUDED despite appearing in engraved facts: "chip"
+    # (Children's Health Insurance Program) and "pip" (Personal Injury
+    # Protection) are both real, common English words in this content
+    # domain's register ("chip in", "give someone the pip") -- forcing them
+    # uppercase risks a false correction the reverse of this whole fix's
+    # purpose. No confirmed title bug has needed either yet; add only if
+    # one does, per this list's own evidence-only precedent.
 }
 _WORD_CHARS = re.compile(r"[a-zA-Z]+")
 
