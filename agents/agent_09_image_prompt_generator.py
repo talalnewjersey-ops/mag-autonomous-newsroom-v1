@@ -157,6 +157,35 @@ def _subject_scene_phrase(subject: str) -> str:
     )
 
 
+def _alt_text_subject(subject: str) -> str:
+    """Subject, capitalized for use as the lead of a caption-style alt_text
+    ("{subject} -- comparison chart for newcomers"), added 2026-07-23.
+
+    `subject` is a free-form keyword/topic string and can take almost any
+    grammatical shape depending on what agent_01/agent_03 extracted --
+    a noun phrase ("renters insurance"), a gerund phrase ("getting a
+    driver's license as a newcomer"), an infinitive ("how to rent an
+    apartment without SSN or credit"), or a literal yes/no QUESTION used as
+    an SEO keyword ("does my home country credit score transfer"). The
+    previous alt_text templates grammatically inserted `subject` as the
+    object of a preposition ("Comparison chart of {subject} options for
+    newcomers") -- fine for a noun phrase, but "Comparison chart of does my
+    home country credit score transfer options for newcomers" is broken
+    English (confirmed on real post 48982's alt_text, 2026-07-23 review).
+    An em-dash caption ("{subject} -- comparison chart for newcomers")
+    reads naturally for EVERY one of those shapes -- it doesn't require
+    `subject` to grammatically slot into the surrounding sentence at all,
+    the same way a photo caption like "Does my rent increase? -- what
+    tenants need to know" works regardless of the headline's own grammar.
+
+    Only the leading character is capitalized (not str.capitalize(), which
+    would also lowercase the rest and could mangle an acronym like "SSN" if
+    one ever appears mid-subject) -- `subject` is otherwise used verbatim.
+    """
+    s = (subject or "").strip()
+    return s[:1].upper() + s[1:] if s else s
+
+
 # Nano Banana compatible specs (fallback, not used in Gemini-only mode)
 NANO_BANANA_SPECS = {
     "featured_image":     {"width": 1200, "height": 675,  "model": "realistic"},
@@ -329,7 +358,7 @@ class ImagePromptGeneratorAgent(BaseAgent):
         return {
             "image_type": "featured_image",
             "prompt": prompt,
-            "alt_text": f"Featured: {title[:80]}",
+            "alt_text": f"{_alt_text_subject(subject)} -- editorial photo for newcomers",
             "caption": f"Complete guide to {subject}",
             "description": f"Publication-grade featured image for {title[:60]}",
             "keywords": [subject, market, "expat", "newcomer", "finance", "moneyabroadguide"],
@@ -356,7 +385,7 @@ class ImagePromptGeneratorAgent(BaseAgent):
         return {
             "image_type": "comparison_graphic",
             "prompt": prompt,
-            "alt_text": f"Comparison guide: {subject} options for newcomers",
+            "alt_text": f"{_alt_text_subject(subject)} -- comparison chart for newcomers",
             "caption": f"Comparing the best {subject} options",
             "description": f"Professional comparison graphic for {subject} guide",
             "has_existing_table": has_table,
@@ -385,7 +414,7 @@ class ImagePromptGeneratorAgent(BaseAgent):
         return {
             "image_type": "checklist_graphic",
             "prompt": prompt,
-            "alt_text": f"Step-by-step checklist: {subject} guide for {market} newcomers",
+            "alt_text": f"{_alt_text_subject(subject)} -- step-by-step checklist for {market} newcomers",
             "caption": f"Complete {subject} checklist",
             "description": f"Visual checklist infographic for {subject} newcomer guide",
             "steps": section_titles[:5],
@@ -413,7 +442,7 @@ class ImagePromptGeneratorAgent(BaseAgent):
         return {
             "image_type": "process_graphic",
             "prompt": prompt,
-            "alt_text": f"How to {subject}: step-by-step process for newcomers",
+            "alt_text": f"{_alt_text_subject(subject)} -- process diagram for newcomers",
             "caption": f"How the {subject} process works",
             "description": f"Process flow diagram for {subject} guide",
             "steps": section_titles[:4],
@@ -447,7 +476,7 @@ class ImagePromptGeneratorAgent(BaseAgent):
         return {
             "image_type": "supporting_graphic",
             "prompt": prompt,
-            "alt_text": f"Supporting image: {subject} lifestyle for {market} newcomers",
+            "alt_text": f"{_alt_text_subject(subject)} -- lifestyle photo for {market} newcomers",
             "caption": f"Real stories: newcomers navigating {subject}",
             "description": f"Lifestyle supporting image for {subject} newcomer guide",
             "format": "jpg",
