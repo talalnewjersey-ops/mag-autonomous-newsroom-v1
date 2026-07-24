@@ -59,6 +59,7 @@ from agents._claims import _NUM_RE, _ATTR_RE  # shared claim regexes (single sou
 from agents._sources import _classify_url
 from agents._fact_coverage import classify_claims
 from agents._source_pool import resolve_gate_vertical
+from agents._placeholder_scan import scan_body  # post-strip grammar check (2026-07-23, see below)
 
 _SENT = "\x00"  # sentinel marking a stripped figure inside a prose sentence
 
@@ -68,10 +69,22 @@ _LINK_RE = re.compile(r"\[[^\]]*\]\([^)]+\)|https?://[^\s\)\]>,;]+")  # markdown
 _MASK_IN = re.compile(_MASK_OPEN + r"(\d+)" + _MASK_CLOSE)
 
 # Quantifier words that introduce a figure and should be stripped with it.
+#
+# "exceeding"/"totaling"/"averaging"/"reaching" added 2026-07-23 (real bug,
+# post 48931 dry-run/article_2: "Fees routinely translate to APRs exceeding,
+# [according to the CFPB](https://www.consumerfinance.gov/...)." -- a real,
+# live .gov citation sat right next to the number and it STILL got stripped
+# (LEVIER C, 2026-07-05: a link alone is never enough, the number must match
+# an engraved Couche-1 fact -- working as designed here, this vertical's APR
+# figure just isn't engraved). The bug is purely that these four are
+# transitive VERBS, not prepositions -- the original list only ever covered
+# preposition-style quantifiers that glue directly onto a bare number ("over
+# 400%", "up to $75"), so a verb-form quantifier fell outside its scope and
+# only the number got removed, leaving the verb dangling before punctuation.
 _QUANT = re.compile(
     r"(?i)(?:\b(?:by|up to|around|about|roughly|nearly|over|under|approximately|"
     r"between|from|of|below|above|at least|at most|as much as|as little as|"
-    r"as low as|as high as)\s+)$")
+    r"as low as|as high as|exceeding|totaling|averaging|reaching)\s+)$")
 # A numeric range prefix immediately before the matched figure, e.g. "20-" in "20-40%".
 _RANGE_PREFIX = re.compile(r"\d[\d,\.]*\s*[–—-]\s*$")
 # PLAN B (context-aware scaffold): a trailing unit token glued to the figure, e.g. "/month".
@@ -261,12 +274,26 @@ def _soften_table_row(line, spans_local, report):
     return "|".join(out)
 
 
+_LIST_MARKER_LINE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s")
+
+
 def _soften_prose(line, spans_local, min_words, report, official=frozenset(), max_appos_words=4):
     """Strip figures leaving a sentinel, then drop any sentence the strip reduced
     below min_words; keep the clause otherwise. Extended strip-spans are MERGED
     first so overlapping ranges (e.g. "$200-$500") cannot corrupt each other.
     PLAN B: each span is grown to swallow its immediate delimited scaffold so no
     scar (dangling '(', '/month', '**', '— —') is ever created."""
+    # A numbered marker's OWN period ("1. ") is indistinguishable from a
+    # sentence-ending period to the split below, so a list line's first
+    # "sentence" piece is really just its marker, split off from the rest of
+    # the line -- harmless before 2026-07-23 (that orphaned tail always
+    # survived), but the new post-strip grammar check below would otherwise
+    # flag it as a lone unpunctuated fragment and delete real list content.
+    # List lines are legitimately exempt from terminal punctuation anyway
+    # (same convention as agents/_placeholder_scan.py's own list-line
+    # exclusion), so skip the check entirely rather than special-case the
+    # split.
+    is_list_line = bool(_LIST_MARKER_LINE.match(line))
     strips = []
     for (s, e, is_attr) in spans_local:
         ss, ee = _strip_span(line, s, e, is_attr)
@@ -291,13 +318,47 @@ def _soften_prose(line, spans_local, min_words, report, official=frozenset(), ma
         if len(cleaned.split()) < min_words:
             report["sentences_deleted"] += 1  # gutted stat sentence -> drop it
             continue
+        # 2026-07-23: a strip can leave a FORWARD dependency orphaned even when
+        # the residual clause is long enough to survive the word-count check --
+        # e.g. "generates [6 months] of on-time payment history" -> "generates
+        # of on-time payment history" (real bug, post 48931/article_2). _QUANT
+        # only ever swallows quantifier words BACKWARD from the figure; nothing
+        # here repairs a complement phrase that depended on the removed number
+        # forward of it. Rather than attempt a risky general forward-grammar
+        # repair (same idiom false-positive trap as a broader GATE D detector
+        # would hit -- "pay in full"/"pay on time" are fine without a number),
+        # reuse the same battle-tested scan_body() detectors GATE D uses and
+        # drop the whole sentence if the repaired clause still reads broken.
+        # Safe here specifically because this pass is NON-BLOCKING: worst case
+        # is one extra deleted sentence, never a corrupted one reaching GATE D.
+        #
+        # EXCEPT "adjacent_connector_pair" (2026-07-24): _scaffold_span's own
+        # CASE 4 deliberately KEEPS a long em-dash appositive rather than
+        # deleting it, accepting a minor residue scar as the tradeoff for not
+        # losing real informative content (e.g. "at 35 percentage points of
+        # your score" -> "at of your score" once the unsourced number is
+        # stripped -- tests/test_lot_soften_scaffold.py locks this exact
+        # tradeoff in by name). That "at of" shape is exactly what GATE D's
+        # generic adjacent-connector-pair detector now catches -- correct
+        # for GATE D's job, but it would silently overrule CASE 4's own
+        # keep-the-content decision if reused here unfiltered. GATE D itself
+        # still runs, unfiltered, as the real blocking check on the finished
+        # draft afterward -- this filter only affects whether soften nukes
+        # the sentence preemptively, not whether the scar can reach
+        # WordPress.
+        _grammar_findings = [f for f in scan_body(cleaned) if f["type"] != "adjacent_connector_pair"]
+        if not is_list_line and _grammar_findings:
+            report["sentences_deleted"] += 1
+            report["grammar_check_deletions"] = report.get("grammar_check_deletions", 0) + 1
+            continue
         kept.append(cleaned)
     return " ".join(k for k in kept if k)
 
 
 def soften(text, vertical, min_residue_words=4, max_appos_words=4):
     report = {"numeric_claims_total": 0, "unsourced_found": 0, "stripped": 0,
-              "sentences_deleted": 0, "table_cells_softened": 0}
+              "sentences_deleted": 0, "table_cells_softened": 0,
+              "grammar_check_deletions": 0}
     masked, originals, official = _mask_links(text)
     report["numeric_claims_total"] = len(_NUM_RE.findall(masked))
     spans = _find_unsourced(masked, originals, vertical)

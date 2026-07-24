@@ -304,6 +304,56 @@ def test_attribution_cue_lookback_never_crosses_a_prior_citation():
 
 # ---------------- non-blocking CLI ----------------
 
+# ---------------- verb-form quantifiers (2026-07-23, post 48931/article_2) ----------------
+
+def test_exceeding_verb_quantifier_stripped_with_its_number():
+    text = ("Fees routinely translate to APRs exceeding 400%, "
+            "[according to the CFPB](https://www.consumerfinance.gov/ask-cfpb/category-payday-loans/).")
+    out, rep = soften(text, "us_credit")
+    assert "exceeding" not in out and "400%" not in out
+    assert out == ("Fees routinely translate to APRs, "
+                    "[according to the CFPB](https://www.consumerfinance.gov/ask-cfpb/category-payday-loans/).")
+    assert rep["stripped"] == 1
+
+
+def test_totaling_averaging_reaching_verb_quantifiers_stripped_with_their_number():
+    for verb in ("totaling", "averaging", "reaching"):
+        out, rep = soften(f"Deposits {verb} $500 are common for new applicants with thin files.", "us_credit")
+        assert verb not in out and "$500" not in out
+        assert rep["unsourced_found"] == 1
+
+
+# ---------------- forward-dependency grammar check (2026-07-23, post 48931/article_2) ----------------
+
+def test_forward_orphaned_complement_drops_whole_sentence_not_a_scar():
+    # "generates [6 months] of on-time payment history" -- no backward quantifier
+    # to swallow (bare number), so the strip alone leaves "generates of on-time
+    # payment history". The new post-strip scan_body() check must catch this and
+    # drop the whole sentence rather than let the scar survive.
+    text = ("That same amount directed into a credit builder loan generates 6 months "
+            "of on-time payment history for the borrower.")
+    out, rep = soften(text, "us_credit")
+    assert "generates of" not in out
+    assert rep["grammar_check_deletions"] == 1
+    assert rep["sentences_deleted"] == 1
+
+
+def test_forward_a_an_scar_drops_whole_sentence():
+    # "a [$400] emergency" -> "a emergency" (a/an disagreement) -- same mechanism,
+    # different scar shape, both caught by reusing agents._placeholder_scan.scan_body.
+    text = "A newcomer facing a $400 emergency might use a payday loan instead of a credit builder loan."
+    out, rep = soften(text, "us_credit")
+    assert "a emergency" not in out
+    assert rep["grammar_check_deletions"] == 1
+
+
+def test_clean_sentence_survives_the_grammar_check():
+    text = "Foreign drivers pay by 20-40% above the national average today for basic coverage."
+    out, rep = soften(text, "us_auto")
+    assert "above the national average" in out
+    assert rep["grammar_check_deletions"] == 0
+
+
 def test_cli_is_non_blocking_and_rewrites(tmp_path):
     draft = tmp_path / "article_draft.md"
     draft.write_text("Drivers pay by 20-40% more than locals in most cities.", encoding="utf-8")
