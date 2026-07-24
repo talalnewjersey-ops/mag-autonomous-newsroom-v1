@@ -46,7 +46,12 @@ def _write_article(path, words, faqs):
     FAQ questions are H3 lines ending in '?' (matches agent regex ^### .+\?)."""
     lines = ["title: Test Article", "", "# Test Article", ""]
     body_words = max(words - 4, 0)
-    lines.append(" ".join(["word"] * body_words))
+    # Trailing period: a real markdown draft always ends a prose paragraph
+    # with terminal punctuation. Without it this fixture used to trip
+    # agents/_placeholder_scan.py's missing_terminal_punctuation detector
+    # (added 2026-07-23), which is correct behavior for a blocking gate but
+    # not what these tests are checking.
+    lines.append(" ".join(["word"] * body_words) + ".")
     lines.append("")
     if faqs > 0:
         lines.append("## Frequently Asked Questions")

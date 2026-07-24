@@ -378,6 +378,7 @@ for ARTICLE_NUM in $(seq 1 "$MAX_ARTICLES"); do
   python scripts/placeholder_gate.py \
     --article "$DRAFT" \
     --wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_report.json" \
+    --image-prompts "${ARTICLE_DIR}/agent_09/image_prompts.json" \
     --output "${ARTICLE_DIR}/agent_11/placeholder_gate_report.json" || {
     echo "GATE D FAIL: placeholder artifact(s) detected in article ${ARTICLE_NUM} -- never scoring, never publishing"
     python scripts/mark_qa_failed.py --wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_validation_report.json" --gate PLACEHOLDER || true
