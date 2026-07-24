@@ -116,25 +116,46 @@ _SENTENCE_INITIAL_AFTER_PATTERN = re.compile(
 #    essentially never stacks two bare prepositions like this; the fact that
 #    it happened means a value was supposed to sit between them.
 #
-#    A first version tried a full cross-product of a broad connector list
-#    (of/to/by/for/within/with/in/on/at/from) and, tested against 15 real
-#    published articles, hit a wall of false positives from perfectly
+#    GENERIC as of 2026-07-24 (post 48990: "with in a Canadian chequing
+#    account", "secure their first independent rental within of arrival" --
+#    two more pairs not on the old enumerated list, and a third would
+#    obviously follow the same pattern eventually). Originally this was a
+#    curated list of specific bad pairs ("to on", "to of", ...), grown one
+#    real bug at a time -- reactive and, per this session's own review,
+#    guaranteed to keep missing the next pair nobody had seen yet.
+#
+#    A first version of the ORIGINAL detector tried a full cross-product of
+#    a broad connector list (of/to/by/for/within/with/in/on/at/from) and,
+#    tested against 15 real published articles, hit false positives from
 #    ordinary English: "at least" ("for at least the past two years"),
 #    "from within" ("verified digital identity confirmation from within
 #    Canadian jurisdiction"), and compound adjectives like "on-time"/
-#    "at-fault" ("years of on-time payments", "in at-fault states"). Narrowed
-#    to a curated allowlist of pairs actually observed in confirmed template
-#    bugs (48854's "to on", 48733's "to of") rather than a generative
-#    cross-product -- precision over recall, since this is a hard-blocking
-#    gate and a false positive halts autonomous publishing.
-#    "from to" added 2026-07-24 (post 48972: "Pay the applicable fee --
-#    ranges from to depending on the state", two dropped dollar figures
-#    either side of "to"). Same rationale as the rest of this list -- "from"
-#    and "to" bracket a range and neither means anything without a number
-#    on each side, so stacking them bare is never legitimate English.
-_KNOWN_BAD_ADJACENT_PAIRS = ["to on", "to of", "with of", "of to", "for to", "from to"]
+#    "at-fault" ("years of on-time payments", "in at-fault states") -- the
+#    on-time/at-fault case specifically because \b matches right before the
+#    hyphen, so "of on-time" looked like "of" + bare "on" without the
+#    negative lookahead below.
+#
+#    This version keeps the same connector word set that caused those false
+#    positives, but fixes both root causes instead of retreating to
+#    enumeration: (1) an explicit ALLOWLIST of the specific legitimate
+#    2-word sequences already found in real content ("from within", "up
+#    to"), checked before flagging a match, and (2) a negative lookahead
+#    blocking a hyphenated compound's first half from matching as a bare
+#    connector ("on-time" can never trigger via "on"). Re-validated against
+#    the same false-positive fixtures this list was originally narrowed to
+#    avoid, plus the full corpus stress-test (2026-07-24) -- see
+#    FALSE_POSITIVE_FIXTURES in tests/test_placeholder_gate.py.
+_ADJACENT_CONNECTOR_WORDS = ["of", "to", "by", "for", "within", "with", "in", "from", "at", "on", "plus"]
+#    "for on" added 2026-07-24: real false positive found stress-testing
+#    against post 48982's own FAQ heading, "What credit utilization rate
+#    should I aim for on my first U.S. credit card?" -- "aim for" is a
+#    phrasal verb that can take any trailing prepositional phrase ("aim for
+#    ON/IN/AT/DURING X"), so "for" immediately followed by "on" is not on
+#    its own evidence of a dropped word the way the other pairs are.
+_ADJACENT_PAIR_ALLOWLIST = {"from within", "up to", "on to", "in to", "for on"}
 _ADJACENT_PAIR_PATTERN = re.compile(
-    r"\b(" + "|".join(re.escape(p) for p in _KNOWN_BAD_ADJACENT_PAIRS) + r")\b",
+    r"\b(" + "|".join(_ADJACENT_CONNECTOR_WORDS) + r")\s+("
+    + "|".join(_ADJACENT_CONNECTOR_WORDS) + r")\b(?!-)",
     re.IGNORECASE,
 )
 
@@ -191,6 +212,39 @@ def _find_of_to_verb(text: str) -> List[Dict]:
 #     immediately.
 _OF_ONLY_VERBS = ["have", "has"]
 _OF_ONLY_VERB_PATTERN = re.compile(r"\b(" + "|".join(_OF_ONLY_VERBS) + r")\s+of\s+")
+
+# ---------------------------------------------------------------------------
+# 3d. "show"/"shows"/"showing" directly touching "of" -- added 2026-07-24
+#     (post 48990: "Bank statements showing of rent in a Canadian or foreign
+#     account", a bare amount -- "showing 3 months of rent" -- stripped with
+#     no quantifier word before it, same shape as 3b/3c).
+#
+#     NOT folded into _OF_ONLY_VERBS: unlike have/has, "showing"/"show(s)"
+#     has a genuinely common NOUN sense where "of" legitimately follows it
+#     ("a showing of support", "a showing of solidarity") -- always preceded
+#     by an article ("a"/"an"/"the") in that usage. The broken VERB/
+#     participle sense (a document "showing X" modifying a preceding noun,
+#     as in the real bug) is never preceded by an article right before
+#     "showing" -- it's preceded by the noun it modifies ("statements
+#     showing", "documents showing"). Guarding on that one signal keeps the
+#     noun sense safe without losing the real catch.
+_SHOW_OF_PATTERN = re.compile(r"\b(show|shows|showing)\s+of\s+", re.IGNORECASE)
+_ARTICLE_IMMEDIATELY_BEFORE = re.compile(r"\b(a|an|the)\s+$", re.IGNORECASE)
+
+
+def _find_show_of(text: str) -> List[Dict]:
+    findings = []
+    for m in _SHOW_OF_PATTERN.finditer(text):
+        prefix = text[max(0, m.start() - 5):m.start()]
+        if _ARTICLE_IMMEDIATELY_BEFORE.search(prefix):
+            continue  # "a/the showing of X" -- legitimate noun usage
+        findings.append({
+            "type": "missing_quantity_before_of",
+            "match": m.group(0).strip(),
+            "context": text[max(0, m.start() - 20):m.end() + 40].strip(),
+            "position": m.start(),
+        })
+    return findings
 
 
 def _find_of_only_verb(text: str) -> List[Dict]:
@@ -317,13 +371,30 @@ def _find_duplicate_capitalized_word(text: str) -> List[Dict]:
     } for m in _DUPLICATE_CAPITALIZED_PATTERN.finditer(text)]
 
 
+_AT_LEAST_MOST_TAIL = re.compile(r"^\s*(least|most)\b", re.IGNORECASE)
+
+
 def _find_adjacent_connector_pairs(text: str) -> List[Dict]:
-    return [{
-        "type": "adjacent_connector_pair",
-        "match": m.group(0),
-        "context": text[max(0, m.start() - 60):m.end() + 20].strip(),
-        "position": m.start(),
-    } for m in _ADJACENT_PAIR_PATTERN.finditer(text)]
+    findings = []
+    for m in _ADJACENT_PAIR_PATTERN.finditer(text):
+        normalized = re.sub(r"\s+", " ", m.group(0).lower())
+        if normalized in _ADJACENT_PAIR_ALLOWLIST:
+            continue
+        # "at" is the second word AND is itself the start of the fixed,
+        # already-safe idiom "at least"/"at most" ("for at least the past
+        # two years") -- real false positive on this exact fixture,
+        # 2026-07-24. "at" alone still gets caught pairing with anything
+        # else ("with at" isn't a thing); only the least/most continuation
+        # is exempted.
+        if m.group(2).lower() == "at" and _AT_LEAST_MOST_TAIL.match(text[m.end():]):
+            continue
+        findings.append({
+            "type": "adjacent_connector_pair",
+            "match": m.group(0),
+            "context": text[max(0, m.start() - 60):m.end() + 20].strip(),
+            "position": m.start(),
+        })
+    return findings
 
 
 def _find_verb_connector_capitalized(text: str) -> List[Dict]:
@@ -489,6 +560,28 @@ def _find_a_an_disagreement(text: str) -> List[Dict]:
 #    and Status Foundation**"). Validated against 5 real published articles
 #    (2026-07-23) after two false positives were found and excluded: a
 #    blockquote-style internal-link callout, and a bolded step-header line.
+#
+#    PER-LINE as of 2026-07-24 (post 48990: a 3-item bullet list's last item
+#    was immediately followed, with no blank line, by an unmarked
+#    continuation line -- "- **Pre-authorized payment setup:** Offering
+#    automatic rent withdrawal signals reliability\nBritish Columbia allows
+#    first and last month" -- itself truncated, no ending punctuation). The
+#    ORIGINAL version bailed on the ENTIRE paragraph block the moment ANY
+#    line in it had a list/header marker, specifically to avoid judging a
+#    real paragraph by a header's own last word when the two were fused
+#    with no blank line between them (see git history). That blanket
+#    bailout also silently protected this shape: a block mixing legitimate
+#    marker-exempt list lines with one genuine unmarked, truncated
+#    continuation line never got evaluated at all. Now each line in a block
+#    is judged independently -- marked lines stay exempt, but an unmarked
+#    line is checked on its own text, so a header/list line preceding real
+#    prose can no longer corrupt that prose's own judgment, and a truncated
+#    unmarked continuation can no longer hide behind its marked neighbors.
+#    Safe only because this pipeline's paragraphs are single un-wrapped
+#    lines (confirmed empirically, 2026-07-23: no artificial mid-sentence
+#    line breaks in real drafts) -- a hard-wrapped-paragraph pipeline would
+#    need a different check here, since a wrapped line legitimately ends
+#    without punctuation too.
 _LIST_OR_HEADER_PREFIX = re.compile(r"^\s*(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|\|)")
 _TRAILING_EMPHASIS = re.compile(r"[*_]+$")
 _ACCEPTABLE_TERMINAL_CHARS = '.!?"\')”’:'
@@ -520,17 +613,12 @@ _CONTAINS_HTML_TAG = re.compile(r"</?[a-zA-Z][^>]*>")
 
 def _find_missing_terminal_punctuation(text: str) -> List[Dict]:
     findings = []
-    for para in re.split(r"\n\s*\n", text):
-        raw = para.strip()
+    pos = 0
+    for line in text.split("\n"):
+        line_start = pos
+        pos += len(line) + 1
+        raw = line.strip()
         if not raw or _LIST_OR_HEADER_PREFIX.match(raw):
-            continue
-        # A header/list/table line fused onto a real paragraph with no blank
-        # line between them (malformed markdown, or an artifact of whatever
-        # produced $DRAFT) would otherwise make this function judge the
-        # PARAGRAPH's punctuation by the HEADER's last word. Bail rather
-        # than risk a false positive on a blocking gate.
-        lines = raw.splitlines()
-        if len(lines) > 1 and any(_LIST_OR_HEADER_PREFIX.match(ln) for ln in lines[1:]):
             continue
         # Structured markup (raw HTML tables/figures/spans some pipeline
         # steps embed directly in the draft) isn't prose and legitimately
@@ -550,7 +638,7 @@ def _find_missing_terminal_punctuation(text: str) -> List[Dict]:
                 "type": "missing_terminal_punctuation",
                 "match": stripped[-80:],
                 "context": stripped[-120:],
-                "position": text.find(para),
+                "position": line_start,
             })
     return findings
 
@@ -647,6 +735,73 @@ def _find_leaked_internal_labels(text: str) -> List[Dict]:
     return findings
 
 
+# ---------------------------------------------------------------------------
+# 11. A paragraph immediately after a heading that opens with a forward-
+#     anaphora discourse phrase ("Beyond that,", "Additionally,", ...) --
+#     added 2026-07-24 (post 48990, FAQ "How much money should I set aside
+#     before signing a lease?": the answer opened with "Beyond that, budget
+#     for utility connection fees..." -- "that" has nothing to refer to.
+#
+#     Root cause (agents/_fact_coverage.py + scripts/soften_claims.py):
+#     _soften_prose's EXISTING, intentional min_residue_words rule deletes a
+#     whole SENTENCE (not just its number) when stripping an unsourced
+#     figure leaves fewer than 4 content words behind -- documented,
+#     already-tested behavior, not a new bug. What's new is the visible
+#     damage: this FAQ answer's first sentence was almost certainly a
+#     short, number-only lead ("Budget $X-$Y for move-in costs.") that got
+#     fully deleted under that existing rule, and a SECOND sentence in the
+#     same answer happened to open with a discourse connective that
+#     depended on the first ("Beyond THAT..."). The original text isn't
+#     recoverable (soften rewrites the draft in place, no pre-strip
+#     snapshot survives past that pipeline step) -- this detector is the
+#     downstream safety net, not a fix to the deletion rule itself.
+#
+#     Deliberately scoped to right after a HEADING, not every paragraph:
+#     between two ORDINARY paragraphs, opening with "Additionally," to
+#     continue the previous paragraph's thought is completely normal,
+#     correct English -- flagging that generally would be constant noise.
+#     A heading is a real "fresh start" boundary (a new FAQ question, a new
+#     section) where a forward reference to content before it is never
+#     correct, so scoping there keeps this both safe and exactly targeted
+#     at the real bug (FAQ answers are headed by an H3 in this pipeline).
+_HEADING_LINE = re.compile(r"^\s*#{1,6}\s")
+_ORPHANED_ANAPHORA_PHRASES = (
+    "beyond that", "in addition to that", "additionally", "as a result",
+    "because of this", "this means", "as such", "on top of that",
+    "furthermore", "moreover", "that said", "with that",
+)
+
+
+def _find_orphaned_anaphora_after_heading(text: str) -> List[Dict]:
+    findings = []
+    lines = text.split("\n")
+    pos = 0
+    offsets = []
+    for line in lines:
+        offsets.append(pos)
+        pos += len(line) + 1
+    prev_was_heading = False
+    for i, line in enumerate(lines):
+        raw = line.strip()
+        if not raw:
+            continue
+        if _HEADING_LINE.match(raw):
+            prev_was_heading = True
+            continue
+        if prev_was_heading:
+            stripped = _TRAILING_EMPHASIS.sub("", raw).lstrip("*_ ")
+            low = stripped.lower()
+            if low.startswith(_ORPHANED_ANAPHORA_PHRASES):
+                findings.append({
+                    "type": "orphaned_anaphora",
+                    "match": stripped[:60],
+                    "context": stripped[:120],
+                    "position": offsets[i],
+                })
+        prev_was_heading = False
+    return findings
+
+
 def scan_title(title: str) -> List[Dict]:
     """Flag a known acronym rendered in broken Title Case within a post title."""
     findings = []
@@ -674,11 +829,13 @@ def scan_body(text: str) -> List[Dict]:
     findings += _find_verb_connector_capitalized(text)
     findings += _find_of_to_verb(text)
     findings += _find_of_only_verb(text)
+    findings += _find_show_of(text)
     findings += _find_duration_noun_missing_quantity(text)
     findings += _find_fused_link_sentences(text)
     findings += _find_empty_image_src(text)
     findings += _find_a_an_disagreement(text)
     findings += _find_missing_terminal_punctuation(text)
+    findings += _find_orphaned_anaphora_after_heading(text)
     findings += _find_leaked_internal_labels(text)
     return sorted(findings, key=lambda f: f["position"])
 

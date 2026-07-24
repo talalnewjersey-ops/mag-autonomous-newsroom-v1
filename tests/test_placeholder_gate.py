@@ -83,6 +83,30 @@ REAL_48972_48982_SENTENCES = {
     ),
 }
 
+# 2026-07-24 (round 3): 5 real scars from post 48990 (workflow run
+# 30061690310, genuinely post the round-2 6-bug patch) found by human review
+# after a second 0-finding GATE D run -- exact verbatim text.
+REAL_48990_SENTENCES = {
+    "showing_of": "- **Proof of funds:** Bank statements showing of rent in a Canadian or foreign account",
+    "with_in": (
+        "a newcomer arriving in Toronto with in a Canadian chequing account and a signed "
+        "employment offer letter is in a materially stronger negotiating position than one "
+        "relying on verbal assurances alone."
+    ),
+    "within_of": (
+        "Most newcomers secure their first independent rental within of arrival, depending "
+        "on the city, rental market tightness, and document preparation."
+    ),
+    "fused_list_continuation": (
+        "- **Pre-authorized payment setup:** Offering automatic rent withdrawal signals "
+        "reliability\nBritish Columbia allows first and last month"
+    ),
+    "orphaned_anaphora": (
+        "### How much money should I set aside before signing a lease?\n\n"
+        "Beyond that, budget for utility connection fees, tenant insurance, and moving costs."
+    ),
+}
+
 
 def test_catches_all_four_real_48854_body_bugs():
     for label, sentence in REAL_48854_SENTENCES.items():
@@ -110,6 +134,15 @@ def test_catches_all_real_48972_48982_body_bugs():
     for label, sentence in REAL_48972_48982_SENTENCES.items():
         findings = scan_body(sentence)
         assert findings, f"missed real 48972/48982 bug ({label}): {sentence!r}"
+
+
+def test_catches_all_real_48990_body_bugs():
+    # Round 3: found on a genuinely-post-patch article, after round 2's
+    # 6-bug fix was already live -- the gate is not exhaustive by
+    # construction and each round finds a new corner of the same family.
+    for label, sentence in REAL_48990_SENTENCES.items():
+        findings = scan_body(sentence)
+        assert findings, f"missed real 48990 bug ({label}): {sentence!r}"
 
 
 def test_catches_leaked_internal_label_in_alt_attribute():
@@ -276,6 +309,18 @@ FALSE_POSITIVE_FIXTURES = {
     "no_no_emphatic_repeat": "No, no, I insist on paying for the appointment myself.",
     "have_to_modal": "You have to apply in person; mailed applications are not accepted at this DMV.",
     "has_to_modal": "Every applicant has to bring a valid passport and proof of address.",
+    # 2026-07-24 (round 3) additions:
+    "aim_for_on": "### What credit utilization rate should I aim for on my first U.S. credit card?",
+    "showing_noun_with_article": "The rally was a showing of solidarity among newcomers facing similar barriers.",
+    "clean_bulleted_list_no_continuation": (
+        "- **Proof of funds:** Bank statements showing 3 months of rent in an account\n"
+        "- **Foreign income documentation:** Employer letters, translated and notarized\n"
+        "- **Pre-authorized payment setup:** Offering automatic rent withdrawal signals reliability"
+    ),
+    "additionally_between_ordinary_paragraphs": (
+        "Newcomers should open a chequing account within the first week.\n\n"
+        "Additionally, a secured credit card helps establish local payment history."
+    ),
 }
 
 
