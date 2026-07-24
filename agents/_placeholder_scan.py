@@ -152,7 +152,16 @@ _ADJACENT_CONNECTOR_WORDS = ["of", "to", "by", "for", "within", "with", "in", "f
 #    phrasal verb that can take any trailing prepositional phrase ("aim for
 #    ON/IN/AT/DURING X"), so "for" immediately followed by "on" is not on
 #    its own evidence of a dropped word the way the other pairs are.
-_ADJACENT_PAIR_ALLOWLIST = {"from within", "up to", "on to", "in to", "for on"}
+#    "for in" added same day, same rationale, real second instance (post
+#    49014): "tax refunds and credits that many newcomers qualify for in
+#    their first year of Canadian residency" -- "qualify for" + "in X",
+#    same phrasal-verb-plus-trailing-phrase shape as "aim for on". Given
+#    two confirmed instances of "for" + a locative/temporal preposition
+#    (on, in), a THIRD ("for at", "for during") would not be surprising --
+#    flagging here rather than pre-emptively allowlisting words with no
+#    real bug behind them yet (same evidence-only bar as every other entry
+#    in this list).
+_ADJACENT_PAIR_ALLOWLIST = {"from within", "up to", "on to", "in to", "for on", "for in"}
 _ADJACENT_PAIR_PATTERN = re.compile(
     r"\b(" + "|".join(_ADJACENT_CONNECTOR_WORDS) + r")\s+("
     + "|".join(_ADJACENT_CONNECTOR_WORDS) + r")\b(?!-)",

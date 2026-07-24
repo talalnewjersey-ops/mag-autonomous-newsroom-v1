@@ -311,6 +311,10 @@ FALSE_POSITIVE_FIXTURES = {
     "has_to_modal": "Every applicant has to bring a valid passport and proof of address.",
     # 2026-07-24 (round 3) additions:
     "aim_for_on": "### What credit utilization rate should I aim for on my first U.S. credit card?",
+    "qualify_for_in": (
+        "This includes tax refunds and credits that many newcomers qualify for in their "
+        "first year of Canadian residency."
+    ),
     "showing_noun_with_article": "The rally was a showing of solidarity among newcomers facing similar barriers.",
     "clean_bulleted_list_no_continuation": (
         "- **Proof of funds:** Bank statements showing 3 months of rent in an account\n"
