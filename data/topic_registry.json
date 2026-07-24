@@ -423,7 +423,8 @@
       "traffic_score": 4,
       "status": "candidate",
       "published_at": null,
-      "post_id": null
+      "post_id": null,
+      "selected_at": null
     },
     {
       "id": "us-itin-banking-fdic-no-ssn",
@@ -433,9 +434,11 @@
       "category": "banques",
       "monetization_score": 3,
       "traffic_score": 4,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null
+      "post_id": 49056,
+      "selected_at": "2026-07-24T15:16:34.186617Z",
+      "drafted_at": "2026-07-24T15:28:02.437905Z"
     }
   ]
 }
