@@ -253,6 +253,8 @@ def _scaffold_span(line, ss, ee, official, max_appos_words):
 
     Returns (ss, ee, force_delete_sentence) -- force_delete_sentence is True only
     for CASE 5b (see below); every other case returns False."""
+    orig_ss = ss  # CASE 5's openness checks below must use the ORIGINAL left
+                  # boundary, not one CASE 2's 2b branch may tighten further.
     # CASE 3 -- trailing unit token immediately after the figure -> extend RIGHT.
     um = _UNIT_RE.match(line, ee)
     if um:
@@ -291,13 +293,27 @@ def _scaffold_span(line, ss, ee, official, max_appos_words):
             else:
                 while ss > 0 and line[ss - 1] == " ":   # 2b: keep the label -> **label** tight
                     ss -= 1
-    # CASE 5 -- truly bare figure: none of CASE 1/2/4 found ANY scaffold at all
-    # (op == -1 and dl == -1 and bl == -1). A parenthesis/dash/bold that was
-    # found but declined (too many words, sourced content) is a DIFFERENT,
-    # already-tested tradeoff (e.g. the long-appositive "at of your score"
-    # residue locked in by test_guard_long_appositive_is_kept_number_only_stripped)
-    # and is deliberately left untouched here -- one fix at a time.
-    if op == -1 and dl == -1 and bl == -1:
+    # CASE 5 -- truly bare figure: none of CASE 1/2/4 has a GENUINELY OPEN
+    # scaffold around this figure. 2026-07-25 bugfix (real dry-run evidence,
+    # post 48945 GATE D finding "with of flawless repayment"): the original
+    # gate checked bare op/dl/bl != -1, which only means "rfind found SOME
+    # delimiter character somewhere earlier in the line" -- NOT that it still
+    # encloses this figure. A completely unrelated, already-CLOSED "(...)"
+    # earlier in the same paragraph (e.g. "(Equifax, Experian, TransUnion)")
+    # was silently disqualifying every later bare figure in that line from
+    # CASE 5, even though CASE 1 itself had already correctly determined that
+    # parenthetical was irrelevant (its own cp lookup failed). Re-derive
+    # "genuinely open" with the SAME conditions CASE 1/2/4 use internally.
+    #
+    # A parenthesis/dash/bold that IS genuinely open but was declined (too
+    # many words, sourced content) is a DIFFERENT, already-tested tradeoff
+    # (e.g. the long-appositive "at of your score" residue locked in by
+    # test_guard_long_appositive_is_kept_number_only_stripped) and is
+    # deliberately left untouched here -- one fix at a time.
+    paren_open = op != -1 and ")" not in line[op + 1:orig_ss]
+    dash_open = dl != -1 and not any(c in line[dl + 1:orig_ss] for c in ".!?")
+    bold_open = bl != -1 and "**" not in line[bl + 2:orig_ss]
+    if not paren_open and not dash_open and not bold_open:
         # CASE 5a -- default: reformulate cleanly (user-approved option "a").
         # A bare word-form unit ("a month") is swallowed first so a trailing
         # preposition check below (if any) sees the text that actually

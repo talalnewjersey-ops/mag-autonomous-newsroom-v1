@@ -219,7 +219,17 @@ def _find_of_to_verb(text: str) -> List[Dict]:
 #     use; "have" is a transitive verb that needs a direct object before
 #     "of" can attach to it ("have SIX MONTHS of clean history"), never "of"
 #     immediately.
-_OF_ONLY_VERBS = ["have", "has"]
+# "carry" added 2026-07-25 (real dry-run, post 48945-adjacent draft never
+# published: "some banks require the visa to carry of remaining validity" --
+# a bare duration -- "carry SIX MONTHS of remaining validity" -- stripped
+# with no quantifier word before it; the dash context earlier in the same
+# line was too rich in content for CASE 5's scaffold to safely collapse, so
+# GATE D is the intended second layer here, same division of labor as the
+# rest of this module). "carry" always takes a direct object before "of"
+# can attach ("carry six months of validity", "carry a balance of $500"),
+# never "of" immediately -- same shape as have/has, no known idiom collision
+# ("carry on/out/over" all use a different preposition, not "of").
+_OF_ONLY_VERBS = ["have", "has", "carry"]
 _OF_ONLY_VERB_PATTERN = re.compile(r"\b(" + "|".join(_OF_ONLY_VERBS) + r")\s+of\s+")
 
 # ---------------------------------------------------------------------------
