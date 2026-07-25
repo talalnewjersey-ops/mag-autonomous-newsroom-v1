@@ -433,6 +433,20 @@
       "category": "banques",
       "monetization_score": 3,
       "traffic_score": 4,
+      "status": "drafted",
+      "published_at": null,
+      "post_id": 49056,
+      "selected_at": "2026-07-24T15:16:34.187279Z",
+      "drafted_at": "2026-07-24T15:28:01.217398Z"
+    },
+    {
+      "id": "us-bank-account-no-ssn-howto",
+      "title": "How to Open a US Bank Account Without an SSN",
+      "keyword": "how to open a us bank account without an ssn",
+      "market": "USA",
+      "category": "banques",
+      "monetization_score": 4,
+      "traffic_score": 4,
       "status": "candidate",
       "published_at": null,
       "post_id": null
