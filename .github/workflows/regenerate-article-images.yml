@@ -1,0 +1,37 @@
+name: Regenerate Article Images (replace placeholders, no text change)
+
+on:
+  workflow_dispatch:
+    inputs:
+      fix_file:
+        description: "Path to the image-regen spec (audit/pending_fixes/<name>.json)"
+        required: true
+
+# WRITES to WordPress -- generates 5 real images via Gemini for ONE post,
+# uploads them, sets featured_media, and swaps the 4 in-body placeholder
+# image URLs for the new ones. Never touches article text/title.
+jobs:
+  regen-images:
+    name: "Regenerate one post's images"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Regenerate images
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FIX_FILE: ${{ github.event.inputs.fix_file }}
+        run: python3 scripts/regenerate_article_images.py
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-regen-result
+          path: post_*_image_regen_result.json
+          if-no-files-found: warn
