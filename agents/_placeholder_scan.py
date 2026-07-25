@@ -535,6 +535,17 @@ _KNOWN_ACRONYMS = {
     # in one pass instead of the fourth mole popping up next.
     "cfpb", "fdic", "fico", "fha", "hud", "ncua", "cdic", "naic", "sevp",
     "ohip", "ramq",
+    # "us" added 2026-07-25: first real scheduled cron run post-reactivation
+    # (post 48957) produced "How To Open A Us Bank Account Without An SSN"
+    # -- "usa" was covered but bare "us" (as in "US bank account") wasn't.
+    # Real collision risk checked before adding, not assumed safe: "us" is
+    # also the first-person plural object pronoun ("help us build...").
+    # Verified zero occurrences of that usage across 30 real published
+    # titles and the full topic registry (2026-07-25) -- titles here are
+    # template-built from search keywords, which essentially never phrase
+    # as "us"-the-pronoun, unlike organic prose. Revisit if a real title
+    # ever needs the pronoun.
+    "us",
     # Deliberately EXCLUDED despite appearing in engraved facts: "chip"
     # (Children's Health Insurance Program) and "pip" (Personal Injury
     # Protection) are both real, common English words in this content
@@ -592,7 +603,11 @@ def smart_title_case(s: str) -> str:
 #    "U.S.-equivalent/-readable/-compatible" compounds, all correctly using
 #    "a" -- covered by the u.s.-prefix rule below, not a fixed word list.
 _A_AN_EXCEPTIONS = {
-    "us", "usa", "uk", "uae",
+    # "usd" added 2026-07-25: 30-post real-published-corpus stress test (run
+    # while validating the "usable"/"useful" fix below) found "a USD account
+    # number" -- letter-name abbreviations (U-S-D) start with the "yoo"
+    # sound, same class as us/usa/uk/uae already here.
+    "us", "usa", "uk", "uae", "usd",
     "united", "unique", "uniform", "uniformed", "unanimous",
     "usual", "usually", "user", "users", "utility", "utilities",
     "university", "universities", "universal", "one", "one-time", "once",
@@ -605,6 +620,14 @@ _A_AN_EXCEPTIONS = {
     # driver" is a real bug this insurance-content site could produce).
     "unit", "units", "union", "unions", "unify", "unified", "unicorn",
     "unilateral",
+    # 2026-07-25 additions: two real, currently-live false positives found
+    # on the first two real cron/regeneration runs after CASE 5 shipped --
+    # "a usable U.S. credit score" (48982 regeneration) and "a university-
+    # issued ID" (post 48957, the first real scheduled cron run after
+    # reactivation) both blocked otherwise-clean articles at GATE D.
+    # "usable"/"useful" were simply missing from this list entirely (not a
+    # compound-matching issue -- see _is_a_an_exception below for that).
+    "usable", "useful", "usefulness", "usability",
 }
 # [^\s—–]+ (not \S+): an em/en-dash used as punctuation is often glued
 # directly to the next word with no space ("a unit—meaningfully compresses
@@ -617,7 +640,18 @@ _A_AN_PATTERN = re.compile(r"\ba\s+([^\s—–]+)")
 def _is_a_an_exception(word_lower: str) -> bool:
     if word_lower.startswith("u.s") or word_lower.startswith("us-"):
         return True
-    return word_lower in _A_AN_EXCEPTIONS
+    if word_lower in _A_AN_EXCEPTIONS:
+        return True
+    # Hyphenated compound headed by a known exception -- "a university-
+    # issued ID" (real miss, post 48957, first real cron run post-
+    # reactivation): the captured token is the WHOLE compound
+    # ("university-issued"), which is never in the exact-match set even
+    # though its head word already is. Sound is governed by the FIRST
+    # element of a hyphenated compound, so this generalizes safely rather
+    # than enumerating every future "<exception>-<suffix>" pairing one
+    # real bug at a time.
+    head = word_lower.split("-", 1)[0]
+    return head in _A_AN_EXCEPTIONS
 
 
 def _find_a_an_disagreement(text: str) -> List[Dict]:
