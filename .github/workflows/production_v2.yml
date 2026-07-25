@@ -15,21 +15,30 @@
 name: "NEXUS-14 PRODUCTION v4.0 -- Reliability-First"
 
 on:
-  # REAL AUTO-PUBLISH (2026-07-17, decided by user): rodage phase closed.
-  # Scheduled cron runs now resolve DRAFT_ONLY to the literal "false" below
+  # AUTO-PUBLISH DISABLED (2026-07-25, superseding the 2026-07-17 decision
+  # below): every run, scheduled or manual, now hardcodes DRAFT_ONLY="true"
+  # in the Batch Loop step's env block -- every article that clears the
+  # pipeline lands as a WordPress draft for human review, nothing is ever
+  # auto-published. See that env block for exactly what changed (one line)
+  # and how to revert.
+  #
+  # ---- 2026-07-17 auto-publish design, kept for context / easy revert ----
+  # Scheduled cron runs used to resolve DRAFT_ONLY to the literal "false"
   # (see the Batch Loop step's env block) -- workflow_dispatch/manual runs
-  # are UNCHANGED, still safe-by-default (draft_only input, default true).
+  # were UNCHANGED, still safe-by-default (draft_only input, default true).
   #
   # draft_only=false does NOT by itself publish anything live -- it only lets
   # scripts/production_batch_loop.sh write PRODUCED.json (the registry
   # bookkeeping marker, unchanged Sprint 9 behavior). The actual WordPress
-  # status flip is a SEPARATE, newly-added gate: scripts/publish_if_qa_passed.py,
-  # called right after PRODUCED.json, which only ever flips a post from draft
-  # to publish when agent_12's qa_report.json is a real (non-heuristic) PASS
-  # at or above PUBLICATION_QUALITY_GATE (95, imported from agent_12 --
+  # status flip is a SEPARATE gate: scripts/publish_if_qa_passed.py, called
+  # right after PRODUCED.json, which only ever flips a post from draft to
+  # publish when agent_12's qa_report.json is a real (non-heuristic) PASS at
+  # or above PUBLICATION_QUALITY_GATE (95, imported from agent_12 --
   # tests/test_publish_flip_invariant.py locks this). Any QA outcome short of
   # that -- FAIL, NEEDS_REVIEW, heuristic-path PASS, missing report -- leaves
   # the WordPress post as a draft, unconditionally, regardless of draft_only.
+  # This script itself is UNCHANGED by the 2026-07-25 flip -- it still only
+  # ever acts on draft_only=="false", which no run now ever sends it.
   #
   # Preconditions this rests on, already proven before this flip: the Sprint
   # 9 reconcile promotes a topic to "published" (registry bookkeeping) only
@@ -155,15 +164,22 @@ jobs:
           WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
           WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
           TOPIC_OVERRIDE: ${{ github.event.inputs.topic }}
-          # REAL AUTO-PUBLISH (2026-07-17): a schedule event has no
-          # workflow_dispatch inputs at all (github.event.inputs.draft_only
-          # is empty), which resolve_draft_only() in production_batch_loop.sh
-          # would otherwise fail-safe to "true" -- so scheduled runs are given
-          # the literal "false" directly here instead. Manual/workflow_dispatch
-          # runs are UNCHANGED: still governed by the draft_only input above
-          # (default true). See the 'on:' block comment for what draft_only=
-          # false does and does NOT do on its own.
-          DRAFT_ONLY: ${{ github.event_name == 'schedule' && 'false' || github.event.inputs.draft_only }}
+          # AUTO-PUBLISH DISABLED (2026-07-25, user decision after the CASE 5
+          # validation dry-runs: real posts still needed a human to catch a
+          # placeholder gate finding and a retry-completeness rejection GATE
+          # D alone didn't stop -- "trop risqué pour un guide financier signé
+          # de mon nom" until the hole rate is under control). Every run, cron
+          # or manual, now always resolves DRAFT_ONLY to "true": every article
+          # that clears the pipeline lands as a WordPress DRAFT for human
+          # review, never auto-published. scripts/publish_if_qa_passed.py's
+          # own first gate already refuses to flip anything unless draft_only
+          # is the literal string "false" (tests/test_publish_flip_invariant.py
+          # locks this), so this single line is the entire behavior change --
+          # reverting it (restoring the schedule-event conditional below)
+          # restores the previous 2026-07-17 auto-publish-on-QA>=95 behavior
+          # exactly, with no other code change needed either way.
+          #   DRAFT_ONLY: ${{ github.event_name == 'schedule' && 'false' || github.event.inputs.draft_only }}
+          DRAFT_ONLY: "true"
           FORCE_OPPORTUNITY_TIER: ${{ github.event.inputs.force_opportunity_tier }}
           # FIX (2026-07-12): the OLD inline expression referenced
           # `needs.detect.outputs.max_articles` -- a job named "detect" that
