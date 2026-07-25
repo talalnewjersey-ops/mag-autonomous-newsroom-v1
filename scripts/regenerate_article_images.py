@@ -39,25 +39,38 @@ import urllib.request
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent"
 
 
-def _req(method, url, headers, data=None, timeout=60):
+def _req(method, url, headers, data=None, timeout=90):
     body = json.dumps(data).encode() if data is not None else None
     req = urllib.request.Request(url, data=body, method=method, headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode())
 
 
-def generate_image(prompt, gemini_key):
+def generate_image(prompt, gemini_key, attempts=3):
+    """Real transient network errors ("Network is unreachable", read
+    timeouts) hit this exact runner environment repeatedly this session,
+    unrelated to Gemini/billing itself -- retry a few times before giving up,
+    same defense agent_10_image_production.py already has for its own calls."""
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
     }
     headers = {"x-goog-api-key": gemini_key, "Content-Type": "application/json"}
-    data = _req("POST", GEMINI_ENDPOINT, headers, payload, timeout=60)
-    parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-    img_part = next((p for p in parts if "inlineData" in p), None)
-    if not img_part:
-        raise RuntimeError(f"no image in Gemini response: {json.dumps(data)[:300]}")
-    return base64.b64decode(img_part["inlineData"]["data"])
+    last_err = None
+    for attempt in range(1, attempts + 1):
+        try:
+            data = _req("POST", GEMINI_ENDPOINT, headers, payload, timeout=90)
+            parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+            img_part = next((p for p in parts if "inlineData" in p), None)
+            if not img_part:
+                raise RuntimeError(f"no image in Gemini response: {json.dumps(data)[:300]}")
+            return base64.b64decode(img_part["inlineData"]["data"])
+        except Exception as e:  # noqa: BLE001 -- retry on ANY transient error, then re-raise
+            last_err = e
+            print(f"  attempt {attempt}/{attempts} failed: {e}")
+            if attempt < attempts:
+                time.sleep(5)
+    raise last_err
 
 
 def upload_media(wp_url, auth, img_bytes, filename, alt_text, mime):
