@@ -325,17 +325,20 @@ def test_totaling_averaging_reaching_verb_quantifiers_stripped_with_their_number
 
 # ---------------- forward-dependency grammar check (2026-07-23, post 48931/article_2) ----------------
 
-def test_forward_orphaned_complement_drops_whole_sentence_not_a_scar():
+def test_forward_orphaned_complement_repaired_not_a_scar():
     # "generates [6 months] of on-time payment history" -- no backward quantifier
-    # to swallow (bare number), so the strip alone leaves "generates of on-time
-    # payment history". The new post-strip scan_body() check must catch this and
-    # drop the whole sentence rather than let the scar survive.
+    # to swallow (bare number), so the strip alone would leave "generates of
+    # on-time payment history". CASE 5a (2026-07-24) now repairs this at the
+    # source by swallowing the dangling "of" too, keeping the sentence instead
+    # of deleting it -- strictly better than the old grammar-check-deletion
+    # fallback, which only fired because nothing upstream repaired the clause.
     text = ("That same amount directed into a credit builder loan generates 6 months "
             "of on-time payment history for the borrower.")
     out, rep = soften(text, "us_credit")
     assert "generates of" not in out
-    assert rep["grammar_check_deletions"] == 1
-    assert rep["sentences_deleted"] == 1
+    assert "generates on-time payment history for the borrower" in out
+    assert rep["grammar_check_deletions"] == 0
+    assert rep["sentences_deleted"] == 0
 
 
 def test_forward_a_an_scar_drops_whole_sentence():

@@ -62,6 +62,7 @@ from agents._source_pool import resolve_gate_vertical
 from agents._placeholder_scan import scan_body  # post-strip grammar check (2026-07-23, see below)
 
 _SENT = "\x00"  # sentinel marking a stripped figure inside a prose sentence
+_SENT_FORCE = "\x01"  # CASE 5b sentinel: this sentence must be dropped, no repair attempt
 
 # ---- link masking (point 3) ----
 _MASK_OPEN, _MASK_CLOSE = "\x0e", "\x0f"
@@ -90,6 +91,63 @@ _RANGE_PREFIX = re.compile(r"\d[\d,\.]*\s*[–—-]\s*$")
 # PLAN B (context-aware scaffold): a trailing unit token glued to the figure, e.g. "/month".
 _UNIT_RE = re.compile(r"/(?:months?|years?|weeks?|days?|mo|yr|hrs?|hours?)\b", re.I)
 _DASH = "—–"  # em-dash, en-dash
+
+# CASE 5 (2026-07-24, root-cause fix after 6 rounds of GATE D whack-a-mole):
+# a "bare" figure has no CASE 1/2/4 scaffold at all -- it was a plain clause
+# element (verb direct object, adverbial) with nothing wrapped around it.
+# CASE 5a: a single preposition immediately after the figure that was only
+# there to introduce it gets swallowed too ("holding [$2,000] in savings" ->
+# "holding savings"). _FORWARD_PREP_IDIOM_ALLOWLIST guards adverbial idioms
+# where the preposition does NOT depend on the figure ("charges $50 on
+# average" must NOT become "charges average").
+_FORWARD_DANGLING_PREP = re.compile(r"(?i)\s*(of|in)\b")
+# A number/currency token right after the matched preposition means it is a
+# RANGE CONNECTOR ("$12 to $15", "$15-a dash-range's second half"), not a
+# preposition/dash dangling on the removed figure -- must NOT be swallowed
+# (the other number is its own separate unsourced-claim span, scaffolded on
+# its own pass; real bug found stress-testing against 30 live published
+# articles, 2026-07-24: "$15-$35/month for a solid prepaid plan" force-
+# deleted the whole sentence because the FIRST number's own scaffold saw the
+# internal range dash and mistook it for an unrelated appositive marker).
+_LOOKS_LIKE_NUMBER_START = re.compile(r"\s*[$€£]?\d")
+# A bare word-form unit directly after the figure ("$50 a month", as opposed
+# to the already-handled glued "$50/month") -- same swallow as CASE 3's
+# _UNIT_RE, scoped to CASE 5 so it never changes CASE 1/2/4's own boundaries.
+_FORWARD_BARE_UNIT = re.compile(r"(?i)\s*a\s+(month|year|week|day)s?\b")
+_FORWARD_PREP_IDIOM_ALLOWLIST = {
+    "of course", "of late",
+    "in general", "in fact", "in short", "in turn", "in full", "in person",
+    "in total", "in place", "in effect",
+}
+# "for", "to", "at", "on", "with" were tried and DROPPED (2026-07-24, real
+# regression found stress-testing 30 live published articles): "pay $15-$35
+# for a solid prepaid plan" -> stripping the figure alone already gives the
+# grammatically complete "pay for a solid prepaid plan" ("for" is the verb's
+# own required complement, independent of the amount) -- swallowing "for"
+# too produced "pay a solid prepaid plan" (worse, not better). No reliable
+# regex-only way found to distinguish that shape from the genuinely-dangling
+# "holding $X in savings" shape, so only "of"/"in" ship, and "in" gets an
+# extra guard below.
+#
+# "in" itself has the SAME failure mode when the removed figure was the
+# HEAD NOUN of an ordinal/quantifier phrase, not a verb's direct object:
+# "your first [10 days] in the USA" -> "your first in the USA" (already a
+# pre-existing scar, left as-is by CASE 1-4) -> swallowing "in" blindly gives
+# "your first the USA" (worse: now missing "in" too, with nothing gained).
+# Found on the same real-corpus stress test. _UNSAFE_IN_PREDECESSOR blocks
+# the swallow specifically when the word right before the removed figure is
+# one of these ordinal/quantifier adjectives -- "holding"/"with"/"showing"
+# style verb-or-preposition predecessors are unaffected and still swallow.
+_UNSAFE_IN_PREDECESSOR = re.compile(
+    r"(?i)\b(first|next|last|few|several|couple|initial|early|final)\s*$")
+# "of" has its own failure mode (found the same way, 2026-07-24): "within
+# [60 days] of arrival" -> swallowing "of" alone gives "within arrival",
+# missing a duration noun that "within" needs and gaining nothing -- WORSE
+# than the pre-existing "within of arrival" residue, which at least GATE D's
+# adjacent_connector_pair detector reliably catches (verified against the
+# real verbatim bug in tests/test_placeholder_gate.py). "within X of Y" is a
+# fixed collocation where "of" is never safe to swallow alone.
+_UNSAFE_OF_PREDECESSOR = re.compile(r"(?i)\bwithin\s*$")
 
 
 def _link_url(s):
@@ -191,7 +249,10 @@ def _scaffold_span(line, ss, ee, official, max_appos_words):
     a trailing /unit, an enclosing ( ), ** **, or — — appositive. Removal-only; the
     extension STOPS at the delimiter and never crosses it. Suppressed whenever the
     scaffold holds sourced content (an official link) so a citation is never deleted.
-    Operates on MASKED text (URLs are placeholders)."""
+    Operates on MASKED text (URLs are placeholders).
+
+    Returns (ss, ee, force_delete_sentence) -- force_delete_sentence is True only
+    for CASE 5b (see below); every other case returns False."""
     # CASE 3 -- trailing unit token immediately after the figure -> extend RIGHT.
     um = _UNIT_RE.match(line, ee)
     if um:
@@ -206,7 +267,7 @@ def _scaffold_span(line, ss, ee, official, max_appos_words):
                 ee += 1                       # swallow one adjacent space, keep grammar tight
             elif ss > 0 and line[ss - 1] == " ":
                 ss -= 1
-            return ss, ee                     # parenthetical is self-contained -> done
+            return ss, ee, False              # parenthetical is self-contained -> done
     # CASE 4 -- enclosing em-dash appositive — ... — (or — ... . / — ... <eol>).
     dl = max((line.rfind(d, 0, ss) for d in _DASH), default=-1)
     if dl != -1 and not any(c in line[dl + 1:ss] for c in ".!?"):
@@ -220,7 +281,7 @@ def _scaffold_span(line, ss, ee, official, max_appos_words):
             dr, tail = len(line), rest                              # runs to end of line
         if not _sourced_inside(line[dl + 1:dr], official) and \
            _content_word_count(line[dl + 1:ss] + " " + tail) <= max_appos_words:
-            return dl, dr
+            return dl, dr, False
     # CASE 2 -- enclosing bold ** ... **.
     bl, br = line.rfind("**", 0, ss), line.find("**", ee)
     if bl != -1 and br != -1 and "**" not in line[bl + 2:ss] and "**" not in line[ee:br]:
@@ -230,12 +291,49 @@ def _scaffold_span(line, ss, ee, official, max_appos_words):
             else:
                 while ss > 0 and line[ss - 1] == " ":   # 2b: keep the label -> **label** tight
                     ss -= 1
-    return ss, ee
+    # CASE 5 -- truly bare figure: none of CASE 1/2/4 found ANY scaffold at all
+    # (op == -1 and dl == -1 and bl == -1). A parenthesis/dash/bold that was
+    # found but declined (too many words, sourced content) is a DIFFERENT,
+    # already-tested tradeoff (e.g. the long-appositive "at of your score"
+    # residue locked in by test_guard_long_appositive_is_kept_number_only_stripped)
+    # and is deliberately left untouched here -- one fix at a time.
+    if op == -1 and dl == -1 and bl == -1:
+        # CASE 5a -- default: reformulate cleanly (user-approved option "a").
+        # A bare word-form unit ("a month") is swallowed first so a trailing
+        # preposition check below (if any) sees the text that actually
+        # follows it, not the unit itself.
+        um2 = _FORWARD_BARE_UNIT.match(line, ee)
+        if um2:
+            ee = um2.end()
+        fm = _FORWARD_DANGLING_PREP.match(line, ee)
+        if fm and not _LOOKS_LIKE_NUMBER_START.match(line, fm.end()):
+            prep = fm.group(1).lower()
+            idiom = " ".join(w.lower().strip(".,;:!?") for w in line[ee:].split()[:2])
+            allowed = idiom not in _FORWARD_PREP_IDIOM_ALLOWLIST
+            if prep == "in" and _UNSAFE_IN_PREDECESSOR.search(line[:ss]):
+                allowed = False
+            if prep == "of" and _UNSAFE_OF_PREDECESSOR.search(line[:ss]):
+                allowed = False
+            if allowed:
+                return ss, fm.end(), False
+        if um2:
+            return ss, ee, False  # unit swallowed even if no trailing prep followed it
+        # CASE 5b -- last resort: nothing forward to swallow, and the figure
+        # is immediately followed by an unrelated appositive dash (not one
+        # that encloses it -- that is CASE 4, and not a range separator --
+        # guarded by _LOOKS_LIKE_NUMBER_START, see above). The clause's
+        # object is simply gone with no local text to repair it with; drop
+        # the whole sentence rather than leave a scar (user-approved option
+        # "c", never a stub).
+        dm = re.match(r"\s*[" + _DASH + r"]", line[ee:])
+        if dm and not _LOOKS_LIKE_NUMBER_START.match(line[ee:][dm.end():]):
+            return ss, ee, True
+    return ss, ee, False
 
 
 def _clean(fragment):
     """Tidy whitespace/punctuation left behind by a strip (sentinels removed)."""
-    s = fragment.replace(_SENT, "")
+    s = fragment.replace(_SENT, "").replace(_SENT_FORCE, "")
     # Hold a leading list marker ("- ", "* ", "+ ", "1. ") OUT of the cleanup: the
     # "leading junk" strip below has '-' in its char class and would otherwise eat a
     # bullet's dash. The marker is RE-ATTACHED verbatim (nothing new is introduced).
@@ -297,22 +395,28 @@ def _soften_prose(line, spans_local, min_words, report, official=frozenset(), ma
     strips = []
     for (s, e, is_attr) in spans_local:
         ss, ee = _strip_span(line, s, e, is_attr)
-        ss, ee = _scaffold_span(line, ss, ee, official, max_appos_words)
-        strips.append([ss, ee])
+        ss, ee, force_delete = _scaffold_span(line, ss, ee, official, max_appos_words)
+        strips.append([ss, ee, force_delete])
         report["stripped"] += 1
-    strips.sort()
+    strips.sort(key=lambda t: t[0])
     merged = []
     for st in strips:
         if merged and st[0] <= merged[-1][1]:
             merged[-1][1] = max(merged[-1][1], st[1])
+            merged[-1][2] = merged[-1][2] or st[2]  # CASE 5b force-delete wins on overlap
         else:
             merged.append(st)
-    for ss, ee in sorted(merged, reverse=True):
-        line = line[:ss] + _SENT + line[ee:]
+    for ss, ee, force_delete in sorted(merged, key=lambda t: t[0], reverse=True):
+        line = line[:ss] + (_SENT_FORCE if force_delete else _SENT) + line[ee:]
     kept = []
     for sentence in re.split(r"(?<=[.!?])\s+", line):
-        if _SENT not in sentence:
+        if _SENT not in sentence and _SENT_FORCE not in sentence:
             kept.append(sentence)
+            continue
+        if _SENT_FORCE in sentence:
+            # CASE 5b: unrepairable, drop unconditionally -- never a stub.
+            report["sentences_deleted"] += 1
+            report["case5_forced_deletions"] = report.get("case5_forced_deletions", 0) + 1
             continue
         cleaned = _clean(sentence)
         if len(cleaned.split()) < min_words:
@@ -358,7 +462,7 @@ def _soften_prose(line, spans_local, min_words, report, official=frozenset(), ma
 def soften(text, vertical, min_residue_words=4, max_appos_words=4):
     report = {"numeric_claims_total": 0, "unsourced_found": 0, "stripped": 0,
               "sentences_deleted": 0, "table_cells_softened": 0,
-              "grammar_check_deletions": 0}
+              "grammar_check_deletions": 0, "case5_forced_deletions": 0}
     masked, originals, official = _mask_links(text)
     report["numeric_claims_total"] = len(_NUM_RE.findall(masked))
     spans = _find_unsourced(masked, originals, vertical)
