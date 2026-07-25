@@ -423,7 +423,8 @@
       "traffic_score": 4,
       "status": "candidate",
       "published_at": null,
-      "post_id": null
+      "post_id": null,
+      "selected_at": null
     },
     {
       "id": "us-itin-banking-fdic-no-ssn",

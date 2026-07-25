@@ -521,7 +521,60 @@ _KNOWN_ACRONYMS = {
     "usa", "ssn", "itin", "opt", "sevis", "dhs", "cra", "irs", "cpt", "dso",
     "fica", "tfsa", "rrsp", "ofx", "faq", "eeat", "seo", "gst", "hst", "sin",
     "cpp", "ei", "uscis", "ice", "stem",
+    # 2026-07-24 additions: found by real title breakage the moment a topic
+    # outside the original set was tried -- "Best ITIN Only Banking Fdic
+    # Insured Accounts Without An SSN..." (post 49056, workflow run
+    # 30104008120) proved "fdic" was missing the instant a us_banking topic
+    # was generated. Audited agents/_vertical_facts.py's engraved claims/
+    # source_urls for every other genuine acronym (grep -oE '\b[A-Z]{2,6}\b')
+    # to add the rest proactively instead of waiting for each to break a
+    # title one at a time -- this list has now been extended reactively
+    # three separate times in one session, which is exactly the "whack-a-
+    # mole" pattern the adjacent-connector-pair detector's own genericization
+    # (2026-07-24, same day) was built to stop; a full audit closes the gap
+    # in one pass instead of the fourth mole popping up next.
+    "cfpb", "fdic", "fico", "fha", "hud", "ncua", "cdic", "naic", "sevp",
+    "ohip", "ramq",
+    # Deliberately EXCLUDED despite appearing in engraved facts: "chip"
+    # (Children's Health Insurance Program) and "pip" (Personal Injury
+    # Protection) are both real, common English words in this content
+    # domain's register ("chip in", "give someone the pip") -- forcing them
+    # uppercase risks a false correction the reverse of this whole fix's
+    # purpose. No confirmed title bug has needed either yet; add only if
+    # one does, per this list's own evidence-only precedent.
 }
+_WORD_CHARS = re.compile(r"[a-zA-Z]+")
+
+
+def smart_title_case(s: str) -> str:
+    """str.title(), but a word matching _KNOWN_ACRONYMS is forced to full
+    upper-case instead of Title-Case ("ssn" -> "SSN", not "Ssn").
+
+    Added 2026-07-24: root cause of the broken-title-case-acronym bug
+    scan_title() above was built to CATCH (48854's "Checklist Usa", later
+    also "...Sin", "...Ssn Itin" on posts 48997/49005) -- agents/agent_03_
+    content_planner.py's title-building used Python's bare str.title(),
+    which has no concept of acronyms and breaks every one of them. This is
+    the single source of truth both for scan_title()'s detection (below)
+    and for agent_03/agent_01's title GENERATION, so fixing the acronym
+    list in one place can never let the two drift out of sync again.
+
+    Handles a trailing possessive/plural 's ("Ssns" -> "SSNs" is NOT
+    attempted -- _KNOWN_ACRONYMS entries are exact singular forms and this
+    project's titles don't currently pluralize an acronym; only the
+    apostrophe-s possessive is common enough to guard, e.g. "Ssn'S" ->
+    "SSN's") by upper-casing only the leading run of letters in each word,
+    not the whole token.
+    """
+    titled = (s or "").title()
+    words = titled.split(" ")
+    fixed = []
+    for w in words:
+        m = _WORD_CHARS.match(w)
+        if m and m.group(0).lower() in _KNOWN_ACRONYMS:
+            w = m.group(0).upper() + w[m.end():]
+        fixed.append(w)
+    return " ".join(fixed)
 
 
 # ---------------------------------------------------------------------------
