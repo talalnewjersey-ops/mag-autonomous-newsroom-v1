@@ -446,9 +446,11 @@
       "category": "banques",
       "monetization_score": 4,
       "traffic_score": 4,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null
+      "post_id": 48957,
+      "selected_at": "2026-07-25T08:07:47.717194Z",
+      "drafted_at": "2026-07-25T08:20:16.764380Z"
     }
   ]
 }
