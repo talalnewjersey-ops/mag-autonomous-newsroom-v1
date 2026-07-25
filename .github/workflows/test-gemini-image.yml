@@ -1,0 +1,28 @@
+name: Test Gemini Image API (read-only smoke test, single request)
+
+on:
+  workflow_dispatch: {}
+
+# Diagnostic only: ONE image-generation request, no WordPress write, no
+# article pipeline. Checks whether GEMINI_API_KEY currently has usable
+# billing/quota without spending a full production run to find out.
+jobs:
+  test-gemini:
+    name: "Single Gemini image request"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Test Gemini image generation
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python3 scripts/test_gemini_image_api.py
+      - name: Upload test image
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gemini-test-image
+          path: gemini_test_image.png
+          if-no-files-found: ignore
