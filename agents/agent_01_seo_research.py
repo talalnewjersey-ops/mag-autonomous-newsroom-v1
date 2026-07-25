@@ -206,13 +206,31 @@ class SEOResearchAgent:
         # MANUAL TOPIC OVERRIDE: when a topic is supplied via --topic / TOPIC_OVERRIDE,
         # bypass live/Claude/DB research entirely and produce exactly one topic record
         # in the standard schema so Agents 02-18 run unchanged.
+        #
+        # CATEGORY SUFFIX (2026-07-25): plain-keyword override never set a
+        # "category", so downstream resolve_gate_vertical(market, category)
+        # always fell through to "us_default" (no engraved facts) -- a real
+        # run confirmed this: two manual CASE-5-validation topics both FAILED
+        # G-Substance with "0 STABLE facts cited", burning real API cost, purely
+        # because the override bypassed the registry's category->vertical
+        # routing. Optional "keyword||category" syntax (e.g. "...||credit")
+        # restores it; category must be one of _source_pool.CATEGORY_TO_VERTICAL's
+        # keys (banques, cartes, credit, credit builder, credit conso,
+        # transferts, assurance auto, assurance sante, assur habitation,
+        # credit immo, banques cartes). Omitting it keeps the old (broken for
+        # vertical routing, but backward-compatible) behavior.
         topic_override = (topic_override or "").strip()
         if topic_override:
-            logger.info(f"TOPIC OVERRIDE active — using provided topic: {topic_override!r}")
+            override_category = ""
+            if "||" in topic_override:
+                topic_override, override_category = (p.strip() for p in topic_override.split("||", 1))
+            logger.info(f"TOPIC OVERRIDE active — using provided topic: {topic_override!r}"
+                        + (f" (category={override_category!r})" if override_category else ""))
             override_market = "Canada" if "canada" in topic_override.lower() else "USA"
             topics = [{
                 "keyword": topic_override,
                 "market": override_market,
+                "category": override_category,
                 "search_volume": 5000,
                 "keyword_difficulty": 30,
                 "cpc": 5.0,

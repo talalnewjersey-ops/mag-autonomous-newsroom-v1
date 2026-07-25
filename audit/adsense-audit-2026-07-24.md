@@ -187,5 +187,8 @@
 }
 ```
 
+## Erreurs rencontrees pendant l'audit
+- all_posts page 2: HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Read timed out. (read timeout=30)
+
 ---
 *Prochaine etape : lire ce rapport, puis lancer le Bloc 2 (sauvegardes + corrections) en session Claude Code supervisee — ce workflow ne corrige rien automatiquement.*
