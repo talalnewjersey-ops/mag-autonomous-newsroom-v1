@@ -69,6 +69,20 @@ _DANGLING_CONNECTORS = ["of", "to", "by", "for", "within", "up to", "at least", 
 # leftover space) exactly as originally designed.
 _DANGLING_VERB_QUANTIFIERS = ["exceeding", "totaling", "averaging", "reaching"]
 #
+# "within" gets its OWN tight-space (\s*) pattern -- added 2026-07-25, real
+# bug found in a CASE-5-validation draft ("but require one within.", no
+# space before the period) AND, once checked, in two ALREADY-LIVE published
+# articles (48878: "...a first credit product within."; 48747: "...qualify
+# for premium cards within.") -- both genuine undetected scars, zero
+# legitimate hits, across the 30-post real-corpus stress test. Unlike "for"/
+# "to"/"of" (which strand naturally in relative clauses -- "the license type
+# you qualify for.", proven false-positive risk, see above), "within" does
+# not commonly strand that way in this site's prose; _clean()'s own
+# whitespace collapse (scripts/soften_claims.py) removes the leading space
+# a strip would otherwise leave, so the loose-space pattern below can never
+# catch this specific glued shape.
+_DANGLING_WITHIN_TIGHT = ["within"]
+#
 # em-dash/en-dash (—/–) added to BOTH punctuation classes 2026-07-24 (post
 # 48982, real batch after #93/#94/#95: "will have three tradelines reporting
 # within —significantly accelerating eligibility" -- soften_claims.py uses
@@ -85,6 +99,10 @@ _DANGLING_PATTERN_LOOSE_SPACE = re.compile(
 )
 _DANGLING_PATTERN_TIGHT_SPACE = re.compile(
     r"\b(" + "|".join(re.escape(p) for p in _DANGLING_VERB_QUANTIFIERS) + r")\s*[.,;:)—–]",
+    re.IGNORECASE,
+)
+_DANGLING_WITHIN_TIGHT_PATTERN = re.compile(
+    r"\b(" + "|".join(re.escape(p) for p in _DANGLING_WITHIN_TIGHT) + r")\s*[.,;:)—–]",
     re.IGNORECASE,
 )
 
@@ -219,7 +237,17 @@ def _find_of_to_verb(text: str) -> List[Dict]:
 #     use; "have" is a transitive verb that needs a direct object before
 #     "of" can attach to it ("have SIX MONTHS of clean history"), never "of"
 #     immediately.
-_OF_ONLY_VERBS = ["have", "has"]
+# "carry" added 2026-07-25 (real dry-run, post 48945-adjacent draft never
+# published: "some banks require the visa to carry of remaining validity" --
+# a bare duration -- "carry SIX MONTHS of remaining validity" -- stripped
+# with no quantifier word before it; the dash context earlier in the same
+# line was too rich in content for CASE 5's scaffold to safely collapse, so
+# GATE D is the intended second layer here, same division of labor as the
+# rest of this module). "carry" always takes a direct object before "of"
+# can attach ("carry six months of validity", "carry a balance of $500"),
+# never "of" immediately -- same shape as have/has, no known idiom collision
+# ("carry on/out/over" all use a different preposition, not "of").
+_OF_ONLY_VERBS = ["have", "has", "carry"]
 _OF_ONLY_VERB_PATTERN = re.compile(r"\b(" + "|".join(_OF_ONLY_VERBS) + r")\s+of\s+")
 
 # ---------------------------------------------------------------------------
@@ -289,7 +317,9 @@ def _has_nearby_digit(text: str, start: int, lookback: int = 40) -> bool:
 
 
 def _find_dangling_connectors(text: str) -> List[Dict]:
-    matches = list(_DANGLING_PATTERN_LOOSE_SPACE.finditer(text)) + list(_DANGLING_PATTERN_TIGHT_SPACE.finditer(text))
+    matches = (list(_DANGLING_PATTERN_LOOSE_SPACE.finditer(text))
+               + list(_DANGLING_PATTERN_TIGHT_SPACE.finditer(text))
+               + list(_DANGLING_WITHIN_TIGHT_PATTERN.finditer(text)))
     return [{
         "type": "dangling_connector",
         "match": m.group(0).strip(),
