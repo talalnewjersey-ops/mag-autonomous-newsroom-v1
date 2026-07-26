@@ -1,0 +1,29 @@
+name: Create Redirects Batch (write)
+
+on:
+  workflow_dispatch:
+    inputs:
+      spec_file:
+        description: "Path to the redirect spec (audit/pending_redirects/<name>.json)"
+        required: true
+
+# WRITE ACTION: creates one or more 301 redirects via the Redirection
+# plugin's REST API, from a checked-in JSON spec. Skips any source that
+# already has an enabled redirect (idempotent). Never touches post content
+# or status.
+jobs:
+  create-redirects:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Create redirects
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          SPEC_FILE: ${{ github.event.inputs.spec_file }}
+        run: python3 scripts/create_redirects_batch.py
