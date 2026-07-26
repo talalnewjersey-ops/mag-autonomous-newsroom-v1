@@ -1,0 +1,26 @@
+name: Check Sitemap Health (read-only diagnostic)
+
+on:
+  workflow_dispatch:
+
+# READ-ONLY: fetches the live sitemap index + all sub-sitemaps, checks the
+# live HTTP status of every listed URL. No authentication needed (public
+# sitemap). Never writes to WordPress.
+jobs:
+  check-sitemap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check sitemap health
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+        run: python3 scripts/check_sitemap_health.py
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: sitemap-health
+          path: sitemap_health.json
