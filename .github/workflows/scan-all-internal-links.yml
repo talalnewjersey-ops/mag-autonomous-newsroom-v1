@@ -1,0 +1,29 @@
+name: Scan All Internal Links (read-only diagnostic)
+
+on:
+  workflow_dispatch:
+
+# READ-ONLY: extracts every internal moneyabroadguide.com href from every
+# published post/page's actual content, checks it against the current live
+# slug set. Complements fetch_redirection_404_log.py, which only sees links
+# someone has actually clicked. Never writes to WordPress.
+jobs:
+  scan-links:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Scan all internal links
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+        run: python3 scripts/scan_all_internal_links.py
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-broken-internal-links
+          path: all_broken_internal_links.json
