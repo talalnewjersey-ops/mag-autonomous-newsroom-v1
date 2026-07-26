@@ -30,7 +30,19 @@ Safety, per the user's explicit rules for this workstream:
          Case, e.g. "Checklist Usa" instead of "Checklist USA") on a
          published post -- narrow, deliberate extension of the original
          "never touches title" boundary below, not a silent bypass of it.
-  - Never touches status, slug, or any other field.
+      4. {"post_id", "set_slug": "..."} -- set the post's SLUG field.
+         Added 2026-07-26 at the user's explicit request to drop a leaked
+         "best-" prefix from a draft's slug before its first publish (a
+         pre-publish slug change is safe -- no external link can be
+         pointing at a URL that was never live).
+      5. {"post_id", "set_categories": [id, ...]} -- replace the post's
+         CATEGORIES field with an explicit list of category term IDs.
+         Added 2026-07-26, same session/request as set_slug. Unlike
+         scripts/update_wp_post_categories.py (which deliberately refuses
+         unless the post is already 'publish'), this path has no status
+         restriction -- it's meant for pre-publish draft cleanup, where a
+         wrong category list has never been public.
+  - Never touches status or any other field not listed above.
   - Caller is expected to have already written a pre-edit backup (see
     scripts/fetch_one_post.py) before this runs.
 """
@@ -80,6 +92,14 @@ def main():
         result = update_post_field(wp_url, user, app_pw, post_id, "title", fix["set_title"])
         print(f"Updated post {post_id} title.")
         print("New title (rendered):", result.get("title", {}).get("rendered", ""))
+    elif "set_slug" in fix:
+        result = update_post_field(wp_url, user, app_pw, post_id, "slug", fix["set_slug"])
+        print(f"Updated post {post_id} slug.")
+        print("New slug:", result.get("slug", ""))
+    elif "set_categories" in fix:
+        result = update_post_field(wp_url, user, app_pw, post_id, "categories", fix["set_categories"])
+        print(f"Updated post {post_id} categories.")
+        print("New categories:", result.get("categories", []))
     else:
         old_text = fix["old_text"]
         new_text = fix.get("new_text", "")
