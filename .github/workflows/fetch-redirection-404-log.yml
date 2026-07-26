@@ -1,0 +1,28 @@
+name: Fetch Redirection Plugin 404 Log (read-only diagnostic)
+
+on:
+  workflow_dispatch:
+
+# READ-ONLY: paginates the Redirection plugin's own 404 log via its REST
+# API, aggregates by URL (hit count, referrer class), and uploads the full
+# per-URL list as an artifact. Never writes to WordPress.
+jobs:
+  fetch-404-log:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Fetch and aggregate 404 log
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+        run: python3 scripts/fetch_redirection_404_log.py
+      - name: Upload aggregated 404 list
+        uses: actions/upload-artifact@v4
+        with:
+          name: redirection-404-aggregated
+          path: redirection_404_aggregated.json
