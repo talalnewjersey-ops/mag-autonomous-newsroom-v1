@@ -17,6 +17,19 @@ look a little ugly but is never a broken href) instead of being silently
 corrupted into one. This regex runs on every single article at publish time,
 so every case here is a real published-content shape, not a hypothetical.
 
+2026-07-26, same day, widened to accept `/` (relative link) and `#` (anchor)
+prefixes alongside `https?://`: a live check of 3 recent published articles
+(48945, 48702, 48777) found zero relative internal links and zero Markdown
+anchor links -- the pipeline only ever emits absolute moneyabroadguide.com
+URLs (agent_04 sources them from `_real_internal_links.py::fetch_real_posts`,
+which reads WP REST API's `link` field, always absolute) -- so the scheme-
+only restriction broke nothing in practice. But an LLM's output isn't
+deterministic, and relative/anchor links are a real, valid Markdown shape
+this function should not silently mangle if one is ever produced. Widening
+costs nothing: the malformed-bug shape is still blocked purely by excluding
+`<>()`/whitespace from the captured group, independent of which prefix is
+allowed.
+
 `_render_inline` doesn't touch `self` internally -- calling it unbound
 (`WordPressIntegrationAgent._render_inline(None, text)`) avoids constructing
 the full agent (config/llm_service/storage_service/wordpress_service), same
@@ -54,6 +67,23 @@ def test_link_with_query_string_and_fragment_preserved():
 def test_link_followed_by_sentence_punctuation():
     out = render("Read [the guide](https://x.com/a). It helps.")
     assert out == 'Read <a href="https://x.com/a">the guide</a>. It helps.'
+
+
+def test_relative_link_converts_correctly():
+    """Not currently produced by the pipeline (verified 2026-07-26 against
+    48945/48702/48777 -- zero relative links found), but a valid Markdown
+    shape that must not be silently broken if one is ever emitted."""
+    out = render("See [our guide](/rent-without-credit-canada/) for more.")
+    assert out == 'See <a href="/rent-without-credit-canada/">our guide</a> for more.'
+
+
+def test_anchor_link_converts_correctly():
+    """Same rationale as the relative-link case -- a Table of Contents entry
+    like [FBAR Requirements](#fbar) must convert, even though the pipeline's
+    current TOC output (where present, e.g. post 46817) uses raw HTML anchors
+    rather than Markdown ones."""
+    out = render("Jump to [FBAR Requirements](#fbar) for details.")
+    assert out == 'Jump to <a href="#fbar">FBAR Requirements</a> for details.'
 
 
 def test_malformed_nested_html_in_url_is_never_stuffed_into_href():

@@ -291,8 +291,15 @@ class WordPressIntegrationAgent(BaseAgent):
         from the URL group means a malformed link like that no longer
         matches as a link at all -- it's left as literal text (a little
         ugly, but never a broken href) instead of being silently corrupted.
+
+        Accepts `https?://`, `/` (relative) or `#` (anchor) prefixes -- a
+        live check of 3 recent articles found the pipeline only emits
+        absolute URLs today (zero relative/anchor Markdown links), but an
+        LLM's output isn't deterministic and this costs nothing to allow
+        for defensively: the malformed-bug shape stays blocked purely by
+        excluding `<>()`/whitespace, independent of the allowed prefix.
         """
-        text = re.sub(r'\[(.+?)\]\((https?://[^\s<>()]+)\)', r'<a href="\2">\1</a>', text)
+        text = re.sub(r'\[(.+?)\]\(((?:https?://|/|#)[^\s<>()]+)\)', r'<a href="\2">\1</a>', text)
         text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
         text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
         text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<em>\1</em>', text)
