@@ -1,0 +1,27 @@
+name: Check Cache Headers (read-only diagnostic)
+
+on:
+  workflow_dispatch:
+    inputs:
+      check_urls:
+        description: "Comma-separated paths to check, e.g. /,/best-banks-newcomers-usa-2026/"
+        required: false
+        default: "/"
+
+# READ-ONLY: fetches live pages and prints their cache-related response
+# headers (LiteSpeed, Hostinger hCDN, generic Cache-Control). No auth
+# needed. Never writes anything.
+jobs:
+  check-headers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check cache headers
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          CHECK_URLS: ${{ github.event.inputs.check_urls }}
+        run: python3 scripts/check_cache_headers.py
