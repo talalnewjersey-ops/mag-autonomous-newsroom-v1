@@ -278,8 +278,21 @@ class WordPressIntegrationAgent(BaseAgent):
         return content
 
     def _render_inline(self, text):
-        """Convert inline markdown (bold, italic, links, code) to HTML."""
-        text = re.sub(r'\[(.+?)\]\((.+?)\)', r'<a href="\2">\1</a>', text)
+        """Convert inline markdown (bold, italic, links, code) to HTML.
+
+        Link URL capture is restricted to real-URL characters (2026-07-26,
+        pre-production 404 audit -- see tests/test_agent11_render_inline_
+        link_safety.py). The previous `\\((.+?)\\)` captured anything up to
+        the next ')' with no validation -- when the writer occasionally
+        emitted a malformed Markdown link with a raw `<a href="...">` tag
+        leaked inside the parentheses, that whole nested tag got stuffed
+        into the published href verbatim (confirmed live: the
+        /rent-without-credit-canada/&lt;a 404). Excluding whitespace/`<>()`
+        from the URL group means a malformed link like that no longer
+        matches as a link at all -- it's left as literal text (a little
+        ugly, but never a broken href) instead of being silently corrupted.
+        """
+        text = re.sub(r'\[(.+?)\]\((https?://[^\s<>()]+)\)', r'<a href="\2">\1</a>', text)
         text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
         text = re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
         text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<em>\1</em>', text)
