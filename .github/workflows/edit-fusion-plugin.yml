@@ -1,0 +1,57 @@
+name: Edit Fusion Plugin File (read or write, temporary snippet activation)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "read (safe, just fetches+saves current content) or write (applies OLD_TEXT->NEW_TEXT)"
+        required: true
+        default: "read"
+      plugin:
+        description: "Which allowed plugin key (see MAG Plugin RW snippet)"
+        required: false
+        default: "fusion-v51"
+      old_text_file:
+        description: "Path to file with exact OLD text (write mode only)"
+        required: false
+        default: ""
+      new_text_file:
+        description: "Path to file with exact NEW text (write mode only)"
+        required: false
+        default: ""
+      confirm:
+        description: "Type 'yes' to actually write (write mode safety gate)"
+        required: false
+        default: "no"
+
+# WRITE ACTION (mode=write) / READ-ONLY (mode=read): temporarily activates
+# the existing 'MAG Plugin RW' Code Snippet (id 22, normally inactive) just
+# long enough to read (and optionally write) the fusion-v51 homepage plugin
+# file, then deactivates it again. See scripts/edit_fusion_plugin.py for the
+# full safety rationale (strict UTF-8 decode, exact-count old_text check,
+# server-side auto-backup on write).
+jobs:
+  edit-plugin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Read/write plugin
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          MODE: ${{ github.event.inputs.mode }}
+          PLUGIN: ${{ github.event.inputs.plugin }}
+          OLD_TEXT_FILE: ${{ github.event.inputs.old_text_file }}
+          NEW_TEXT_FILE: ${{ github.event.inputs.new_text_file }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: python3 scripts/edit_fusion_plugin.py
+      - name: Upload current plugin content
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-current
+          path: plugin_current.php
