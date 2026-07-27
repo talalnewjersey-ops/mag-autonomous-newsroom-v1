@@ -1,0 +1,21 @@
+name: Check AdSense Essentials (read-only diagnostic)
+
+on:
+  workflow_dispatch: {}
+
+# READ-ONLY: checks ads.txt existence and whether the live homepage/an
+# article page link to the key legal/about/contact pages. No auth needed
+# (all public URLs). Never writes anything.
+jobs:
+  check-adsense:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check AdSense essentials
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+        run: python3 scripts/check_adsense_essentials.py
