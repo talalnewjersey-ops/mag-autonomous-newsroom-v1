@@ -7,6 +7,10 @@ on:
         description: "Comma-separated paths to check, e.g. /,/best-banks-newcomers-usa-2026/"
         required: false
         default: "/"
+      show_body_preview:
+        description: "Also print a stripped-text preview of the response body"
+        required: false
+        default: "false"
 
 # READ-ONLY: fetches live pages and prints their cache-related response
 # headers (LiteSpeed, Hostinger hCDN, generic Cache-Control). No auth
@@ -24,4 +28,5 @@ jobs:
         env:
           WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
           CHECK_URLS: ${{ github.event.inputs.check_urls }}
+          SHOW_BODY_PREVIEW: ${{ github.event.inputs.show_body_preview }}
         run: python3 scripts/check_cache_headers.py

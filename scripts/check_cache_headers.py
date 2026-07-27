@@ -22,12 +22,18 @@ def main():
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; MAG-cache-check/1.0)"})
         try:
             with urllib.request.urlopen(req, timeout=20) as resp:
-                print(f"\n=== {url} -> HTTP {resp.status} ===")
+                body = resp.read().decode("utf-8", errors="replace")
+                print(f"\n=== {url} -> HTTP {resp.status}, body length={len(body)} ===")
                 for h in HEADERS_OF_INTEREST:
                     v = resp.headers.get(h)
                     if v:
                         print(f"  {h}: {v}")
                 print(f"  date: {resp.headers.get('date')}")
+                if os.environ.get("SHOW_BODY_PREVIEW") == "true":
+                    import re as _re
+                    text_only = _re.sub(r"<[^>]+>", " ", body)
+                    text_only = _re.sub(r"\s+", " ", text_only).strip()
+                    print(f"  body text preview ({len(text_only.split())} words): {text_only[:500]}")
         except Exception as e:
             print(f"\n=== {url} -> ERROR: {e} ===")
 
