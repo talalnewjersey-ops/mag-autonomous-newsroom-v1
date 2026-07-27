@@ -1,0 +1,41 @@
+name: Inspect Page Context (read-only diagnostic)
+
+on:
+  workflow_dispatch:
+    inputs:
+      check_path:
+        description: "Path to fetch, e.g. /best-banks-newcomers-usa-2026/"
+        required: true
+        default: "/"
+      needles:
+        description: "Pipe-separated substrings to find and show context around"
+        required: false
+        default: ""
+      context_chars:
+        description: "Characters of context before/after each match"
+        required: false
+        default: "400"
+
+# READ-ONLY: fetches a live URL, saves raw HTML as an artifact, prints
+# context around requested substrings. No auth needed. Never writes.
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Inspect page context
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          CHECK_PATH: ${{ github.event.inputs.check_path }}
+          NEEDLES: ${{ github.event.inputs.needles }}
+          CONTEXT_CHARS: ${{ github.event.inputs.context_chars }}
+        run: python3 scripts/inspect_page_context.py
+      - name: Upload page body
+        uses: actions/upload-artifact@v4
+        with:
+          name: page-body
+          path: page_body.html
