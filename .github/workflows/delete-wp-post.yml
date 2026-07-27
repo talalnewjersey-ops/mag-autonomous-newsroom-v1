@@ -13,10 +13,16 @@ on:
         description: "Bypass trash and delete permanently (irreversible)"
         required: false
         default: "false"
+      redirect_to:
+        description: "If the post is published: exact URL to 301-redirect its old address to. Leave blank to fall back to the post's own primary category page. Ignored for drafts (never had a public URL)."
+        required: false
+        default: ""
 
 # DESTRUCTIVE: moves the given post to trash (recoverable) unless force=true.
 # Requires post_id and confirm_post_id to match exactly, or the run aborts
-# before making any request.
+# before making any request. If the post is currently published, a 301
+# redirect is created first (explicit redirect_to, else the post's primary
+# category) -- the delete is aborted if that redirect can't be created.
 jobs:
   delete-post:
     name: "Delete post"
@@ -34,4 +40,5 @@ jobs:
           POST_ID: ${{ github.event.inputs.post_id }}
           CONFIRM_POST_ID: ${{ github.event.inputs.confirm_post_id }}
           FORCE: ${{ github.event.inputs.force }}
+          REDIRECT_TO: ${{ github.event.inputs.redirect_to }}
         run: python3 scripts/delete_wp_post.py
