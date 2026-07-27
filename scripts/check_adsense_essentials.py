@@ -31,31 +31,30 @@ def main():
     if status == 200:
         print(body[:500])
 
+    # each canonical page checked under every real URL that reaches it
+    # (its own slug, plus any known alias/old-slug that 301s to it)
     targets = {
-        "privacy-policy": "/privacy-policy/",
-        "legal-disclaimer": "/legal-disclaimer/",
-        "terms-and-conditions": "/terms-and-conditions/",
-        "about": "/about/",
-        "contact": "/contact/",
+        "privacy-policy": ["/privacy-policy/"],
+        "legal-disclaimer": ["/legal-disclaimer/", "/disclaimer/"],
+        "terms-and-conditions": ["/terms-and-conditions/"],
+        "about": ["/about/", "/about-us/"],
+        "contact": ["/contact/"],
     }
 
     for label, path in [("HOMEPAGE", "/"), ("ARTICLE PAGE", "/best-banks-newcomers-usa-2026/")]:
-        print(f"\n===== {label} ({path}) — footer/nav link check =====")
+        print(f"\n===== {label} ({path}) — link check (whole page body) =====")
         status, body = fetch(f"{WP_URL}{path}")
         print(f"HTTP {status}, length={len(body)}")
         if status != 200:
             continue
-        for name, p in targets.items():
-            found = p in body or p.rstrip("/") in body
-            print(f"  links to {name} ({p}): {found}")
-        footer_match = re.search(r"<footer.*?</footer>", body, re.DOTALL | re.IGNORECASE)
-        if footer_match:
-            footer_links = re.findall(r'href="([^"]+)"', footer_match.group(0))
-            print(f"  footer block found, {len(footer_links)} links inside:")
-            for l in footer_links:
+        for name, paths in targets.items():
+            found_via = [p for p in paths if p in body or p.rstrip("/") in body]
+            print(f"  links to {name}: {bool(found_via)}  (via {found_via})" if found_via else f"  links to {name}: False")
+        for tag in re.finditer(r"<footer[^>]*>.*?</footer>", body, re.DOTALL | re.IGNORECASE):
+            links = re.findall(r'href="([^"]+)"', tag.group(0))
+            print(f"  <footer> block ({len(tag.group(0))} chars): {len(links)} links")
+            for l in links:
                 print("    -", l)
-        else:
-            print("  NO <footer> tag found in the response")
 
 
 if __name__ == "__main__":
