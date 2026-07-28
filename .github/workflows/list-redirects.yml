@@ -1,0 +1,29 @@
+name: List WordPress Redirects (read-only diagnostic)
+
+on:
+  workflow_dispatch:
+    inputs:
+      filter_source:
+        description: "Optional substring to filter the source URL (blank = list all)"
+        required: false
+        default: ""
+
+# READ-ONLY: lists redirects via the Redirection plugin's REST API. Never
+# writes anything. Used to find an existing redirect's exact id/target
+# before deciding whether it needs updating.
+jobs:
+  list-redirects:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: List redirects
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          FILTER_SOURCE: ${{ github.event.inputs.filter_source }}
+        run: python3 scripts/list_wp_redirects.py
