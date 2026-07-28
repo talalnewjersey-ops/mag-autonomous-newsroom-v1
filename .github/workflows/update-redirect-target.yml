@@ -1,0 +1,37 @@
+name: Update Redirect Target (write)
+
+on:
+  workflow_dispatch:
+    inputs:
+      redirect_id:
+        description: "Redirection plugin redirect id to update"
+        required: true
+      expected_current_target:
+        description: "Current target the redirect must have, or the script refuses to write"
+        required: true
+      new_target:
+        description: "New target URL/path to set"
+        required: true
+
+# WRITE ACTION: updates exactly one existing redirect's target URL. Refuses
+# unless the redirect's current target matches expected_current_target
+# exactly (fresh read right before writing). Never touches source url,
+# match_type, group_id or enabled state.
+jobs:
+  update-redirect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Update redirect target
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          REDIRECT_ID: ${{ github.event.inputs.redirect_id }}
+          EXPECTED_CURRENT_TARGET: ${{ github.event.inputs.expected_current_target }}
+          NEW_TARGET: ${{ github.event.inputs.new_target }}
+        run: python3 scripts/update_wp_redirect_target.py
