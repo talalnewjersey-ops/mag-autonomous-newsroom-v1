@@ -26,10 +26,24 @@ def _auth_header(user, app_password):
 
 
 def get_redirect(wp_url, user, app_password, redirect_id):
-    url = f"{wp_url.rstrip('/')}/wp-json/redirection/v1/redirect/{redirect_id}"
-    req = urllib.request.Request(url, headers={"Authorization": _auth_header(user, app_password)})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    # The Redirection plugin's REST API has no single-item GET route (404s),
+    # only a list endpoint -- fetch the list and find the matching id.
+    redirect_id = int(redirect_id)
+    auth = _auth_header(user, app_password)
+    page_num = 0
+    while True:
+        url = f"{wp_url.rstrip('/')}/wp-json/redirection/v1/redirect?per_page=200&page={page_num}"
+        req = urllib.request.Request(url, headers={"Authorization": auth})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        items = data.get("items", [])
+        for item in items:
+            if item.get("id") == redirect_id:
+                return item
+        if len(items) < 200:
+            break
+        page_num += 1
+    raise SystemExit(f"REFUSING TO WRITE: redirect id={redirect_id} not found in current list.")
 
 
 def update_redirect_target(wp_url, user, app_password, redirect_id, current, new_target):
