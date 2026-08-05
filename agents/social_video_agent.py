@@ -27,8 +27,9 @@ Audience : Newcomers / immigrants / intl students -- USA & Canada
 Language : Native American English. No French. No robotic AI tone.
 """
 
-import os, sys, json, time
+import os, re, sys, json, time
 from datetime import datetime
+from urllib.parse import urlencode
 
 # ── DEPENDENCY BOOTSTRAP ─────────────────────────────────────
 try:
@@ -63,6 +64,47 @@ PLATFORM_DIRS = {
     "higgsfield": os.path.join(OUTPUT_BASE, "higgsfield"),
 }
 
+# ── UTM TRACKING ─────────────────────────────────────────────
+# Before this, every CTA just said "moneyabroadguide.com" as plain text (or
+# "link in bio") with no query params -- confirmed via a GA4 source/medium
+# audit (2026-08-04): TikTok-driven sessions landed as untagged
+# "tiktok.com / referral" (Organic Social), indistinguishable from any other
+# organic click. This pipeline only ever produces ORGANIC short-form content
+# (see README) -- paid TikTok Ads / YouTube Ads campaigns are configured
+# separately in each platform's own Ads Manager and need their own UTM
+# tagging on the ad's destination URL, which this script has no visibility
+# into and cannot fix.
+WORDPRESS_URL = os.environ.get("WORDPRESS_URL", "https://moneyabroadguide.com").rstrip("/")
+
+# TikTok and Instagram Reels captions are not clickable -- only a profile's
+# single bio link is, and it can't rotate per video. So their tracked URL
+# uses a stable per-platform campaign (not per-topic) meant to be set once
+# as the bio link for the whole organic short-form push, not swapped
+# per-post. YouTube Shorts descriptions ARE clickable per video, so those
+# get a real per-topic/per-article campaign for genuine per-video attribution.
+UTM_MEDIUM_BY_PLATFORM = {"tiktok": "organic_social", "shorts": "organic_social", "reels": "organic_social"}
+BIO_LINK_CAMPAIGN_BY_PLATFORM = {"tiktok": "organic-shortform-bio", "reels": "organic-shortform-bio"}
+
+
+def slugify(text, max_len=40):
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return slug[:max_len].rstrip("-") or "post"
+
+
+def build_tracked_url(platform, article_index, topic, per_video=False):
+    """Deterministic UTM-tagged destination link -- never left to the LLM to
+    write out, so it can't be mangled, forgotten, or duplicated. `per_video`
+    controls whether utm_campaign is topic-specific (YouTube Shorts
+    description, genuinely clickable per video) or a stable shared campaign
+    (TikTok/Reels bio link, which can't differ per post)."""
+    campaign = f"{slugify(topic)}-{article_index}" if per_video else BIO_LINK_CAMPAIGN_BY_PLATFORM[platform]
+    params = {
+        "utm_source": platform,
+        "utm_medium": UTM_MEDIUM_BY_PLATFORM.get(platform, "organic_social"),
+        "utm_campaign": campaign,
+    }
+    return f"{WORDPRESS_URL}/?{urlencode(params)}"
+
 SYSTEM_PROMPT = (
     "You are an elite social media content strategist for MoneyAbroadGuide.com. "
     "Write viral short-form video scripts for TikTok, YouTube Shorts, and Instagram Reels. "
@@ -96,7 +138,6 @@ def parse_json(raw):
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
     # Handle trailing commas (common LLM output issue)
-    import re
     raw = re.sub(r",\s*([}\]])", r"\1", raw)
     return json.loads(raw)
 
@@ -315,6 +356,9 @@ Return this EXACT JSON object (no extra keys):
                 "content_angle":    ins.get("content_angle", "mistake story"),
             }
         script["insight_number"] = ins.get("insight_number", 1)
+        # Captions aren't clickable on TikTok -- this is the UTM-tagged link
+        # to set as the profile's bio link while this content is live.
+        script["bio_link"] = build_tracked_url("tiktok", ARTICLE_INDEX, topic)
         scripts.append(script)
         print(f"  TikTok #{ins.get('insight_number','?')} -- hook: {script.get('hook','')[:60]}...")
         time.sleep(0.3)
@@ -342,7 +386,7 @@ Return this EXACT JSON object:
   "body":             "Educational content (15-22 seconds spoken, clear structure, 2-3 key points)",
   "cta":              "Subscribe + moneyabroadguide.com CTA (3-5 seconds)",
   "title":            "YouTube Shorts title (55 chars max, SEO keyword-first format)",
-  "description":      "Video description (200 chars, include moneyabroadguide.com URL)",
+  "description":      "Video description (150 chars max, educational hook -- do NOT include any URL, one is appended automatically)",
   "hashtags":         ["NewcomerFinance", "ImmigrantMoney", "CreditScoreUSA", "MoneyAbroadGuide", "BankingUSA", "NewToUSA", "FinanceTips", "Expat"],
   "chapters":         ["00:00 Hook", "00:03 Key Insight", "00:20 Action Step", "00:25 CTA"],
   "duration_estimate":"e.g. 28 seconds"
@@ -359,13 +403,20 @@ Return this EXACT JSON object:
                 "body":             ins.get("core_fact", ""),
                 "cta":              "Subscribe for more newcomer finance tips. Full guide at moneyabroadguide.com",
                 "title":            f"{topic[:45].title()} — Newcomer Guide {market.upper()}",
-                "description":      f"Complete guide to {topic[:60]} for immigrants. Visit moneyabroadguide.com for the full breakdown.",
+                "description":      f"Complete guide to {topic[:60]} for immigrants. Full breakdown below.",
                 "hashtags":         ["NewcomerFinance","ImmigrantMoney","CreditScoreUSA","MoneyAbroadGuide",
                                      "BankingUSA","NewToUSA","FinanceTips","Expat"],
                 "chapters":         ["00:00 Hook","00:03 Key Insight","00:20 Action Step","00:25 CTA"],
                 "duration_estimate":"25 seconds",
             }
         script["insight_number"] = ins.get("insight_number", 1)
+        # YouTube Shorts descriptions ARE clickable per video -- append a
+        # real per-topic tracked URL instead of trusting the LLM to write
+        # one out (it can't be relied on to format/keep query params intact).
+        tracked_url = build_tracked_url("shorts", ARTICLE_INDEX, topic, per_video=True)
+        script["tracked_url"] = tracked_url
+        description = script.get("description", "").strip()
+        script["description"] = f"{description}\n\n{tracked_url}" if description else tracked_url
         scripts.append(script)
         print(f"  Shorts #{ins.get('insight_number','?')} -- title: {script.get('title','')[:55]}")
         time.sleep(0.3)
@@ -421,6 +472,9 @@ Return this EXACT JSON object:
                 "duration_estimate":      "26 seconds",
             }
         script["insight_number"] = ins.get("insight_number", 1)
+        # Captions aren't clickable on Instagram either -- same bio-link
+        # constraint as TikTok.
+        script["bio_link"] = build_tracked_url("reels", ARTICLE_INDEX, topic)
         scripts.append(script)
         print(f"  Reels #{ins.get('insight_number','?')} -- hook: {script.get('hook','')[:60]}...")
         time.sleep(0.3)
@@ -534,19 +588,31 @@ def save_all_outputs(article_index, tiktok, shorts, reels, hf_prompts, insights,
     save_json(os.path.join(PLATFORM_DIRS["tiktok"], f"tiktok_{slug}_all.json"),
               {"generated_at": datetime.utcnow().isoformat(), "article_index": article_index,
                "topic": topic, "market": market.upper(), "platform": "tiktok",
-               "count": len(tiktok), "scripts": tiktok})
+               "count": len(tiktok), "scripts": tiktok,
+               "publishing_reminder": (
+                   "Set the TikTok profile bio link to the 'bio_link' URL above before "
+                   "posting -- without it, clicks land untagged in GA4 (see 2026-08-04 audit)."
+               )})
     for i, s in enumerate(shorts):
         save_json(os.path.join(PLATFORM_DIRS["shorts"], f"shorts_{slug}_v{i+1}.json"), s)
     save_json(os.path.join(PLATFORM_DIRS["shorts"], f"shorts_{slug}_all.json"),
               {"generated_at": datetime.utcnow().isoformat(), "article_index": article_index,
                "topic": topic, "market": market.upper(), "platform": "youtube_shorts",
-               "count": len(shorts), "scripts": shorts})
+               "count": len(shorts), "scripts": shorts,
+               "publishing_reminder": (
+                   "Each script's 'description' already has its tracked URL appended -- "
+                   "paste the description as-is, do not add another moneyabroadguide.com link."
+               )})
     for i, s in enumerate(reels):
         save_json(os.path.join(PLATFORM_DIRS["reels"], f"reels_{slug}_v{i+1}.json"), s)
     save_json(os.path.join(PLATFORM_DIRS["reels"], f"reels_{slug}_all.json"),
               {"generated_at": datetime.utcnow().isoformat(), "article_index": article_index,
                "topic": topic, "market": market.upper(), "platform": "instagram_reels",
-               "count": len(reels), "scripts": reels})
+               "count": len(reels), "scripts": reels,
+               "publishing_reminder": (
+                   "Set the Instagram profile bio link to the 'bio_link' URL above before "
+                   "posting -- without it, clicks land untagged in GA4 (see 2026-08-04 audit)."
+               )})
     for i, p in enumerate(hf_prompts):
         save_json(os.path.join(PLATFORM_DIRS["higgsfield"], f"higgsfield_{slug}_v{i+1}.json"), p)
         save_text(os.path.join(PLATFORM_DIRS["higgsfield"], f"higgsfield_prompt_{slug}_v{i+1}.txt"),
