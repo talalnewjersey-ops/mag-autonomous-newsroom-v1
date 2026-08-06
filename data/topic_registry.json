@@ -313,9 +313,11 @@
       "category": "credit",
       "monetization_score": 3,
       "traffic_score": 4,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null
+      "post_id": 49192,
+      "selected_at": "2026-08-06T14:56:52.270971Z",
+      "drafted_at": "2026-08-06T15:02:36.824840Z"
     },
     {
       "id": "us-essential-documents-ssn-itin",
