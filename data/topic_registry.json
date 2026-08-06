@@ -419,9 +419,9 @@
       "category": "credit",
       "monetization_score": 3,
       "traffic_score": 4,
-      "status": "candidate",
-      "published_at": null,
-      "post_id": null,
+      "status": "published",
+      "published_at": "2026-07-26T03:48:55",
+      "post_id": 48945,
       "selected_at": null
     },
     {
