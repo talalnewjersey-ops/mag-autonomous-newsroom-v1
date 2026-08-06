@@ -1,7 +1,8 @@
 {
-  "_description": "NEXUS-14 V3 - Article Classification Strategy for MoneyAbroadGuide.com",
-  "_version": "3.0.0",
-  "_last_updated": "2026-06-12",
+  "_description": "NEXUS-14 V3.1 - Article Classification Strategy for MoneyAbroadGuide.com",
+  "_version": "3.1.0",
+  "_last_updated": "2026-06-22",
+  "_canonical_source_note": "Word counts and tier thresholds are reconciled to the canonical source of truth: config/nexus14_v2_config.yaml (v3.1.x). See docs/WORD_COUNT_RECONCILIATION.md.",
   "classification_rules": {
     "PILLAR": {
       "description": "Comprehensive cornerstone content targeting competitive keywords",
@@ -9,17 +10,17 @@
         "keyword_difficulty_min": 50,
         "strategic_topic": true,
         "search_volume_min": 5000,
-        "revenue_score_min": 70
+        "revenue_score_min": 85
       },
       "requirements": {
-        "word_count_min": 7000,
-        "word_count_target": 9000,
-        "word_count_max": 12000,
-        "faq_min": 15,
-        "faq_max": 20,
-        "sources_min": 10,
-        "images_min": 6,
-        "images_max": 8,
+        "word_count_min": 4500,
+        "word_count_target": 5000,
+        "word_count_max": 5000,
+        "faq_min": 12,
+        "faq_max": 15,
+        "sources_min": 6,
+        "images_min": 5,
+        "images_max": 6,
         "case_studies_min": 3,
         "internal_links_min": 8
       }
@@ -28,31 +29,53 @@
       "description": "High-quality targeted articles for medium-competition keywords",
       "triggers": {
         "keyword_difficulty_max": 49,
-        "search_volume_min": 500
+        "search_volume_min": 500,
+        "revenue_score_range": "70-85"
+      },
+      "requirements": {
+        "word_count_min": 4000,
+        "word_count_target": 4500,
+        "word_count_max": 4500,
+        "faq_min": 10,
+        "faq_max": 12,
+        "sources_min": 5,
+        "images_min": 4,
+        "images_max": 5,
+        "case_studies_min": 2,
+        "internal_links_min": 6
+      }
+    },
+    "OPPORTUNITY": {
+      "description": "Lean, high-value articles for low-difficulty topics (revenue_score 60-70)",
+      "triggers": {
+        "revenue_score_max": 70,
+        "revenue_score_min": 60,
+        "keyword_difficulty_low": true
       },
       "requirements": {
         "word_count_min": 3500,
-        "word_count_target": 5500,
-        "word_count_max": 7000,
+        "word_count_target": 4000,
+        "word_count_max": 4000,
         "faq_min": 8,
-        "faq_max": 12,
-        "sources_min": 5,
-        "images_min": 5,
-        "case_studies_min": 2,
-        "internal_links_min": 5
+        "faq_max": 10,
+        "sources_min": 3,
+        "images_min": 3,
+        "images_max": 4,
+        "case_studies_min": 1,
+        "internal_links_min": 4
       }
     }
   },
   "classification_logic": {
     "pseudo_code": [
-      "IF keyword_difficulty > 50 OR strategic_topic == true:",
-      "  article_type = PILLAR",
-      "ELIF search_volume > 5000:",
-      "  article_type = PILLAR",
-      "ELIF revenue_score > 85:",
-      "  article_type = PILLAR",
+      "IF revenue_score > 85 OR keyword_difficulty > 50 OR strategic_topic == true:",
+      "    article_type = PILLAR",
+      "ELIF revenue_score < 60:",
+      "    article_type = REJECT",
+      "ELIF revenue_score <= 70:",
+      "    article_type = OPPORTUNITY",
       "ELSE:",
-      "  article_type = STANDARD"
+      "    article_type = STANDARD"
     ],
     "output_field": "article_type",
     "stored_in": "article_strategy.json"
@@ -80,11 +103,14 @@
     "batch_1_time": "06:00 UTC",
     "batch_2_time": "13:00 UTC",
     "pillar_max_per_day": 2,
-    "standard_max_per_day": 4
+    "standard_max_per_day": 4,
+    "note": "max_articles_per_day is a CEILING, never a quota. Never produce filler to reach it; only publish topics that pass every quality gate."
   },
   "quality_first_policy": {
     "rule": "Quality always wins over volume",
     "max_daily_enforced": true,
-    "reject_if_below_standards": true
+    "reject_if_below_standards": true,
+    "no_filler": true,
+    "no_gate_bypass": true
   }
 }
