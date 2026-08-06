@@ -189,8 +189,8 @@
       "category": "credit builder",
       "monetization_score": 4,
       "traffic_score": 5,
-      "status": "drafted",
-      "published_at": null,
+      "status": "published",
+      "published_at": "2026-08-06T15:58:29",
       "post_id": 48810,
       "selected_at": "2026-07-16T15:01:48.895563Z",
       "drafted_at": "2026-07-16T15:10:31.497765Z"
@@ -217,8 +217,8 @@
       "category": "assur habitation",
       "monetization_score": 4,
       "traffic_score": 3,
-      "status": "drafted",
-      "published_at": null,
+      "status": "published",
+      "published_at": "2026-08-06T15:58:32",
       "post_id": 48938,
       "selected_at": "2026-07-23T12:40:45.447944Z",
       "drafted_at": "2026-07-23T12:48:30.101283Z"
@@ -313,8 +313,8 @@
       "category": "credit",
       "monetization_score": 3,
       "traffic_score": 4,
-      "status": "drafted",
-      "published_at": null,
+      "status": "published",
+      "published_at": "2026-08-06T15:58:27",
       "post_id": 49192,
       "selected_at": "2026-08-06T14:56:52.270971Z",
       "drafted_at": "2026-08-06T15:02:36.824840Z"
@@ -354,8 +354,8 @@
       "category": "credit builder",
       "monetization_score": 4,
       "traffic_score": 3,
-      "status": "drafted",
-      "published_at": null,
+      "status": "published",
+      "published_at": "2026-08-06T15:58:30",
       "post_id": 48931,
       "selected_at": "2026-07-23T12:32:38.058574Z",
       "drafted_at": "2026-07-23T12:48:30.101143Z"
