@@ -1,0 +1,41 @@
+name: Unpublish Redirected-Orphan Post (write, one-off, self-verified)
+
+on:
+  workflow_dispatch:
+    inputs:
+      post_id:
+        description: "WordPress post ID to set to draft"
+        required: true
+      confirm_post_id:
+        description: "Re-type the SAME post ID to confirm (fat-finger guard)"
+        required: true
+
+# WRITE (status only): sets a published post to draft, but ONLY after
+# independently confirming (via the Redirection plugin's own REST API) that
+# an enabled 301 rule's source URL matches this post's own slug -- see
+# scripts/unpublish_redirected_orphan_post.py's module docstring. Refuses
+# and exits 1 if that's not true, or if post_id/confirm_post_id don't match.
+jobs:
+  unpublish:
+    name: "Unpublish shadowed post"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Unpublish via WP REST API (self-verified against Redirection rules)
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          POST_ID: ${{ github.event.inputs.post_id }}
+          CONFIRM_POST_ID: ${{ github.event.inputs.confirm_post_id }}
+        run: python3 scripts/unpublish_redirected_orphan_post.py
+      - name: Upload before/after snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unpublish-${{ github.event.inputs.post_id }}-snapshots
+          path: post_${{ github.event.inputs.post_id }}_*.json
+          if-no-files-found: ignore
