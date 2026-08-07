@@ -798,7 +798,19 @@ async def _write_article_standalone(outline: Dict, api_key: str, min_words: int 
         "statistic to a named organisation (e.g. 'according to X', 'X reports', 'X (2024)') "
         "unless X is one of the official sources above AND linked on that claim. This applies "
         "to the comparison table too (sourced or qualitative figures only). An unsourced number "
-        "or an unbacked named attribution FAILS the fact-check gate and lowers the QA score."
+        "or an unbacked named attribution FAILS the fact-check gate and lowers the QA score.\n"
+        "GRAMMAR WHEN OMITTING A NUMBER (2026-08-07, real recurring bug): if you decide NOT to "
+        "state a precise figure because you cannot back it, do NOT just delete the number and "
+        "leave the surrounding words as-is — REWRITE THE WHOLE CLAUSE so it still reads as a "
+        "complete, grammatical sentence. A downstream automated pass also strips any number it "
+        "still finds unsourced, and it can only safely remove the number itself, not repair "
+        "grammar around it — if your sentence depends on that number staying, the automated "
+        "strip WILL leave a broken fragment (e.g. \"triggers RRSP contribution room at of "
+        "the prior year's earnings\", \"within of status confirmation\" — two prepositions "
+        "left stuck together where a number used to be). Prevent this at the source: write the qualitative "
+        "version yourself, in full — e.g. 'triggers RRSP contribution room based on prior "
+        "earnings' or 'shortly after status confirmation' — never a sentence that only makes "
+        "grammatical sense WITH the number still in it."
     )
     if has_curated_pool(source_vertical) and _official_sel:
         _official_block = "\n".join(f"- {s}" for s in _official_sel)
