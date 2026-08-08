@@ -380,9 +380,41 @@ for ARTICLE_NUM in $(seq 1 "$MAX_ARTICLES"); do
     --wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_report.json" \
     --image-prompts "${ARTICLE_DIR}/agent_09/image_prompts.json" \
     --output "${ARTICLE_DIR}/agent_11/placeholder_gate_report.json" || {
-    echo "GATE D FAIL: placeholder artifact(s) detected in article ${ARTICLE_NUM} -- never scoring, never publishing"
-    python scripts/mark_qa_failed.py --wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_validation_report.json" --gate PLACEHOLDER || true
-    ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
+    # CONNECTOR-SCAR REPAIR (2026-08-07): a GATE D failure made ENTIRELY of
+    # adjacent_connector_pair findings (e.g. "at of", "within of", "of in" --
+    # scripts/soften_claims.py's own documented CASE 4/5a tradeoff, see that
+    # file's module docstring) gets ONE targeted, sentence-level repair
+    # attempt -- NOT a retry through agent_04 (placeholder_gate.py's own
+    # docstring explains why GATE D deliberately has no such retry; this
+    # patches only the exact flagged sentence, never regenerates anything).
+    # Any other finding mix (title, alt-text, or a different body finding
+    # type) skips straight to mark_qa_failed.py below, unchanged.
+    echo "[${ARTICLE_NUM}] GATE D FAIL -- attempting targeted connector-scar repair"
+    GATE_D_REPAIRED=0
+    if python scripts/repair_connector_scars.py \
+      --article "$DRAFT" \
+      --gate-report "${ARTICLE_DIR}/agent_11/placeholder_gate_report.json" \
+      --wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_report.json"; then
+      echo "[${ARTICLE_NUM}] Connector scar(s) repaired -- rechecking GATE D"
+      if python scripts/placeholder_gate.py \
+        --article "$DRAFT" \
+        --wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_report.json" \
+        --image-prompts "${ARTICLE_DIR}/agent_09/image_prompts.json" \
+        --output "${ARTICLE_DIR}/agent_11/placeholder_gate_report.json"; then
+        GATE_D_REPAIRED=1
+      else
+        echo "GATE D FAIL (post-repair recheck): article ${ARTICLE_NUM} still has placeholder artifact(s) -- never scoring, never publishing"
+      fi
+    fi
+    # GATE_D_REPAIRED=1: fall through WITHOUT `continue` -- execution proceeds
+    # to Phase 12-13 below for THIS SAME article, exactly as if GATE D had
+    # passed on the first try. GATE_D_REPAIRED=0 (not repairable, or repair/
+    # recheck failed): same failure path as before this fix existed.
+    if [ "$GATE_D_REPAIRED" -eq 0 ]; then
+      echo "GATE D FAIL: placeholder artifact(s) detected in article ${ARTICLE_NUM} -- never scoring, never publishing"
+      python scripts/mark_qa_failed.py --wordpress-report "${ARTICLE_DIR}/agent_11/wordpress_validation_report.json" --gate PLACEHOLDER || true
+      ARTICLES_FAILED=$((ARTICLES_FAILED+1)); continue
+    fi
   }
 
   # SPRINT 1 (B/C): Phase 12-13 QA + Chief Editor are now BLOCKING gates.
