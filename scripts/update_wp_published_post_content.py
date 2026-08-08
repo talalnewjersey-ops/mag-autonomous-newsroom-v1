@@ -63,7 +63,8 @@ def main():
     before = get_post(wp_url, user, app_pw, post_id)
     current_status = before.get("status")
     current_content = before.get("content", {}).get("raw", "") or ""
-    print(f"BEFORE: id={post_id} status={current_status} content_length={len(current_content)}")
+    print(f"BEFORE: id={post_id} status={current_status} content_length={len(current_content)} "
+          f"modified={before.get('modified')} modified_gmt={before.get('modified_gmt')}")
 
     if current_status != "publish":
         print(f"REFUSING: post {post_id} is currently '{current_status}', not 'publish'. Aborting.")
