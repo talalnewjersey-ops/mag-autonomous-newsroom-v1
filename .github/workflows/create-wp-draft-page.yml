@@ -1,0 +1,35 @@
+name: Create WordPress Draft Page (never publishes)
+
+on:
+  workflow_dispatch:
+    inputs:
+      page_title:
+        description: 'Title for the new draft page'
+        required: true
+      page_slug:
+        description: 'Slug for the new draft page'
+        required: true
+      content_file:
+        description: 'Path (in this repo) to the HTML content file to use'
+        required: true
+
+# WRITE, but status is hardcoded to 'draft' in create_wp_draft_page.py --
+# this workflow can never publish anything live.
+jobs:
+  create-draft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Create draft page
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          PAGE_TITLE: ${{ github.event.inputs.page_title }}
+          PAGE_SLUG: ${{ github.event.inputs.page_slug }}
+          CONTENT_FILE: ${{ github.event.inputs.content_file }}
+        run: python3 scripts/create_wp_draft_page.py
