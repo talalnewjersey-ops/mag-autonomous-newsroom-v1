@@ -1,0 +1,34 @@
+name: Create WordPress Draft Post (write, always draft -- cannot publish)
+
+on:
+  workflow_dispatch:
+    inputs:
+      fix_file:
+        description: "Path to the new-post spec (audit/pending_fixes/<name>.json)"
+        required: true
+
+# WRITES a new post, status hardcoded to 'draft' in the script itself --
+# there is no input path to publish through this workflow.
+jobs:
+  create-draft:
+    name: "Create draft post"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Create post via WP REST API
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          FIX_FILE: ${{ github.event.inputs.fix_file }}
+        run: python3 scripts/create_wp_draft_post.py
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: created-post-result
+          path: post_*_created.json
+          if-no-files-found: warn
