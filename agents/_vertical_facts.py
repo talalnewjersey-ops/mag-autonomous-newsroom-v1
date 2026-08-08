@@ -447,5 +447,34 @@ VERTICAL_FACTS = {
             "note": "Newcomers become residents for tax purposes on arrival and may need "
                     "to file a return; details on the CRA newcomers page.",
         },
+        {
+            "claim": "Driver's licences are provincial/territorial, not federal (qualitative)",
+            "value": None,
+            "source_url": "https://www.canada.ca/en/immigration-refugees-citizenship/services/settle-canada/driving.html",
+            "status": "STABLE",
+            "last_reviewed": "2026-08-08",
+            "note": "2026-08-08: added to unblock ca-drivers-license-newcomer, which has "
+                    "no other STABLE fact and was failing G-Substance identically on every "
+                    "retry (structural gap, not variance) -- same root cause already "
+                    "documented for ca-car-insurance-newcomers (also provincially-regulated). "
+                    "SOURCING CAVEAT: this IRCC page's title and topical existence were "
+                    "confirmed via WebSearch, but the exact page text could not be fetched "
+                    "directly (canada.ca returned HTTP 403 to WebFetch) -- only the search "
+                    "engine's own indexed summary was available. The claim itself (licensing "
+                    "is province/territory jurisdiction, not federal) is well-established and "
+                    "uncontroversial, but re-verify the exact page wording (e.g. via a real "
+                    "browser session) before treating this note as a verbatim quote.",
+        },
+        {
+            "claim": "Foreign licence use: International Driving Permit (IDP) (qualitative)",
+            "value": None,
+            "source_url": "https://www.canada.ca/en/immigration-refugees-citizenship/services/settle-canada/driving.html",
+            "status": "STABLE",
+            "last_reviewed": "2026-08-08",
+            "note": "2026-08-08, same page/caveat as the fact above: newcomers using a "
+                    "foreign licence should get an International Driving Permit (IDP) in "
+                    "their home country beforehand, per this IRCC settlement page's summary "
+                    "(exact wording not independently re-verified -- see sourcing caveat above).",
+        },
     ],
 }
