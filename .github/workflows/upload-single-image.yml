@@ -1,0 +1,48 @@
+name: Upload Single Image (write, generates via Gemini, standalone media item)
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_prompt:
+        description: "Full Gemini image prompt"
+        required: true
+      image_alt_text:
+        description: "Alt text for the uploaded media item"
+        required: true
+      image_name_prefix:
+        description: "Filename prefix (no spaces)"
+        required: false
+        default: "audit_image"
+
+# WRITES to WordPress media library only -- generates one image via Gemini
+# and uploads it as a standalone attachment. Does NOT attach it to any post,
+# does NOT set featured_media, does NOT touch any post content. Used to get
+# a real media URL before writing it into a hand-edited article body via a
+# separate content-update call.
+jobs:
+  upload-image:
+    name: "Generate and upload one image"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Generate and upload
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          IMAGE_PROMPT: ${{ github.event.inputs.image_prompt }}
+          IMAGE_ALT_TEXT: ${{ github.event.inputs.image_alt_text }}
+          IMAGE_NAME_PREFIX: ${{ github.event.inputs.image_name_prefix }}
+        run: python3 scripts/upload_single_image.py
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: single-image-upload-result
+          path: single_image_upload_result.json
+          if-no-files-found: warn
