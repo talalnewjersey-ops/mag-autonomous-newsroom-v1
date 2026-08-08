@@ -286,13 +286,24 @@ def count_cited_stable_facts(content, vertical, claims=None):
     `content`. A QUALITATIVE fact (no numeric value -- nothing to misattribute)
     counts via plain source_url presence, same as before this lot. A NUMERIC
     fact counts ONLY if `classify_claims` matched an actual claim to it (a real,
-    value-correct citation -- not just its link sitting somewhere in the page)."""
+    value-correct citation -- not just its link sitting somewhere in the page).
+
+    "Qualitative" is decided by `not _fact_tokens(f)` alone (empty numeric-token
+    set) -- this covers BOTH shapes the schema actually uses: a descriptive
+    string `value` with no digits in it (e.g. the credit-score-factors fact),
+    AND `value: None` (e.g. the CRA/driver's-license facts in canada_newcomer).
+    2026-08-08 bugfix: an earlier `and f.get("value")` here additionally
+    required `value` to be truthy, which silently made every `value: None`
+    STABLE fact in the whole pool uncountable regardless of how thoroughly an
+    article actually cited it -- see tests/test_levier_c_fact_coverage.py::
+    test_count_cited_stable_facts_counts_a_value_none_qualitative_fact_too for
+    the real production incident this caused."""
     if claims is None:
         claims = classify_claims(content, vertical)
     numeric_cited = {c["fact"]["source_url"] for c in claims if c["fact"]}
     qualitative_cited = {
         f["source_url"] for f in VERTICAL_FACTS.get(vertical or "", [])
-        if f.get("status") == "STABLE" and f.get("value")
+        if f.get("status") == "STABLE"
         and not _fact_tokens(f) and f["source_url"] in content
     }
     return len(numeric_cited | qualitative_cited)

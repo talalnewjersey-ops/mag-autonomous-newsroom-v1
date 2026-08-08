@@ -148,6 +148,36 @@ def test_count_cited_stable_facts_does_not_credit_a_wrong_number_near_the_link()
     assert n == 1   # FTC_DISPUTE only -- the utilization fact is NOT credited by proximity alone
 
 
+def test_count_cited_stable_facts_counts_a_value_none_qualitative_fact_too():
+    # ROOT CAUSE, real production incident (2026-08-08): ca-drivers-license-
+    # newcomer failed GATE G-Substance identically on every retry ("only 1
+    # STABLE facts cited, need >= 2") even after 2 new qualitative facts were
+    # added to the canada_newcomer pool and clearly, extensively cited in the
+    # generated article (source_url present 17 times, matching both facts'
+    # claims). Root cause: count_cited_stable_facts's qualitative_cited set
+    # required `f.get("value")` to be truthy -- but this codebase's OWN
+    # schema already uses `"value": None` for a purely qualitative fact (see
+    # the pre-existing "Newcomers and the CRA (taxes) (qualitative)" fact in
+    # agents/_vertical_facts.py, added 2026-07-03, silently uncountable ever
+    # since). The only "qualitative fact" shape the test suite covered before
+    # this (USAGOV_FACTORS) happens to have a non-None descriptive STRING
+    # value with no digits in it -- `not _fact_tokens(f)` already correctly
+    # identifies BOTH shapes as qualitative (empty numeric-token set either
+    # way); the extra `and f.get("value")` check was redundant for the
+    # string-value case and silently wrong for the value=None case.
+    from agents._vertical_facts import VERTICAL_FACTS
+    none_value_fact = next(
+        (f for v in VERTICAL_FACTS.values() for f in v
+         if f.get("status") == "STABLE" and f.get("value") is None),
+        None,
+    )
+    assert none_value_fact is not None, "fixture assumption drifted -- pool has no value=None STABLE fact anymore"
+    vertical = next(v for v, facts in VERTICAL_FACTS.items() if none_value_fact in facts)
+    text = f"See [this official source]({none_value_fact['source_url']}) for details."
+    n = count_cited_stable_facts(text, vertical)
+    assert n >= 1, "a STABLE fact with value=None, genuinely cited via its source_url, must still count"
+
+
 # ---------------- LEVIER C PART 2: bare duration/count units ----------------
 # days/weeks/months/years/bureaus ONLY. hours/minutes deliberately excluded
 # (conscious residue -- see agents/_claims.py docstring).
