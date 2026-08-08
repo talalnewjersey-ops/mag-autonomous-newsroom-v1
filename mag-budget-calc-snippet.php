@@ -7,12 +7,17 @@ add_action('wp_enqueue_scripts', function () {
     wp_register_style('mag-budget-calc', false);
     wp_enqueue_style('mag-budget-calc');
     wp_add_inline_style('mag-budget-calc', <<<'MAG_CALC_CSS'
-/* ez-TOC overlaps the header, illegible white-on-white. This stylesheet is only
-   ever delivered on pages 1641/1624/49285 (PHP-gated in the enqueue snippet),
-   so hiding it here carries no risk of affecting other pages that need it. */
-.mag-budget-calc .ez-toc-v2_0_86,
-.simulator-header .ez-toc-v2_0_86,
-.ez-toc-v2_0_86 {
+/* ez-TOC is injected as a direct child of .simulator-header, overlapping it,
+   illegible white-on-white. Scoped to the direct-child position (not a bare
+   class) and to the version-independent #ez-toc-container id -- NOT the
+   version-suffixed class (confirmed different between pages: 49285 renders
+   ez-toc-v2_0_86, live post 1641 renders ez-toc-v2_0_82_2 -- a bare
+   version-class rule would silently stop matching, or later start matching
+   1641's own real 56-link table of contents, on a plugin version bump).
+   This only ever hides the instance ez-toc injects inside THIS specific
+   header div; 1641's real TOC lives elsewhere in the article body, not
+   inside .simulator-header, so it is untouched. */
+.simulator-header > #ez-toc-container {
   display: none !important;
 }
 
@@ -64,6 +69,14 @@ add_action('wp_enqueue_scripts', function () {
   border-radius: 20px;
   margin-left: 12px;
   vertical-align: middle;
+}
+/* ez-TOC also auto-wraps heading text in anchor spans (ez-toc-section /
+   ez-toc-section-end) inside every heading on the page, including this h1 --
+   the badge rule above was blindly styling those too, showing as grey pills. */
+.mag-budget-calc .simulator-header h1 span.ez-toc-section,
+.mag-budget-calc .simulator-header h1 span.ez-toc-section-end {
+  background: none !important;
+  padding: 0 !important;
 }
 .mag-budget-calc .simulator-header p {
   font-size: 16px;
@@ -304,7 +317,7 @@ add_action('wp_enqueue_scripts', function () {
 
 MAG_CALC_CSS
     );
-    wp_register_script('mag-budget-calc', false, array(), '1.2', true);
+    wp_register_script('mag-budget-calc', false, array(), '1.3', true);
     wp_enqueue_script('mag-budget-calc');
     wp_add_inline_script('mag-budget-calc', <<<'MAG_CALC_JS'
 (function () {
