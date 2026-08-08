@@ -1,0 +1,34 @@
+name: Delete One WordPress Page (DESTRUCTIVE -- trashes by default, draft-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      page_id:
+        description: "WordPress page ID to delete"
+        required: true
+      confirm_page_id:
+        description: "Re-type the SAME page ID to confirm (fat-finger guard)"
+        required: true
+      force:
+        description: "Bypass trash and delete permanently (irreversible)"
+        required: false
+        default: "false"
+
+jobs:
+  delete-page:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Delete page via WP REST API
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          PAGE_ID: ${{ github.event.inputs.page_id }}
+          CONFIRM_PAGE_ID: ${{ github.event.inputs.confirm_page_id }}
+          FORCE: ${{ github.event.inputs.force }}
+        run: python3 scripts/delete_wp_page.py
