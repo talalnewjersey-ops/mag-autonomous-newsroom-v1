@@ -1,0 +1,38 @@
+name: Update Published WordPress Post Content (write, live merge -- explicit go-ahead required)
+
+on:
+  workflow_dispatch:
+    inputs:
+      post_id:
+        description: "Published post ID to update"
+        required: true
+      content_file:
+        description: "Path (in this repo) to the HTML content file to use"
+        required: true
+      expected_current_length:
+        description: "Current content.raw length, as last read -- concurrency guard"
+        required: true
+      confirm:
+        description: "Type 'yes' to actually write (safety gate)"
+        required: true
+        default: "no"
+
+jobs:
+  update-published-post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Update published post content
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          POST_ID: ${{ github.event.inputs.post_id }}
+          CONTENT_FILE: ${{ github.event.inputs.content_file }}
+          EXPECTED_CURRENT_LENGTH: ${{ github.event.inputs.expected_current_length }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+        run: python3 scripts/update_wp_published_post_content.py
