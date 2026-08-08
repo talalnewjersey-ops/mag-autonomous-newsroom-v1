@@ -1,16 +1,21 @@
 <?php
-/**
- * MAG Budget Calculator — enqueue-only snippet + ez-TOC disable on 49285.
- */
 add_action('wp_enqueue_scripts', function () {
     $mag_budget_calc_page_ids = array(1641, 1624, 49285);
     if (!in_array(get_queried_object_id(), $mag_budget_calc_page_ids, true)) {
         return;
     }
-
     wp_register_style('mag-budget-calc', false);
     wp_enqueue_style('mag-budget-calc');
     wp_add_inline_style('mag-budget-calc', <<<'MAG_CALC_CSS'
+/* ez-TOC overlaps the header, illegible white-on-white. This stylesheet is only
+   ever delivered on pages 1641/1624/49285 (PHP-gated in the enqueue snippet),
+   so hiding it here carries no risk of affecting other pages that need it. */
+.mag-budget-calc .ez-toc-v2_0_86,
+.simulator-header .ez-toc-v2_0_86,
+.ez-toc-v2_0_86 {
+  display: none !important;
+}
+
 .mag-budget-calc, .mag-budget-calc * {
   box-sizing: border-box;
 }
@@ -299,8 +304,7 @@ add_action('wp_enqueue_scripts', function () {
 
 MAG_CALC_CSS
     );
-
-    wp_register_script('mag-budget-calc', false, array(), '1.1', true);
+    wp_register_script('mag-budget-calc', false, array(), '1.2', true);
     wp_enqueue_script('mag-budget-calc');
     wp_add_inline_script('mag-budget-calc', <<<'MAG_CALC_JS'
 (function () {
@@ -495,9 +499,6 @@ MAG_CALC_CSS
 MAG_CALC_JS
     );
 });
-
-// ez-TOC is built for long articles, not this tool page -- disable it here
-// instead of fighting its injection point with z-index.
 add_filter('ez_toc_should_display', function ($display) {
     if (in_array(get_queried_object_id(), array(49285), true)) {
         return false;
