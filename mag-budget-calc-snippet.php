@@ -1,12 +1,6 @@
 <?php
 /**
- * MAG Budget Calculator — enqueue-only snippet.
- *
- * Delivers the "New Expat Monthly Budget Simulator" CSS/JS via
- * wp_enqueue_scripts, entirely outside post_content -- so wpautop/the_content
- * filters never touch it (that render-time mangling was the root cause of
- * the original 1641/1624 corruption). Gated to specific IDs only, never
- * sitewide.
+ * MAG Budget Calculator — enqueue-only snippet + ez-TOC disable on 49285.
  */
 add_action('wp_enqueue_scripts', function () {
     $mag_budget_calc_page_ids = array(1641, 1624, 49285);
@@ -43,7 +37,7 @@ add_action('wp_enqueue_scripts', function () {
   letter-spacing: 0.5px;
 }
 .mag-budget-calc .simulator-header {
-  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+  background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%) !important; /* guard against a theme/global rule resetting the background */
   color: white;
   padding: 30px 30px 25px;
   position: relative;
@@ -54,7 +48,8 @@ add_action('wp_enqueue_scripts', function () {
   font-weight: 700;
   margin-bottom: 8px;
   letter-spacing: -0.5px;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); /* contrast fix: white text on the lighter #2a5298 end of the gradient */
+  color: #ffffff !important; /* fix: theme's own h1 selector was overriding the inherited color from the parent */
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
 }
 .mag-budget-calc .simulator-header h1 span {
   font-weight: 400;
@@ -67,6 +62,7 @@ add_action('wp_enqueue_scripts', function () {
 }
 .mag-budget-calc .simulator-header p {
   font-size: 16px;
+  color: rgba(255, 255, 255, 0.92) !important; /* same override risk as h1 */
   opacity: 0.9;
   line-height: 1.5;
 }
@@ -272,17 +268,27 @@ add_action('wp_enqueue_scripts', function () {
   color: #1e3c72;
 }
 .mag-budget-calc .advice-box {
-  background: #eef7ff;
-  border-left: 4px solid #2a5298;
   padding: 16px 20px;
   border-radius: 12px;
   margin: 20px 0 10px;
   font-size: 15px;
   line-height: 1.6;
+}
+.mag-budget-calc .advice-box.good {
+  background: #eef7ff;
+  border-left: 4px solid #2a5298;
   color: #1e3c72;
 }
-.mag-budget-calc .advice-box strong {
+.mag-budget-calc .advice-box.good strong {
   color: #0b2542;
+}
+.mag-budget-calc .advice-box.over-budget {
+  background: #fef2f2;
+  border-left: 4px solid #dc2626;
+  color: #7f1d1d;
+}
+.mag-budget-calc .advice-box.over-budget strong {
+  color: #991b1b;
 }
 .mag-budget-calc .footer-note {
   text-align: center;
@@ -294,7 +300,7 @@ add_action('wp_enqueue_scripts', function () {
 MAG_CALC_CSS
     );
 
-    wp_register_script('mag-budget-calc', false, array(), '1.0', true);
+    wp_register_script('mag-budget-calc', false, array(), '1.1', true);
     wp_enqueue_script('mag-budget-calc');
     wp_add_inline_script('mag-budget-calc', <<<'MAG_CALC_JS'
 (function () {
@@ -327,7 +333,12 @@ MAG_CALC_CSS
 
   var housingMult = { studio: 1.0, shared: 0.6, family: 1.4 };
 
-  var defaultValues = { city: 'nyc', housing: 'moderate', lifestyle: 'moderate', income: 4000, car: 'no' };
+  // NOTE: the recovered original source literally had housing: 'moderate' here,
+  // which is not a valid #housingType option (studio/shared/family only) --
+  // a pre-existing bug in the source, not introduced by this restoration.
+  // Fixed to 'studio' (the field's own default option) per explicit instruction,
+  // no more precise value was specified anywhere in the recovered content.
+  var defaultValues = { city: 'nyc', housing: 'studio', lifestyle: 'moderate', income: 4000, car: 'no' };
 
   function init() {
     var root = document.querySelector('.mag-budget-calc');
@@ -385,9 +396,18 @@ MAG_CALC_CSS
       });
     });
 
-    [citySelect, housingType, lifestyle, income, carStatus].forEach(function (el) {
+    // City/Housing/Lifestyle/Car genuinely change the underlying cost structure --
+    // changing them recomputes AND overwrites the Fine-Tune fields (manualMode=false).
+    [citySelect, housingType, lifestyle, carStatus].forEach(function (el) {
       el.addEventListener('input', function () { updateCalculator(false); });
     });
+
+    // Income does NOT affect any cost line -- it only affects Total/Remaining.
+    // Must behave like the manual-fields group (manualMode=true: read whatever
+    // is currently displayed, never overwrite Fine-Tune) or editing Income wipes
+    // out manual Rent/Food/etc. edits. This was the bug: it was previously
+    // grouped with city/housing/lifestyle/car above.
+    income.addEventListener('input', function () { updateCalculator(true); });
 
     [rentInput, foodInput, utilitiesInput, transportInput, phoneInput, healthInput].forEach(function (el) {
       el.addEventListener('input', function () { updateCalculator(true); });
@@ -448,6 +468,7 @@ MAG_CALC_CSS
       totalExpenses.textContent = '$' + Math.round(total).toLocaleString();
 
       var advice = '';
+      var isOverBudget = remaining < 0;
       if (remaining > 500) {
         advice = '<strong>✅ Excellent!</strong> You have <strong>$' + Math.round(remaining).toLocaleString() + '</strong> left each month. Consider investing in a Roth IRA or building an emergency fund.';
       } else if (remaining >= 0) {
@@ -457,6 +478,8 @@ MAG_CALC_CSS
         advice = '<strong>⚠️ Over budget.</strong> Your estimated expenses exceed your income by <strong>$' + Math.round(Math.abs(remaining)).toLocaleString() + '</strong>. Consider a lower-cost city, a shared apartment, or adjusting your lifestyle level.';
       }
       adviceBox.innerHTML = advice;
+      adviceBox.classList.toggle('over-budget', isOverBudget);
+      adviceBox.classList.toggle('good', !isOverBudget);
     }
 
     updateCalculator(false);
@@ -471,4 +494,13 @@ MAG_CALC_CSS
 
 MAG_CALC_JS
     );
+});
+
+// ez-TOC is built for long articles, not this tool page -- disable it here
+// instead of fighting its injection point with z-index.
+add_filter('ez_toc_should_display', function ($display) {
+    if (in_array(get_queried_object_id(), array(49285), true)) {
+        return false;
+    }
+    return $display;
 });
