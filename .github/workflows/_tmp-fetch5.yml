@@ -1,0 +1,25 @@
+name: TEMP5 fetch
+on:
+  workflow_dispatch:
+    inputs:
+      post_id:
+        required: true
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Fetch
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          POST_ID: ${{ github.event.inputs.post_id }}
+        run: python3 scripts/_tmp_fetch5.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fetched5-${{ github.event.inputs.post_id }}
+          path: fetched_content_exact.html
