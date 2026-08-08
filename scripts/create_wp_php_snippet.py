@@ -8,9 +8,18 @@ CONFIRM=yes (the script prints it first regardless).
 import base64
 import json
 import os
+import socket
 import sys
 import urllib.error
 import urllib.request
+
+# Same fix as scripts/apply_correction.py: this host's GH Actions runners
+# hang ~60s then fail with "Network is unreachable" when getaddrinfo picks
+# an IPv6 address first for this WP host. Force IPv4 resolution.
+_orig_getaddrinfo = socket.getaddrinfo
+def _force_ipv4(host, port, family=0, type=0, proto=0, flags=0):
+    return _orig_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+socket.getaddrinfo = _force_ipv4
 
 
 def create_snippet(wp_url, user, app_password, name, desc, code, active):
