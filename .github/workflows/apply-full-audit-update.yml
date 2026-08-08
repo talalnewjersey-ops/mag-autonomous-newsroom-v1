@@ -1,0 +1,36 @@
+name: Apply Full Audit Update (write, draft-only, refuses if not already draft)
+
+on:
+  workflow_dispatch:
+    inputs:
+      fix_file:
+        description: "Path to the full-audit spec (audit/pending_fixes/<name>.json)"
+        required: true
+
+# WRITES title/slug/content/Yoast meta to ONE post -- refuses unless that
+# post's CURRENT status is already 'draft', and explicitly re-sends
+# status=draft in the same request. Never publishes. Never touches any
+# other post/page/plugin/theme/snippet/setting.
+jobs:
+  apply-update:
+    name: "Apply full audit update"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Apply update via WP REST API
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          FIX_FILE: ${{ github.event.inputs.fix_file }}
+        run: python3 scripts/apply_full_audit_update.py
+      - name: Upload before/after snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-audit-snapshots
+          path: post_*_full_audit.json
+          if-no-files-found: ignore
