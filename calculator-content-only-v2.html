@@ -1,0 +1,159 @@
+<div class="affiliate-disclosure" style="background:#FFFBEB;padding:12px 16px;border:1px solid #FDE68A;border-radius:6px;margin-bottom:24px;font-size:13px;color:#92400E;"><strong>Disclosure:</strong> This page contains affiliate links. MoneyAbroadGuide may earn a commission if you click through and sign up, at no extra cost to you. Our editorial opinions are independent.</div>
+
+<div class="mag-budget-calc">
+  <div class="restore-banner">TEST DRAFT — Restauration calculateur — ne pas publier</div>
+  <div class="simulator-header">
+    <h1>USA Expat Monthly Budget Simulator <span>2026</span></h1>
+    <p>Estimate your monthly living costs as a newcomer to the United States. Adjust your situation below.</p>
+  </div>
+  <div class="simulator-body">
+
+    <!-- City Selection -->
+    <div class="section">
+      <div class="section-title">
+        <span class="emoji">📍</span>
+        <h2>Where Will You Live?</h2>
+      </div>
+      <div class="input-group">
+        <label for="citySelect">Select City or Cost Level</label>
+        <select id="citySelect">
+          <option value="nyc">🗽 New York City (Very High Cost)</option>
+          <option value="sf">🌉 San Francisco / Bay Area (Very High Cost)</option>
+          <option value="la">🎬 Los Angeles (High Cost)</option>
+          <option value="boston">🍀 Boston (High Cost)</option>
+          <option value="chicago">🌃 Chicago (Moderate-High Cost)</option>
+          <option value="dc">🏛️ Washington D.C. (High Cost)</option>
+          <option value="seattle">☕ Seattle (High Cost)</option>
+          <option value="miami">🏝️ Miami (Moderate-High Cost)</option>
+          <option value="denver">⛰️ Denver (Moderate Cost)</option>
+          <option value="austin">🎸 Austin (Moderate Cost)</option>
+          <option value="phoenix">🌵 Phoenix (Moderate Cost)</option>
+          <option value="atlanta">🍑 Atlanta (Moderate Cost)</option>
+          <option value="dallas">🤠 Dallas (Moderate Cost)</option>
+          <option value="orlando">🎢 Orlando (Moderate Cost)</option>
+          <option value="detroit">🚗 Detroit (Low Cost)</option>
+          <option value="cleveland">⚙️ Cleveland (Low Cost)</option>
+          <option value="custom">⚙️ Custom / Other City</option>
+        </select>
+      </div>
+      <div class="city-presets">
+        <button type="button" class="city-btn" data-city="nyc">🗽 NYC</button>
+        <button type="button" class="city-btn" data-city="sf">🌉 SF</button>
+        <button type="button" class="city-btn" data-city="la">🎬 LA</button>
+        <button type="button" class="city-btn" data-city="chicago">🌃 Chicago</button>
+        <button type="button" class="city-btn" data-city="austin">🎸 Austin</button>
+        <button type="button" class="city-btn" data-city="miami">🏝️ Miami</button>
+      </div>
+    </div>
+
+    <!-- Personal Situation -->
+    <div class="section">
+      <div class="section-title">
+        <span class="emoji">👤</span>
+        <h2>Your Situation</h2>
+      </div>
+      <div class="grid-2">
+        <div class="input-group">
+          <label for="housingType">Housing Type</label>
+          <select id="housingType">
+            <option value="studio">Studio / 1-bed apartment (alone)</option>
+            <option value="shared">Shared apartment / Roommate(s)</option>
+            <option value="family">Family / 2-3 bedroom apartment</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label for="lifestyle">Lifestyle</label>
+          <select id="lifestyle">
+            <option value="frugal">💵 Frugal / Minimalist</option>
+            <option value="moderate">⚖️ Moderate / Balanced</option>
+            <option value="comfortable">✨ Comfortable / Enjoy life</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="input-group">
+          <label for="income">Monthly Income (after tax) — $</label>
+          <input type="number" id="income" min="0" step="50" value="4000">
+        </div>
+        <div class="input-group">
+          <label for="carStatus">With Car?</label>
+          <select id="carStatus">
+            <option value="no">🚇 No car (public transit)</option>
+            <option value="yes">🚗 Yes, I have a car</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Advanced / Manual Adjustments -->
+    <div class="section">
+      <div class="section-title">
+        <span class="emoji">⚙️</span>
+        <h2>Fine-Tune Your Estimates</h2>
+      </div>
+      <div class="grid-2">
+        <div class="input-group">
+          <label for="rent">Rent / Mortgage — $</label>
+          <input type="number" id="rent" min="0" step="10">
+        </div>
+        <div class="input-group">
+          <label for="food">Groceries &amp; Dining — $</label>
+          <input type="number" id="food" min="0" step="10">
+        </div>
+        <div class="input-group">
+          <label for="utilities">Utilities (electricity, gas, water) — $</label>
+          <input type="number" id="utilities" min="0" step="10">
+        </div>
+        <div class="input-group">
+          <label for="transport">Transportation — $</label>
+          <input type="number" id="transport" min="0" step="10">
+        </div>
+        <div class="input-group">
+          <label for="phone">Phone / Internet — $</label>
+          <input type="number" id="phone" min="0" step="10">
+        </div>
+        <div class="input-group">
+          <label for="health">Health Insurance — $</label>
+          <input type="number" id="health" min="0" step="10">
+        </div>
+      </div>
+      <div style="text-align: right">
+        <button type="button" class="reset-btn">↻ Reset to Defaults</button>
+      </div>
+    </div>
+
+    <!-- Results Panel -->
+    <div class="results-panel" id="resultsPanel">
+      <div class="results-grid">
+        <div class="result-item">
+          <div class="result-label">Monthly Income</div>
+          <div class="result-value" id="resultIncome">$4,000</div>
+        </div>
+        <div class="result-item">
+          <div class="result-label">Monthly Expenses</div>
+          <div class="result-value" id="resultExpenses">$0</div>
+        </div>
+        <div class="result-item">
+          <div class="result-label">Remaining</div>
+          <div class="result-value" id="resultRemaining">$0</div>
+        </div>
+      </div>
+      <div class="result-breakdown">
+        <div class="breakdown-item"><span class="breakdown-label">🏠 Rent / Mortgage</span><span class="breakdown-value" id="breakdownRent">$0</span></div>
+        <div class="breakdown-item"><span class="breakdown-label">🍔 Groceries &amp; Dining</span><span class="breakdown-value" id="breakdownFood">$0</span></div>
+        <div class="breakdown-item"><span class="breakdown-label">💡 Utilities</span><span class="breakdown-value" id="breakdownUtilities">$0</span></div>
+        <div class="breakdown-item"><span class="breakdown-label">🚗 Transportation</span><span class="breakdown-value" id="breakdownTransport">$0</span></div>
+        <div class="breakdown-item"><span class="breakdown-label">📱 Phone / Internet</span><span class="breakdown-value" id="breakdownPhone">$0</span></div>
+        <div class="breakdown-item"><span class="breakdown-label">🏥 Health Insurance</span><span class="breakdown-value" id="breakdownHealth">$0</span></div>
+        <div class="breakdown-item"><span class="breakdown-label">🎉 Entertainment / Other</span><span class="breakdown-value" id="breakdownOther">$0</span></div>
+        <div class="total-row"><span>Total Expenses</span><span id="totalExpenses">$0</span></div>
+      </div>
+      <div class="advice-box" id="adviceBox"></div>
+    </div>
+
+    <div class="footer-note">
+      🇺🇸 Estimates are based on 2026 data from Numbeo, Expatistan, and US government sources.
+      Results are estimates only. Actual costs vary by location, lifestyle, and personal choices. — MoneyAbroadGuide.com (TEST DRAFT)
+    </div>
+  </div>
+</div>

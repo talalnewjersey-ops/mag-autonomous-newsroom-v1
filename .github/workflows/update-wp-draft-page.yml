@@ -1,0 +1,29 @@
+name: Update WordPress Draft Page (refuses if not already draft)
+
+on:
+  workflow_dispatch:
+    inputs:
+      page_id:
+        description: 'ID of the draft page to update'
+        required: true
+      content_file:
+        description: 'Path (in this repo) to the HTML content file to use'
+        required: true
+
+jobs:
+  update-draft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Update draft page
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          PAGE_ID: ${{ github.event.inputs.page_id }}
+          CONTENT_FILE: ${{ github.event.inputs.content_file }}
+        run: python3 scripts/update_wp_draft_page.py
