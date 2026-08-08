@@ -2,21 +2,21 @@
 
 > Controles en LECTURE SEULE sur l'etat public reel du site (rendu final, apres cache/Elementor). Complementaire au rapport d'audit AdSense.
 
-## Resume — 0 pages verifiees | 0 avec probleme(s) | 0 en erreur HTTP | 0 injoignables
+## Resume — 58 pages verifiees | 0 avec probleme(s) | 0 en erreur HTTP | 0 injoignables
 
 ## Sitemap
 ```json
 {
-  "found_at": null,
-  "note": "Aucun sitemap standard detecte automatiquement."
+  "found_at": "/sitemap_index.xml",
+  "http_status": 200,
+  "entries_found_in_index": 3
 }
 ```
 
+## Info (pas un probleme) — Consolidation SEO detectee
+Ces pages ont un canonical pointant vers une autre page du meme site (pratique normale pour eviter le duplicate content) :
+- best-wise-vs-xe-vs-ofx-vs-remitly-complete-guide-for-usa-immigrants-2026 → https://moneyabroadguide.com/best-money-transfer-apps-immigrants/
+- best-credit-cards-for-newcomers-in-canada-complete-guide-for-canada-immigrants-2026 → https://moneyabroadguide.com/best-credit-cards-newcomers-canada-2026/
+
 ## Pages avec probleme(s) technique(s)
 Aucune.
-
-## Erreurs systeme rencontrees pendant le scan
-- check_sitemap /sitemap_index.xml: HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /sitemap_index.xml (Caused by ConnectTimeoutError(<HTTPSConnection(host='moneyabroadguide.com', port=443) at 0x7f4536693190>, 'Connection to moneyabroadguide.com timed out. (connect timeout=20)'))
-- check_sitemap /wp-sitemap.xml: HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-sitemap.xml (Caused by ConnectTimeoutError(<HTTPSConnection(host='moneyabroadguide.com', port=443) at 0x7f453615a790>, 'Connection to moneyabroadguide.com timed out. (connect timeout=20)'))
-- check_sitemap /sitemap.xml: HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /sitemap.xml (Caused by ConnectTimeoutError(<HTTPSConnection(host='moneyabroadguide.com', port=443) at 0x7f4536159410>, 'Connection to moneyabroadguide.com timed out. (connect timeout=20)'))
-- all_published_posts page 1: HTTPSConnectionPool(host='moneyabroadguide.com', port=443): Max retries exceeded with url: /wp-json/wp/v2/posts?per_page=50&page=1&status=publish (Caused by ConnectTimeoutError(<HTTPSConnection(host='moneyabroadguide.com', port=443) at 0x7f453615bc10>, 'Connection to moneyabroadguide.com timed out. (connect timeout=30)'))
