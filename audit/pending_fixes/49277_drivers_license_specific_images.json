@@ -1,0 +1,34 @@
+{
+  "post_id": 49277,
+  "images": {
+    "featured_image": {
+      "prompt": "Ultra realistic magazine editorial photo, financial publication quality, shot with Canon EOS R5 85mm f/1.4 aesthetic. Subject: a newcomer to Canada proudly holding up a Canadian provincial driver's license card, standing just outside a driver examination/licensing office. Setting: modern Canadian city street, subtle skyline in soft background blur. Lighting: professional studio-quality soft diffused natural light, warm and welcoming, no harsh shadows. Color palette: deep navy #1B4F72, clean white, subtle gold accents #D4AF37. Avoid: cartoon style, AI artifacts, text overlays, clip art, generic office-desk stock-photo look, watermarks, any specific real government logo or brand signage. Quality: photorealistic, 4K equivalent, ultra sharp, professional composition.",
+      "alt_text": "Newcomer to Canada holding a Canadian provincial driver's license card outside a licensing office",
+      "format": "jpg"
+    },
+    "comparison_graphic": {
+      "prompt": "Clean professional flat-design infographic, magazine publication quality. Side-by-side comparison chart titled implicitly by two columns: LEFT column headed by a foreign passport/ID card icon labeled 'Foreign Driver's Licence', RIGHT column headed by a Canadian driver's license card icon labeled 'Canadian Provincial Licence'. Each column lists 3 short rows with checkmark/cross icons (valid period, road test required, conversion process). Deep blue #1B4F72 and white background, green checkmarks, red crosses, clear typography hierarchy, no clutter, no generic government logos or trademarked branding, professional financial publication aesthetic.",
+      "alt_text": "Comparison of a foreign driver's licence versus a Canadian provincial driver's licence for newcomers",
+      "format": "jpg",
+      "old_url": "https://moneyabroadguide.com/wp-content/uploads/2026/08/comparison_graphic_20260808_143900.jpeg"
+    },
+    "checklist_graphic": {
+      "prompt": "Vertical portrait-format checklist infographic, clean flat professional design, magazine publication quality. Title area: 'Getting a Canadian Driver's Licence'. 5 numbered checklist rows, each with its own simple icon and short label: 1) passport/ID icon - 'Proof of identity', 2) small permit-card icon - 'International Driving Permit', 3) exam-paper-with-question-mark icon - 'Written knowledge test', 4) car-with-checkmark icon - 'Road test', 5) ID-card icon - 'Receive your licence'. Deep navy blue #1B4F72 and white palette, checkbox icons beside each row, clean modern typography, no cartoon style, no real government logos.",
+      "alt_text": "Step-by-step checklist for a newcomer to get a Canadian driver's licence: ID, IDP, written test, road test, licence card",
+      "format": "jpg",
+      "old_url": "https://moneyabroadguide.com/wp-content/uploads/2026/08/checklist_graphic_20260808_143912.jpeg"
+    },
+    "process_graphic": {
+      "prompt": "Horizontal flow-diagram infographic, clean flat professional design, magazine publication quality. 5 connected steps left to right with arrows between them, each with a small icon above its label: 'Foreign Licence' (passport icon) -> 'International Driving Permit' (permit-card icon) -> 'Written Test' (exam-paper icon) -> 'Road Test' (car icon) -> 'Canadian Licence' (ID-card icon). Deep navy blue #1B4F72 and white color scheme, numbered steps, clean modern icons, no cartoon style, no real government logos or brand signage.",
+      "alt_text": "Process flow for a newcomer converting a foreign driver's licence to a Canadian one: IDP, written test, road test, licence",
+      "format": "jpg",
+      "old_url": "https://moneyabroadguide.com/wp-content/uploads/2026/08/process_graphic_20260808_143929.jpeg"
+    },
+    "supporting_graphic": {
+      "prompt": "Ultra realistic lifestyle editorial photography, magazine quality, authentic candid moment. Subject: a newcomer seated in the driver's seat of a car during a road test, hands on the steering wheel, focused and calm expression; a driving examiner with a clipboard visible in the passenger seat. Setting: quiet Canadian suburban street, daytime. Lighting: warm natural daylight, soft and bright. Color palette: natural vibrant tones, trustworthy blues. Avoid: cartoon style, AI artifacts, stereotypes, any real government/driving-school logo or branding. Quality: photorealistic, magazine editorial grade, ultra sharp, authentic real-life feel.",
+      "alt_text": "Newcomer taking a driving road test in Canada with an examiner",
+      "format": "jpg",
+      "old_url": "https://moneyabroadguide.com/wp-content/uploads/2026/08/supporting_graphic_20260808_143943.jpeg"
+    }
+  }
+}
