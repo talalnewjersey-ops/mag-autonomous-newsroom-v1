@@ -1,0 +1,26 @@
+name: Dump All Posts Content (read-only diagnostic, artifact only)
+
+on:
+  workflow_dispatch: {}
+
+# READ-ONLY: dumps id/slug/content of every published post to a JSON
+# artifact. No git commit (sidesteps the report-commit race condition seen
+# in the AdSense audit scripts), no auth writes. Public GET only.
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Dump all posts content
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+        run: python3 scripts/dump_all_posts_content.py
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-posts-content
+          path: all_posts_content.json
