@@ -73,8 +73,24 @@ def test_published_seed_is_never_selected():
 
 
 def test_mark_selected_persists_and_excludes_next_run(tmp_path):
+    # Anchored to REAL_REGISTRY (real data shape/keys), but "at least 2
+    # eligible candidates" is no longer safe to assume from live data alone
+    # (2026-08-08: after the market-aware near-dup fix, the real registry
+    # currently has exactly ONE truly eligible candidate --
+    # ca-drivers-license-newcomer; the other two, send-money-to-mexico/
+    # philippines, are legitimately excluded as same-market near-duplicates
+    # of the already-drafted send-money-to-india). Inject one extra,
+    # guaranteed-distinct synthetic low-priority candidate so this test's
+    # "not re-selected" invariant never depends on how many real candidates
+    # happen to survive the guard on any given day.
+    d = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
+    d["topics"].append({
+        "id": "synthetic-second-candidate", "title": "Synthetic Second Candidate Topic",
+        "market": "Canada", "category": "synthetic-test-only",
+        "monetization_score": 1, "traffic_score": 1, "status": "candidate",
+    })
     reg = tmp_path / "reg.json"
-    shutil.copy(REAL_REGISTRY, reg)
+    reg.write_text(json.dumps(d), encoding="utf-8")
     agent = _agent(reg)
 
     first = agent._select_from_registry(1)
@@ -89,6 +105,7 @@ def test_mark_selected_persists_and_excludes_next_run(tmp_path):
 
     # a fresh selection (new run) must NOT return the same topic
     second = agent._select_from_registry(1)
+    assert second, "a second eligible candidate must still be selectable"
     assert second[0]["id"] != first_id
 
 
@@ -105,13 +122,18 @@ def test_first_pick_is_highest_monetization_then_traffic():
     # dynamic). The tie-break LOGIC itself (monetization can never be bought
     # back by traffic) is covered robustly with synthetic, drift-proof data in
     # test_monetization_has_no_compensation below.
+    # 2026-08-08: the guard was made MARKET-AWARE (see
+    # test_near_duplicate_guard_is_market_aware_real_registry_case) -- this
+    # shadow computation must filter used_titles per-market too, or it
+    # silently drifts back into re-testing the old, market-blind bug.
     agent = _agent(REAL_REGISTRY)
     d = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
     excluded_statuses = {"published", "in_progress", "drafted", "blocked"}
-    used_titles = [t["title"] for t in d["topics"] if t["status"] in excluded_statuses]
+    used = [t for t in d["topics"] if t["status"] in excluded_statuses]
     eligible = [t for t in d["topics"]
                 if t["status"] not in excluded_statuses
-                and not agent._is_near_duplicate(t["title"], used_titles)]
+                and not agent._is_near_duplicate(
+                    t["title"], [u["title"] for u in used if u["market"] == t["market"]])]
     expected_max_monetization = max(t["monetization_score"] for t in eligible)
 
     first = agent._select_from_registry(1)[0]
@@ -169,6 +191,41 @@ def test_variety_tie_break_rotates_categories_synthetic(tmp_path):
 
 # ---------- near-duplicate guard ----------
 
+def test_near_duplicate_guard_is_market_aware_real_registry_case():
+    # ROOT CAUSE, real production incident (2026-08-08): the scheduled
+    # production run failed with "Topic registry empty/exhausted/missing"
+    # then "Agent 03 ERROR No topics found", even though 3 real candidates
+    # existed. All 3 were wrongly rejected by _select_from_registry's
+    # near-duplicate guard -- which compares title text ONLY, ignoring
+    # `market` entirely. Two of the three (send-money-to-mexico/philippines,
+    # both market=USA) are CORRECTLY excluded as near-dupes of the already-
+    # drafted send-money-to-india (also market=USA) -- that part is working
+    # as designed (see test_first_pick_is_highest_monetization_then_traffic's
+    # own comment on this). The THIRD, ca-drivers-license-newcomer
+    # (market=Canada), was WRONGLY excluded as a "near-duplicate" of
+    # us-drivers-license-newcomer (market=USA, already drafted as post
+    # 48972) purely because the two titles are 88.9% textually similar
+    # ("Getting a Driver's License in Canada as a Newcomer" vs "...as a
+    # Newcomer") -- despite being legitimately distinct, market-specific
+    # articles, exactly the same USA/Canada split used throughout this
+    # registry for every other topic pair. Net effect: the pool went from
+    # 3 candidates to 0, and the whole run died with no topic to write.
+    agent = _agent(REAL_REGISTRY)
+    d = json.loads(REAL_REGISTRY.read_text(encoding="utf-8"))
+    by_id = {t["id"]: t for t in d["topics"]}
+    ca_license = by_id["ca-drivers-license-newcomer"]
+    us_license = by_id["us-drivers-license-newcomer"]
+    assert ca_license["status"] == "candidate", "fixture assumption drifted -- update this test"
+    assert us_license["status"] == "drafted", "fixture assumption drifted -- update this test"
+    assert ca_license["market"] != us_license["market"]
+
+    chosen_ids = {c["id"] for c in agent._select_from_registry(99)}
+    assert "ca-drivers-license-newcomer" in chosen_ids, (
+        "a Canada-market candidate must not be excluded as a near-duplicate of a "
+        "USA-market topic just because the titles are textually similar"
+    )
+
+
 def test_near_duplicate_rejected_but_distinct_kept():
     agent = _agent(REAL_REGISTRY)
     pub = "Building Credit in Canada From Zero"
@@ -206,6 +263,32 @@ def test_near_duplicate_guard_integration_synthetic(tmp_path):
     ids = {c["id"] for c in agent._select_from_registry(99)}
     assert "near-dup-of-used" not in ids, "near-rewording of an already-used title must be rejected"
     assert "genuinely-distinct" in ids, "a genuinely distinct topic must remain selectable"
+
+
+def test_near_duplicate_guard_market_aware_synthetic(tmp_path):
+    # Synthetic, drift-proof counterpart to
+    # test_near_duplicate_guard_is_market_aware_real_registry_case: two
+    # topics with near-identical titles but DIFFERENT markets must both stay
+    # selectable (this is the site's own established pattern -- USA/Canada
+    # get separate articles for the same subject throughout the registry).
+    # A same-market near-rewording must still be rejected, unchanged.
+    reg = _write(tmp_path, {"topics": [
+        {"id": "us-used", "title": "Getting a Driver's License as a Newcomer",
+         "market": "USA", "category": "assurance auto", "monetization_score": 3,
+         "traffic_score": 5, "status": "drafted"},
+        {"id": "ca-candidate", "title": "Getting a Driver's License in Canada as a Newcomer",
+         "market": "Canada", "category": "assurance auto", "monetization_score": 3,
+         "traffic_score": 4, "status": "candidate"},
+        {"id": "us-same-market-rewording", "title": "Getting a Driver License as Newcomer",
+         "market": "USA", "category": "assurance auto", "monetization_score": 5,
+         "traffic_score": 5, "status": "candidate"},
+    ]})
+    agent = _agent(reg)
+    ids = {c["id"] for c in agent._select_from_registry(99)}
+    assert "ca-candidate" in ids, "a different-market candidate must not be rejected as a near-duplicate"
+    assert "us-same-market-rewording" not in ids, (
+        "a SAME-market near-rewording must still be rejected -- this guarantee must not regress"
+    )
 
 
 # ---------- output schema ----------

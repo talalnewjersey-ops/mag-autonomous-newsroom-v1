@@ -495,10 +495,24 @@ Return ONLY a valid JSON array with fields: keyword, market, search_volume, keyw
         topics = registry.get("topics", [])
         EXCLUDED_STATUSES = ("published", "in_progress", "drafted", "blocked")
         used = [t for t in topics if t.get("status") in EXCLUDED_STATUSES]
-        used_titles = [t.get("title", "") for t in used]
+        # MARKET-AWARE (2026-08-08, real production incident): the guard used to
+        # compare title text against EVERY used title regardless of market,
+        # wrongly rejecting e.g. "Getting a Driver's License in Canada as a
+        # Newcomer" (market=Canada) as a near-duplicate of the already-drafted
+        # "Getting a Driver's License as a Newcomer" (market=USA) -- 88.9% text
+        # similarity, but two legitimately distinct, market-specific articles,
+        # the same USA/Canada split used throughout this registry for every
+        # other topic pair. That single false rejection, combined with the two
+        # money-transfer candidates ALSO (correctly) excluded that day, emptied
+        # the pool to zero and killed the whole run ("Topic registry empty/
+        # exhausted/missing" -> "Agent 03 ERROR No topics found", 2026-08-08).
+        # Only compare a candidate against USED titles from the SAME market.
         pool = [t for t in topics
                 if t.get("status") not in EXCLUDED_STATUSES
-                and not self._is_near_duplicate(t.get("title", ""), used_titles)]
+                and not self._is_near_duplicate(
+                    t.get("title", ""),
+                    [u.get("title", "") for u in used if u.get("market") == t.get("market")],
+                )]
         cat_usage = Counter(t.get("category") for t in used)
         chosen: List[Dict] = []
         for _ in range(min(count, len(pool))):
