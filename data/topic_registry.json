@@ -368,9 +368,11 @@
       "category": "assurance auto",
       "monetization_score": 3,
       "traffic_score": 4,
-      "status": "candidate",
+      "status": "drafted",
       "published_at": null,
-      "post_id": null
+      "post_id": 49315,
+      "selected_at": "2026-08-09T06:55:46.276246Z",
+      "drafted_at": "2026-08-09T07:01:44.115810Z"
     },
     {
       "id": "ca-essential-first-documents-sin",
