@@ -1,0 +1,36 @@
+name: Fix Single Internal Link (write, single-href patch, preserves status)
+
+on:
+  workflow_dispatch:
+    inputs:
+      fix_file:
+        description: "Path to the link-fix spec (audit/pending_fixes/<name>.json)"
+        required: true
+
+# WRITES a content-only patch replacing exactly one href value in one post.
+# Never touches title, slug, meta, or status -- status is explicitly
+# re-sent unchanged. Refuses unless the old href appears the expected
+# number of times.
+jobs:
+  fix-link:
+    name: "Fix single internal link"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Apply link fix via WP REST API
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          FIX_FILE: ${{ github.event.inputs.fix_file }}
+        run: python3 scripts/fix_single_internal_link.py
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: link-fix-result
+          path: post_*_link_fix.json
+          if-no-files-found: warn
