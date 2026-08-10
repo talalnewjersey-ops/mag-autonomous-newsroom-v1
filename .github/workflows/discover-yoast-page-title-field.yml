@@ -1,0 +1,37 @@
+name: Discover Yoast Page Title Field (read-only diagnostic)
+
+on:
+  workflow_dispatch:
+    inputs:
+      page_id:
+        description: "WordPress Page ID to inspect (Yoast bulk-editor row)"
+        required: true
+
+# READ-ONLY: performs ONLY GET requests, to WordPress core REST and to
+# Yoast's own /yoast/v1/bulk_editor/posts route. Contains no POST, PUT,
+# PATCH, or DELETE call anywhere. Never writes to WordPress, never
+# modifies a Page, never modifies a Post, never touches Yoast
+# configuration. Purely a Phase-A discovery step -- the exact field shape
+# it observes is a prerequisite for a separate, not-yet-built write tool
+# (Phase B), which is out of scope for this workflow.
+jobs:
+  discover:
+    name: "Discover Yoast bulk-editor field shape for one page"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Discover field shape
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          PAGE_ID: ${{ github.event.inputs.page_id }}
+        run: python3 scripts/discover_yoast_page_title_field.py
+      - name: Upload discovery result
+        uses: actions/upload-artifact@v4
+        with:
+          name: yoast-title-field-discovery
+          path: yoast_discovery_page_*.json
