@@ -1,0 +1,51 @@
+name: Set Page Yoast SEO Title (single field, single page, gated)
+
+on:
+  workflow_dispatch:
+    inputs:
+      page_id:
+        description: "WordPress Page ID to modify"
+        required: true
+      expected_current_value:
+        description: "Current seo_title value expected (write refused if this doesn't match exactly, e.g. empty string for 'none set')"
+        required: true
+      new_seo_title:
+        description: "New Yoast SEO title to set"
+        required: true
+
+# WRITES to WordPress -- but ONLY the Yoast `seo_title` field of the ONE
+# page named in the inputs, and ONLY if that page's CURRENT seo_title
+# matches `expected_current_value` exactly. The only write-capable HTTP
+# call anywhere in this workflow's script is a single
+# `POST /yoast/v1/bulk_editor/update_search` with a minimal
+# {"id", "seo_title"}-only payload. No other WordPress field, no other
+# page, no batch. Every write is preceded by a full backup and followed
+# by a REST read-back plus an independent frontend check; any divergence
+# anywhere aborts with a non-zero exit and a full diagnostic dump --
+# nothing is declared successful on HTTP status alone.
+jobs:
+  set-title:
+    name: "Set one page's Yoast SEO title"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Set Yoast SEO title (gated)
+        env:
+          WORDPRESS_URL: ${{ secrets.WORDPRESS_URL }}
+          WORDPRESS_USERNAME: ${{ secrets.WORDPRESS_USERNAME }}
+          WORDPRESS_APP_PASSWORD: ${{ secrets.WORDPRESS_APP_PASSWORD }}
+          PAGE_ID: ${{ github.event.inputs.page_id }}
+          EXPECTED_CURRENT_VALUE: ${{ github.event.inputs.expected_current_value }}
+          NEW_SEO_TITLE: ${{ github.event.inputs.new_seo_title }}
+        run: python3 scripts/set_page_yoast_title.py
+      - name: Upload backup + result (always, even on failure)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: page-${{ github.event.inputs.page_id }}-yoast-title-result
+          path: |
+            page_*_yoast_title_BEFORE.json
+            set_page_yoast_title_*_result.json
