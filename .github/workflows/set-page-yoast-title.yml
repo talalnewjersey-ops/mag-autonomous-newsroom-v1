@@ -8,7 +8,7 @@ on:
         required: true
       expected_current_value:
         description: "Current seo_title value expected (write refused if this doesn't match exactly, e.g. empty string for 'none set')"
-        required: true
+        required: false
       new_seo_title:
         description: "New Yoast SEO title to set"
         required: true
