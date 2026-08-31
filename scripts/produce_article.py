@@ -509,7 +509,7 @@ Output ONLY this JSON (no other text before or after):
 }}"""
 
     try:
-        response = haiku(client, prompt, max_tokens=800, system=EDITOR_SYSTEM)
+        response = haiku(client, prompt, max_tokens=2000, system=EDITOR_SYSTEM)
         json_match = re.search(r"\{[\s\S]*\}", response)
         if json_match:
             verdict = json.loads(json_match.group())
