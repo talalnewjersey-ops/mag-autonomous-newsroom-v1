@@ -52,7 +52,7 @@ WP_CAT_USA = 17
 WP_CAT_CANADA = 18
 WP_AUTHOR_ID = 4
 COST_BUDGET = 0.25
-MODEL = "claude-sonnet-4-6"
+MODEL = "claude-haiku-4-5"
 MIN_WORDS = 4000
 MAX_WORDS = 4800
 
