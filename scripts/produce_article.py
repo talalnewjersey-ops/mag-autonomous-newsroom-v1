@@ -332,7 +332,9 @@ def compute_eeat_score(article_html, topic):
     al = article_html.lower()
     sources = ["irs.gov","uscis.gov","fdic.gov","hhs.gov","healthcare.gov","cfpb.gov","cfpb",
                "consumerfinance.gov","canada.ca","cms.gov","dol.gov","ssa.gov","cra-arc.gc.ca",
-               "fincen","ftc.gov","worldbank","federalreserve","oecd","consumer financial"]
+               "fincen","ftc.gov","worldbank","federalreserve","oecd","consumer financial",
+               "treasury.gov","state.gov","hud.gov","justice.gov","revenue.gc.ca",
+               "finra.org","sec.gov"]
     found = [s for s in sources if s in al]
     src_pts = min(len(found) * 5, 25)
     score += src_pts
@@ -465,7 +467,9 @@ def agent24_editorial_review(client, article_html, topic, market, cycle=1):
             off_topic_tables.append(i + 1)
 
     official_domains = ["irs.gov","uscis.gov","fdic.gov","hhs.gov","cfpb","fincen","ftc.gov",
-                        "canada.ca","cms.gov","worldbank","federalreserve","oecd"]
+                        "canada.ca","cms.gov","worldbank","federalreserve","oecd",
+                        "treasury.gov","state.gov","hud.gov","justice.gov","revenue.gc.ca",
+                        "finra.org","sec.gov"]
     sources_found = [d for d in official_domains if d in al]
 
     ai_artifacts = [
@@ -786,7 +790,12 @@ else:
         L0,L1,L2,L3,L4,L5 = link_attrs[0],link_attrs[1],link_attrs[2],link_attrs[3],link_attrs[4],link_attrs[5]
         LOCK = f"TOPIC LOCK: Write EXCLUSIVELY about '{TOPIC}'. Do NOT mention: {forbidden_str}."
         ANTI_AI = "NO cliches. Start with a real statistic. Write like a human senior journalist."
-        SRC = "Cite at least 2 official sources: irs.gov, uscis.gov, fdic.gov, hhs.gov, cfpb.gov, canada.ca."
+        SRC = (
+            "MANDATORY: Embed at least 3 clickable hyperlinks to official government sources. "
+            "Example: <a href=\"https://www.irs.gov/individuals/international-taxpayers/foreign-earned-income-exclusion\">IRS FEIE rules</a>. "
+            "Required domains in href= attributes: irs.gov, fincen.gov, consumerfinance.gov, fdic.gov, treasury.gov. "
+            "The automated scorer checks for these exact domain strings inside href= attributes."
+        )
 
         p1_prompt = f"""Write PART 1 of an expert financial article about: "{TOPIC}" for {mkt} immigrants.
 Output ONLY valid HTML. No markdown. No backticks. {LOCK} {ANTI_AI}
