@@ -1,61 +1,170 @@
 {
-  "_description": "NEXUS-14 V3 - Article Classification Strategy for MoneyAbroadGuide.com",
-  "_version": "3.0.0",
-  "_last_updated": "2026-06-12",
+  "_description": "NEXUS-14 V3.2 - Article Classification & Editorial/Monetization Strategy for MoneyAbroadGuide.com (helpful-content-first, AdSense-safe). PROPOSAL via PR - human review required before merge.",
+  "_version": "3.2.0-proposal",
+  "_last_updated": "2026-06-22",
+  "_blueprint_issue": "See Issue #4 for full editorial & monetization blueprint and rationale.",
+  "_reconciliation_note": "Reconciles word-count tiers to nexus14_v2_config.yaml v3.1.0 (cost-optimized, max 5000 words). Prior v3.0.0 PILLAR 7000-12000 ceilings were stale and conflicted with the YAML.",
+  "editorial_philosophy": {
+    "principle": "Helpful content first; monetization layered on top of genuine usefulness, never in place of it.",
+    "replaces": "revenue-first framing",
+    "google_policy_alignment": "Designed to avoid scaled-content-abuse and site-reputation-abuse risk; supports EEAT and AdSense approval."
+  },
+  "topic_prioritization_scoring": {
+    "_description": "Balanced topic-selection scoring. Weights sum to 100. Replaces revenue-only model in agent_18.",
+    "model": "balanced_v3.2",
+    "weights": {
+      "user_value_helpfulness": 40,
+      "commercial_intent": 25,
+      "search_demand": 15,
+      "affiliate_opportunity": 10,
+      "strategic_authority_building": 10
+    },
+    "selection_rule": "Prioritize topics scoring high on BOTH user value AND monetization. High-revenue but low-user-value topics are downgraded; high-value low-monetization topics may still publish to support clusters/authority.",
+    "user_value_inputs": [
+      "problem_severity",
+      "actionability",
+      "eeat_fit",
+      "content_gap_vs_existing"
+    ]
+  },
   "classification_rules": {
     "PILLAR": {
-      "description": "Comprehensive cornerstone content targeting competitive keywords",
+      "description": "Comprehensive cornerstone content targeting competitive keywords (cost-optimized v3.1 tier).",
       "triggers": {
         "keyword_difficulty_min": 50,
         "strategic_topic": true,
         "search_volume_min": 5000,
-        "revenue_score_min": 70
+        "revenue_score_min": 85
       },
       "requirements": {
-        "word_count_min": 7000,
-        "word_count_target": 9000,
-        "word_count_max": 12000,
-        "faq_min": 15,
-        "faq_max": 20,
-        "sources_min": 10,
-        "images_min": 6,
-        "images_max": 8,
+        "word_count_min": 4500,
+        "word_count_target": 5000,
+        "word_count_max": 5000,
+        "faq_min": 12,
+        "faq_max": 15,
+        "sources_min": 6,
+        "images_min": 5,
+        "images_max": 6,
         "case_studies_min": 3,
-        "internal_links_min": 8
+        "internal_links_min": 10,
+        "internal_links_inbound_min": 10
       }
     },
     "STANDARD": {
-      "description": "High-quality targeted articles for medium-competition keywords",
+      "description": "High-quality targeted articles for medium-competition keywords (default tier).",
       "triggers": {
         "keyword_difficulty_max": 49,
-        "search_volume_min": 500
+        "search_volume_min": 500,
+        "revenue_score_range": "70-85"
+      },
+      "requirements": {
+        "word_count_min": 4000,
+        "word_count_target": 4500,
+        "word_count_max": 4500,
+        "faq_min": 10,
+        "faq_max": 12,
+        "sources_min": 5,
+        "images_min": 4,
+        "images_max": 5,
+        "case_studies_min": 2,
+        "internal_links_min": 10,
+        "internal_links_inbound_min": 10
+      }
+    },
+    "OPPORTUNITY": {
+      "description": "Lower-difficulty topics with moderate revenue score (60-70) but solid user value.",
+      "triggers": {
+        "revenue_score_range": "60-70",
+        "keyword_difficulty_max": 30
       },
       "requirements": {
         "word_count_min": 3500,
-        "word_count_target": 5500,
-        "word_count_max": 7000,
+        "word_count_target": 4000,
+        "word_count_max": 4000,
         "faq_min": 8,
-        "faq_max": 12,
-        "sources_min": 5,
-        "images_min": 5,
-        "case_studies_min": 2,
-        "internal_links_min": 5
+        "faq_max": 10,
+        "sources_min": 3,
+        "images_min": 3,
+        "images_max": 4,
+        "case_studies_min": 1,
+        "internal_links_min": 10,
+        "internal_links_inbound_min": 10
       }
     }
   },
   "classification_logic": {
     "pseudo_code": [
-      "IF keyword_difficulty > 50 OR strategic_topic == true:",
-      "  article_type = PILLAR",
-      "ELIF search_volume > 5000:",
-      "  article_type = PILLAR",
-      "ELIF revenue_score > 85:",
-      "  article_type = PILLAR",
-      "ELSE:",
-      "  article_type = STANDARD"
+      "score = balanced_score(user_value, commercial_intent, search_demand, affiliate, authority)",
+      "IF revenue_score < 60: REJECT (manual review)",
+      "IF keyword_difficulty > 50 OR strategic_topic OR search_volume > 5000 OR revenue_score > 85: PILLAR",
+      "ELIF revenue_score <= 70: OPPORTUNITY",
+      "ELSE: STANDARD"
     ],
     "output_field": "article_type",
     "stored_in": "article_strategy.json"
+  },
+  "monetization_requirements": {
+    "applies_to": "commercial articles",
+    "ebook_ctas_min": 3,
+    "affiliate_opportunities_min": 4,
+    "comparison_tables_required": true,
+    "decision_framework_required": true,
+    "conversion_cta_required": true,
+    "ftc_disclosure_required": true,
+    "prohibited": [
+      "fake reviews",
+      "fake testimonials",
+      "fabricated case studies"
+    ],
+    "note": "Scenarios must be clearly labeled as illustrative examples."
+  },
+  "internal_linking_strategy": {
+    "outbound_internal_links_min": 10,
+    "inbound_internal_links_min": 10,
+    "must_be_linked_from": [
+      "Start Here",
+      "USA Hub",
+      "Canada Hub",
+      "Related pillar pages"
+    ],
+    "build_topic_clusters": true
+  },
+  "duplicate_prevention": {
+    "_description": "Enforced by Agent 17 (Cannibalization) BEFORE Agent 04 generation.",
+    "block_generation_if": [
+      "similar_topic",
+      "similar_slug",
+      "similar_primary_keyword"
+    ],
+    "on_block": "STOP and require manual decision",
+    "manual_decisions": [
+      "CREATE_NEW_ARTICLE",
+      "UPDATE_EXISTING_ARTICLE",
+      "MERGE_WITH_EXISTING",
+      "REJECT_DUPLICATE"
+    ],
+    "auto_create_near_duplicate": false
+  },
+  "category_safeguards": {
+    "_description": "Country-category integrity. Validation runs BEFORE publication and BLOCKS on mismatch.",
+    "rules": {
+      "canada_articles_forbidden_categories": "any USA-only category",
+      "usa_articles_forbidden_categories": "any Canada-only category"
+    },
+    "on_mismatch": "BLOCK_PUBLICATION",
+    "enforced_as_gate": true
+  },
+  "indexation_requirements": {
+    "verify": [
+      "sitemap_inclusion",
+      "canonical_url",
+      "faq_schema",
+      "article_schema",
+      "internal_links_present",
+      "mobile_performance",
+      "no_duplicate_content"
+    ],
+    "then": "queue Search Console indexing request"
   },
   "strategic_topics": [
     "Best bank accounts for immigrants USA",
@@ -74,6 +183,38 @@
     "Car insurance for newcomers USA",
     "Renters insurance for immigrants USA"
   ],
+  "priority_queue": {
+    "tier_0_top_priority": [
+      "Car Insurance for New Immigrants in the USA",
+      "Car Insurance for Newcomers in Canada",
+      "Best Credit Cards for ITIN Holders",
+      "Best Bank Bonuses for Newcomers to the USA"
+    ],
+    "tier_1_high": [
+      "Wise vs Remitly USA",
+      "Best Money Transfer Apps USA",
+      "Cheapest Way to Send Money from USA to Canada",
+      "First 90 Days in the USA",
+      "First 90 Days in Canada",
+      "Driver License Guide USA",
+      "Driver License Guide Canada"
+    ],
+    "tier_2_traffic_hubs": {
+      "topics": [
+        "First 90 Days in the USA",
+        "First 90 Days in Canada",
+        "Driver License Guide USA",
+        "Driver License Guide Canada"
+      ],
+      "link_aggressively_into": [
+        "banking",
+        "credit cards",
+        "insurance",
+        "money transfer",
+        "ebook pages"
+      ]
+    }
+  },
   "production_limits": {
     "max_articles_per_day": 6,
     "max_articles_per_batch": 3,
@@ -83,8 +224,9 @@
     "standard_max_per_day": 4
   },
   "quality_first_policy": {
-    "rule": "Quality always wins over volume",
+    "rule": "Quality always wins over volume. Quality gates remain blocking and must never be relaxed to hit article counts.",
     "max_daily_enforced": true,
-    "reject_if_below_standards": true
+    "reject_if_below_standards": true,
+    "ninety_day_target_articles": "60-75 (under the 6/day cap, only if all gates pass)"
   }
 }
